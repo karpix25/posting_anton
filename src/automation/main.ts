@@ -29,7 +29,50 @@ async function main() {
     const scheduler = new ContentScheduler(config, usedHashes);
     // Pass config to generator for dynamic prompts
     const generator = new ContentGenerator(process.env.OPENAI_API_KEY || '', config);
+    const yandex = new YandexDiskClient(config.yandexToken);
     const platformManager = new PlatformManager();
+
+    // Auto-Sync Profiles from API
+    try {
+        if (process.env.UPLOAD_POST_API_KEY) {
+            console.log('Syncing profiles from API...');
+            const apiProfiles = await platformManager.getProfiles();
+            if (apiProfiles && apiProfiles.length > 0) {
+                let addedCount = 0;
+                // Merge logic similar to UI
+                apiProfiles.forEach((apiProfile: any) => {
+                    // Check existing based on username AND platform to avoid duplicates on multi-platform
+                    // Actually config structure is simple: { username, platform, theme_key }
+                    // API returns user + social_accounts map.
+
+                    // We simplistically add generic "instagram" if not exists, user can adjust? 
+                    // Or better, we trust the sync logic. 
+                    // Let's just match by username for now to match UI logic I wrote earlier.
+                    const exists = config.profiles.find(p => p.username === apiProfile.username);
+                    if (!exists) {
+                        // Default to instagram if new
+                        config.profiles.push({
+                            username: apiProfile.username,
+                            platform: 'instagram',
+                            theme_key: ''
+                        });
+                        addedCount++;
+                    }
+                });
+
+                if (addedCount > 0) {
+                    console.log(`Synced ${addedCount} new profiles.`);
+                    // Save updated config back to disk so UI sees it
+                    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+                } else {
+                    console.log('Profiles up to date.');
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to auto-sync profiles:', e);
+    }
+
 
     console.log(`1. Listing videos from: ${config.yandexFolders.join(', ')}...`);
     // Flatten multiple folders if needed, or just take the first one for now as per scheduler logic
@@ -41,6 +84,7 @@ async function main() {
             allVideos = allVideos.concat(videos);
         } catch (e) {
             console.error(`Failed to list folder ${folder}:`, e);
+            // Don't crash entire process if one folder fails
         }
     }
     console.log(`Found ${allVideos.length} videos.`);

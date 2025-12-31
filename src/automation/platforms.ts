@@ -122,4 +122,8 @@ export class PlatformManager {
     async getHistory(): Promise<any[]> {
         return this.client.getHistory();
     }
+
+    async getProfiles(): Promise<any[]> {
+        return this.client.getProfiles();
+    }
 }
