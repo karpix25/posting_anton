@@ -145,8 +145,29 @@ app.get('/api/stats', async (req, res) => {
                 stats.totalVideos = availableFiles.length;
 
                 // Group by Category
+
+                // 1. Pre-fill with all configured aliases (optional, but good for visibility)
+                if (config.themeAliases) {
+                    for (const key of Object.keys(config.themeAliases)) {
+                        stats.byCategory[key] = 0;
+                    }
+                }
+
+                // 2. Scan ALL files to detect existence of categories (even if 0 available)
+                allFiles.forEach(f => {
+                    // We only care about detecting the category here, not counting
+                    const theme = extractTheme(f.path, config.themeAliases);
+                    if (theme !== 'unknown') {
+                        if (stats.byCategory[theme] === undefined) {
+                            stats.byCategory[theme] = 0;
+                        }
+                    }
+                });
+
+                // 3. Count AVAILABLE videos
                 availableFiles.forEach(f => {
                     const theme = extractTheme(f.path, config.themeAliases);
+                    // increment
                     stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
                 });
             }
