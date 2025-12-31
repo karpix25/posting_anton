@@ -26,14 +26,26 @@ export class ContentGenerator {
         }
 
         let userPrompt = `Путь к файлу: ${videoPath}. Платформа: ${platform}.`;
-        userPrompt += `\n\nВАЖНО: Твой ответ должен состоять из двух частей, разделенных символами "$$$".\n`;
-        userPrompt += `Первая часть - это ЗАГОЛОВОК (короткий, цепляющий).\n`;
-        userPrompt += `Вторая часть - это ОПИСАНИЕ (с хештегами).\n`;
-        userPrompt += `Пример ответа: Крутая новинка! $$$ Смотрите, какая удобная штука. #хештег\n\n`;
-        userPrompt += `ЗАПРЕЩЕНО писать технические инструкции (типа "Нажмите кнопку", "Опубликуйте"). Пиши ТОЛЬКО креативный текст для самого поста от имени автора.`;
+
+        if (platform === 'youtube') {
+            userPrompt += `\n\nВАЖНО: Твой ответ должен состоять из двух частей, разделенных символами "$$$".\n`;
+            userPrompt += `Первая часть - это ЗАГОЛОВОК (1-5 слов, цепляющий).\n`;
+            userPrompt += `Вторая часть - это ОПИСАНИЕ (с хештегами).\n`;
+            userPrompt += `Пример ответа: Крутая новинка! $$$ Смотрите, какая удобная штука. #хештег\n\n`;
+        } else {
+            // Instagram / TikTok
+            userPrompt += `\n\nВАЖНО: Напиши ТОЛЬКО креативное описание (caption) для поста с хештегами.\n`;
+            userPrompt += `НИКАКИХ заголовков, никаких "$$$". Только сам текст поста.\n`;
+        }
+
+        userPrompt += `ЗАПРЕЩЕНО писать технические инструкции (типа "Нажмите кнопку", "Опубликуйте", "Вот шаги"). Пиши ТОЛЬКО креативный текст для самого поста от имени автора.`;
+
+        // Debug
+        // console.log('[Generator] System Prompt:', systemPrompt);
+        // console.log('[Generator] User Prompt:', userPrompt);
 
         const response = await this.openai.chat.completions.create({
-            model: 'gpt-4o', // Use gpt-4o or gpt-4-turbo for better instruction following if available, else gpt-4
+            model: 'gpt-4o',
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }

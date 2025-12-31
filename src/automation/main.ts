@@ -219,15 +219,20 @@ async function main() {
                     console.log(`[Main] Generating caption for ${post.video.name} (Profile: ${post.profile.username})...`);
                     const rawText = await generator.generateCaption(post.video.path, post.platform, post.profile.username);
 
-                    // Parse Title $$$ Caption format
-                    const parts = rawText.split('$$$');
-                    if (parts.length > 1) {
-                        post.title = parts[0].trim();
-                        post.caption = parts[1].trim();
+                    if (post.platform === 'youtube') {
+                        // Parse Title $$$ Caption format
+                        const parts = rawText.split('$$$');
+                        if (parts.length > 1) {
+                            post.title = parts[0].trim();
+                            post.caption = parts[1].trim();
+                        } else {
+                            post.caption = rawText.trim();
+                            post.title = post.caption.substring(0, 50) + '...';
+                        }
                     } else {
+                        // Instagram / TikTok: Raw text is the caption
                         post.caption = rawText.trim();
-                        // Auto-generate title from caption if missing? Or leave empty.
-                        post.title = post.caption.substring(0, 50) + '...';
+                        post.title = ''; // No separate title needed
                     }
                 } else {
                     post.caption = `${post.video.name} #shorts #video`;
