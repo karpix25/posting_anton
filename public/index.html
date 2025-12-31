@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Automation Dashboard</title>
+  <title>Панель управления</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -13,9 +13,9 @@
 
     <!-- Header -->
     <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
-      <h1 class="text-3xl font-bold text-blue-600">🚀 Content Automation</h1>
+      <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
       <button @click="saveConfig" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">
-        Save Changes
+        Сохранить изменения
       </button>
     </div>
 
@@ -32,25 +32,25 @@
 
       <!-- Tab Content -->
       <div class="flex-1 p-8">
-        <div v-if="loading" class="text-center text-gray-500">Loading config...</div>
+        <div v-if="loading" class="text-center text-gray-500">Загрузка настроек...</div>
 
         <div v-else>
 
           <!-- DASHBOARD TAB -->
           <div v-if="currentTab === 'dashboard'">
-            <h2 class="text-2xl font-bold mb-4">Status</h2>
+            <h2 class="text-2xl font-bold mb-4">Статус</h2>
             <div class="grid grid-cols-3 gap-4 mb-8">
               <div class="bg-blue-50 p-4 rounded border border-blue-100">
-                <div class="text-sm text-gray-500">Next Run</div>
+                <div class="text-sm text-gray-500">Следующий запуск</div>
                 <div class="text-lg font-mono">{{ config.cronSchedule }}</div>
               </div>
               <div class="bg-purple-50 p-4 rounded border border-purple-100">
-                <div class="text-sm text-gray-500">Active Profiles</div>
+                <div class="text-sm text-gray-500">Активные профили</div>
                 <div class="text-lg font-bold">{{ config.profiles?.length || 0 }}</div>
               </div>
               <div class="bg-indigo-50 p-4 rounded border border-indigo-100 flex flex-col justify-between">
                 <div>
-                  <div class="text-sm text-gray-500">Videos on Disk</div>
+                  <div class="text-sm text-gray-500">Видео на диске</div>
                   <div class="text-lg font-bold" v-if="stats">{{ stats.totalVideos }}</div>
                   <div class="text-lg font-bold text-gray-400" v-else>--</div>
                 </div>
@@ -64,12 +64,12 @@
             <div class="flex gap-4">
               <button @click="triggerRun(false)"
                 class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold">
-                Run Automation Now
+                Запустить автоматизацию
               </button>
               <button @click="triggerRun(true)"
                 class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded text-lg font-semibold"
                 title="Only 1 post per platform (Safe Mode)">
-                🧪 Test Run (1 item)
+                🧪 Тестовый запуск (1 пост)
               </button>
             </div>
           </div>
@@ -77,35 +77,35 @@
           <!-- STATS TAB -->
           <div v-if="currentTab === 'stats'">
             <div class="flex justify-between items-center mb-6">
-              <h2 class="text-2xl font-bold">Analytics & Content Stats</h2>
+              <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
               <button @click="loadStats"
-                class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">Refresh</button>
+                class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">Обновить</button>
             </div>
 
-            <div v-if="statsLoading" class="text-center py-8 text-gray-500">Scanning Yandex Disk...</div>
+            <div v-if="statsLoading" class="text-center py-8 text-gray-500">Сканирование Яндекс Диска...</div>
             <div v-else>
               <!-- Overview Cards -->
               <div class="grid grid-cols-2 gap-6 mb-8">
                 <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 text-center">
-                  <div class="text-gray-500 mb-1">Total Videos Available</div>
+                  <div class="text-gray-500 mb-1">Всего доступно видео</div>
                   <div class="text-4xl font-bold text-blue-700">{{ stats.totalVideos }}</div>
-                  <div class="text-xs text-blue-400 mt-2">Ready to publish (Yandex Disk)</div>
+                  <div class="text-xs text-blue-400 mt-2">Готовы к публикации (Yandex Disk)</div>
                 </div>
                 <div class="bg-green-50 p-6 rounded-lg border border-green-100 text-center">
-                  <div class="text-gray-500 mb-1">Published & Deleted</div>
+                  <div class="text-gray-500 mb-1">Опубликовано и удалено</div>
                   <div class="text-4xl font-bold text-green-700">{{ stats.publishedCount }}</div>
-                  <div class="text-xs text-green-400 mt-2">Historical count</div>
+                  <div class="text-xs text-green-400 mt-2">За всё время</div>
                 </div>
               </div>
 
               <!-- Categories Breakdown -->
-              <h3 class="text-xl font-bold mb-4">Breakdown by Category (Theme)</h3>
+              <h3 class="text-xl font-bold mb-4">Разбивка по категориям (Тематики)</h3>
               <div class="bg-white border rounded-lg overflow-hidden">
                 <table class="w-full">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="text-left p-3 border-b">Category / Folder Theme</th>
-                      <th class="text-right p-3 border-b">Count</th>
+                      <th class="text-left p-3 border-b">Категория / Папка</th>
+                      <th class="text-right p-3 border-b">Количество</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -115,7 +115,7 @@
                       <td class="p-3 text-right font-mono">{{ count }}</td>
                     </tr>
                     <tr v-if="Object.keys(stats.byCategory).length === 0">
-                      <td colspan="2" class="p-4 text-center text-gray-400">No categories found or scan failed.</td>
+                      <td colspan="2" class="p-4 text-center text-gray-400">Категории не найдены.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -125,19 +125,19 @@
 
           <!-- SETTINGS TAB -->
           <div v-if="currentTab === 'settings'">
-            <h2 class="text-2xl font-bold mb-4">General Settings</h2>
+            <h2 class="text-2xl font-bold mb-4">Общие настройки</h2>
 
             <div class="mb-4">
-              <label class="block mb-2 font-semibold">Cron Schedule</label>
+              <label class="block mb-2 font-semibold">Расписание (Cron)</label>
               <input v-model="config.cronSchedule" class="w-full border p-2 rounded" placeholder="0 8 * * *">
             </div>
 
             <div class="mb-4">
-              <label class="block mb-2 font-semibold">Yandex Folders (comma separated)</label>
+              <label class="block mb-2 font-semibold">Папки Яндекс Диска (через запятую)</label>
               <input v-model="foldersInput" @input="updateFolders" class="w-full border p-2 rounded">
             </div>
 
-            <h3 class="text-xl font-bold mt-6 mb-4">Platform Limits</h3>
+            <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (постов в день на профиль)</h3>
             <div class="grid grid-cols-3 gap-4">
               <div>
                 <label>Instagram</label>
@@ -157,13 +157,13 @@
           <!-- PROFILES TAB -->
           <div v-if="currentTab === 'profiles'">
             <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold">Social Profiles</h2>
+              <h2 class="text-2xl font-bold">Социальные профили</h2>
               <div class="space-x-2">
                 <button @click="syncProfiles"
-                  class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Sync from
-                  API</button>
-                <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Add
-                  Profile</button>
+                  class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Синхронизировать
+                  (UploadPost)</button>
+                <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+                  профиль</button>
               </div>
             </div>
 
@@ -171,9 +171,9 @@
               <thead>
                 <tr class="bg-gray-100 text-left">
                   <th class="p-2 border">Username (API ID)</th>
-                  <th class="p-2 border">Platform</th>
-                  <th class="p-2 border">Theme Key</th>
-                  <th class="p-2 border">Action</th>
+                  <th class="p-2 border">Платформа</th>
+                  <th class="p-2 border">Ключ Темы (Alias)</th>
+                  <th class="p-2 border">Действие</th>
                 </tr>
               </thead>
               <tbody>
@@ -190,7 +190,7 @@
                   <td class="p-2"><input v-model="profile.theme_key" class="w-full border p-1 rounded"
                       placeholder="Regex Key"></td>
                   <td class="p-2 text-center">
-                    <button @click="removeProfile(idx)" class="text-red-500 hover:text-red-700">Delete</button>
+                    <button @click="removeProfile(idx)" class="text-red-500 hover:text-red-700">Удалить</button>
                   </td>
                 </tr>
               </tbody>
@@ -200,28 +200,28 @@
           <!-- CLIENTS TAB -->
           <div v-if="currentTab === 'clients'">
             <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold">Clients & Prompts</h2>
-              <button @click="addClient" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Add
-                Client</button>
+              <h2 class="text-2xl font-bold">Клиенты и Промты (AI)</h2>
+              <button @click="addClient" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+                клиента</button>
             </div>
 
             <div v-for="(client, idx) in config.clients" :key="idx" class="border p-4 rounded mb-4 bg-gray-50">
               <div class="grid grid-cols-2 gap-4 mb-2">
                 <div>
-                  <label class="text-sm text-gray-500 block">Client Name</label>
+                  <label class="text-sm text-gray-500 block">Имя клиента</label>
                   <input v-model="client.name" class="w-full border p-2 rounded">
                 </div>
                 <div>
-                  <label class="text-sm text-gray-500 block">Regex Matcher (Folders)</label>
+                  <label class="text-sm text-gray-500 block">Regex папки</label>
                   <input v-model="client.regex" class="w-full border p-2 rounded font-mono">
                 </div>
               </div>
               <div>
-                <label class="text-sm text-gray-500 block">AI System Prompt</label>
+                <label class="text-sm text-gray-500 block">AI Системный промт</label>
                 <textarea v-model="client.prompt" class="w-full border p-2 rounded h-32 font-mono text-sm"></textarea>
               </div>
               <div class="text-right mt-2">
-                <button @click="removeClient(idx)" class="text-red-500 text-sm hover:underline">Remove Client</button>
+                <button @click="removeClient(idx)" class="text-red-500 text-sm hover:underline">Удалить клиента</button>
               </div>
             </div>
           </div>
@@ -229,41 +229,42 @@
 
           <!-- THEMES TAB -->
           <div v-if="currentTab === 'themes'">
-            <h2 class="text-2xl font-bold mb-4">Theme Mappings</h2>
+            <h2 class="text-2xl font-bold mb-4">Настройка Тем (Mapping)</h2>
             <p class="text-gray-500 mb-6 text-sm">
-              Map folder/profile names (Aliases) to internal Groups (Keys).
-              If a path or username contains an alias, it belongs to that Group.
+              Привязка названий папок (Aliases) к внутренним группам (Keys).
+              Если путь видео или имя пользователя содержит alias, оно будет отнесено к этой группе.
             </p>
 
             <div class="space-y-6">
               <div v-for="(aliases, key) in config.themeAliases" :key="key" class="bg-gray-50 p-4 rounded border">
                 <div class="flex justify-between items-center mb-2">
                   <h3 class="font-bold text-lg capitalize text-blue-800">{{ key }}</h3>
-                  <button @click="deleteThemeKey(key)" class="text-red-400 hover:text-red-600 text-xs">Remove
-                    Group</button>
+                  <button @click="deleteThemeKey(key)" class="text-red-400 hover:text-red-600 text-xs">Удалить
+                    группу</button>
                 </div>
                 <div>
-                  <label class="block text-xs text-gray-400 mb-1">Aliases (comma separated)</label>
+                  <label class="block text-xs text-gray-400 mb-1">Синонимы (через запятую)</label>
                   <input type="text" :value="aliases.join(', ')" @input="updateAliases(key, $event.target.value)"
                     class="w-full p-2 border rounded focus:ring focus:ring-blue-200"
-                    placeholder="e.g. smart, smartbox...">
+                    placeholder="например: smart, smartbox...">
                 </div>
               </div>
 
               <!-- Add New Group -->
               <div class="bg-white p-4 rounded border border-dashed border-gray-300">
-                <h4 class="font-semibold text-gray-600 mb-2">Add New Group</h4>
+                <h4 class="font-semibold text-gray-600 mb-2">Добавить новую группу</h4>
                 <div class="flex gap-2">
-                  <input v-model="newThemeKey" placeholder="Group Name (e.g. adidas)" class="flex-1 p-2 border rounded">
+                  <input v-model="newThemeKey" placeholder="Имя группы (например: adidas)"
+                    class="flex-1 p-2 border rounded">
                   <button @click="addThemeKey"
-                    class="bg-gray-200 hover:bg-gray-300 px-4 rounded text-gray-700">Add</button>
+                    class="bg-gray-200 hover:bg-gray-300 px-4 rounded text-gray-700">Добавить</button>
                 </div>
               </div>
             </div>
 
             <div class="mt-8 p-4 bg-yellow-50 rounded border border-yellow-100 text-sm text-yellow-800">
-              ⚠️ <b>Note:</b> Changes here affect how <b>Folders</b> and <b>Profiles</b> are matched.
-              If you change mappings, you might need to re-sync or check the logs.
+              ⚠️ <b>Важно:</b> Изменения здесь влияют на то, как определяются папки и профили.
+              После изменения настроек, возможно, потребуется пересинхронизация.
             </div>
           </div>
         </div>
@@ -279,12 +280,12 @@
         return {
           currentTab: 'dashboard',
           tabs: [
-            { id: 'dashboard', name: 'Dashboard' },
-            { id: 'stats', name: 'Analytics' },
-            { id: 'settings', name: 'Settings & Limits' },
-            { id: 'profiles', name: 'Social Profiles' },
-            { id: 'clients', name: 'Clients (Prompts)' },
-            { id: 'themes', name: 'Theme Mappings' } // New Tab
+            { id: 'dashboard', name: 'Дашборд' },
+            { id: 'stats', name: 'Аналитика' },
+            { id: 'settings', name: 'Настройки' },
+            { id: 'profiles', name: 'Профили' },
+            { id: 'clients', name: 'AI Промты' },
+            { id: 'themes', name: 'Темы и Группы' }
           ],
           config: {
             cronSchedule: '',
@@ -363,22 +364,22 @@
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(this.config)
             });
-            alert('Saved successfully!');
+            alert('Сохранено успешно!');
           } catch (e) {
-            alert('Save failed');
+            alert('Ошибка сохранения');
           }
         },
         async triggerRun(testMode = false) {
-          if (!confirm(testMode ? 'Run in TEST MODE (1 post per platform)?' : 'Start FULL automation process?')) return;
+          if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
           try {
             await fetch('/api/run', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ testMode })
             });
-            alert('Automation started in background. Check server logs.');
+            alert('Автоматизация запущена в фоне. Проверьте логи сервера.');
           } catch (e) {
-            alert('Failed to start run');
+            alert('Не удалось запустить процесс');
           }
         },
         async syncProfiles() {
@@ -430,15 +431,15 @@
                 }
               });
 
-              alert(`Profiles synced! Added ${addedCount} new entries.`);
+              alert(`Профили синхронизированы! Добавлено: ${addedCount}.`);
               // Auto-save? Maybe let user save.
             } else {
               console.error('[UI] Sync failed:', data.error);
-              alert('Sync failed: ' + (data.error || 'Unknown error'));
+              alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
             }
           } catch (e) {
             console.error('[UI] Fetch error:', e);
-            alert('Failed to sync profiles (Check console)');
+            alert('Не удалось синхронизировать профили (см. консоль)');
           }
         },
         updateFolders() {
@@ -464,14 +465,14 @@
           if (!this.newThemeKey) return;
           const key = this.newThemeKey.toLowerCase().trim();
           if (this.config.themeAliases[key]) {
-            alert('Group already exists!');
+            alert('Группа уже существует!');
             return;
           }
           this.config.themeAliases[key] = [key];
           this.newThemeKey = '';
         },
         deleteThemeKey(key) {
-          if (confirm(`Delete group '${key}'?`)) {
+          if (confirm(`Удалить группу '${key}'?`)) {
             delete this.config.themeAliases[key];
           }
         }
