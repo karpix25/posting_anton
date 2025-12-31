@@ -196,6 +196,9 @@ app.post('/api/run', (req, res) => {
     // In Docker (prod), we run the compiled JS. In dev, ts-node.
     // For simplicity in this structure, we assume we are running 'node dist/automation/main.js' or similar.
     const { testMode } = req.body;
+    const { spawn } = require('child_process');
+    const scriptPath = path.join(__dirname, 'automation/main.js');
+
     const env = { ...process.env };
 
     if (testMode) {
