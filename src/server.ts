@@ -98,7 +98,29 @@ app.get('/api/profiles/sync', async (req, res) => {
     }
 });
 
+// Health Check
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
 // Start Server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Dashboard running at http://localhost:${PORT}`);
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Closing HTTP server...');
+    server.close(() => {
+        console.log('HTTP server closed.');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received. Shutting down...');
+    server.close(() => {
+        console.log('HTTP server closed.');
+        process.exit(0);
+    });
 });
