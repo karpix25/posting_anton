@@ -114,9 +114,10 @@ app.get('/api/stats', async (req, res) => {
                     console.log(`[Stats] fetching files...`);
                     // Increased limit to 10000 per user request
                     allFiles = await yandex.listFiles('/', 10000);
-                    console.log(`[Stats] Fetched ${allFiles.length} files from Yandex.`);
+                    console.log(`[Stats DEBUG] Fetched ${allFiles.length} raw files from Yandex.`);
                     if (allFiles.length > 0) {
-                        console.log(`[Stats] Sample file path: ${allFiles[0].path}`);
+                        console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);
+                        console.log(`[Stats DEBUG] Last file: ${allFiles[allFiles.length - 1].path}`);
                     }
                 } catch (e) {
                     console.error('[Stats] Failed to list files', e);
@@ -126,7 +127,8 @@ app.get('/api/stats', async (req, res) => {
                 // Filter 2: Must be within one of the config folders (if folders valid)
                 // Filter 3: Must NOT be in usedSet
 
-                console.log('[Stats] Using Yandex Config Folders:', folders);
+                console.log('[Stats DEBUG] Configured folders:', folders);
+                console.log(`[Stats DEBUG] Filtering ${allFiles.length} files against folders...`);
 
                 const availableFiles = allFiles.filter(f => {
                     // Check if file is inside one of the target folders
@@ -153,52 +155,65 @@ app.get('/api/stats', async (req, res) => {
 
                     return true;
                 });
-                console.log(`[Stats] availableFiles after filtering: ${availableFiles.length}`);
-
-                stats.totalVideos = availableFiles.length;
-
-                // Group by Category & Author
-
-                // 1. Pre-fill categories from aliases
-                if (config.themeAliases) {
-                    for (const key of Object.keys(config.themeAliases)) {
-                        stats.byCategory[key] = 0;
-                    }
+                // Log exclusion reason for first few failures for debug
+                if (!inFolder && Math.random() < 0.001) {
+                    // console.log(`[Stats TRACE] Excluded folder: ${f.path}`);
                 }
 
-                // 2. Scan ALL files to detect existence of categories/authors
-                allFiles.forEach(f => {
-                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+                // Check usage
+                if (usedSet.has(f.md5) || usedSet.has(f.path)) {
+                    // console.log(`[Stats TRACE] Excluded used: ${f.path}`);
+                    return false;
+                }
 
-                    // Init Category
-                    if (theme !== 'unknown') {
-                        if (stats.byCategory[theme] === undefined) stats.byCategory[theme] = 0;
-                    }
-                    // Init Author
-                    if (author !== 'unknown') {
-                        if (stats.byAuthor[author] === undefined) stats.byAuthor[author] = 0;
-                    }
-                });
+                return true;
+            });
+console.log(`[Stats DEBUG] availableFiles after filtering: ${availableFiles.length}`);
 
-                // 3. Count AVAILABLE videos
-                availableFiles.forEach(f => {
-                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+stats.totalVideos = availableFiles.length;
 
-                    if (theme !== 'unknown') {
-                        stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
-                    }
-                    if (author !== 'unknown') {
-                        stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
-                    }
-                });
+// Group by Category & Author
+
+// 1. Pre-fill categories from aliases
+if (config.themeAliases) {
+    for (const key of Object.keys(config.themeAliases)) {
+        stats.byCategory[key] = 0;
+    }
+}
+
+// 2. Scan ALL files to detect existence of categories/authors
+allFiles.forEach(f => {
+    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+    // Init Category
+    if (theme !== 'unknown') {
+        if (stats.byCategory[theme] === undefined) stats.byCategory[theme] = 0;
+    }
+    // Init Author
+    if (author !== 'unknown') {
+        if (stats.byAuthor[author] === undefined) stats.byAuthor[author] = 0;
+    }
+});
+
+// 3. Count AVAILABLE videos
+availableFiles.forEach(f => {
+    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+    if (theme !== 'unknown') {
+        stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
+    }
+    if (author !== 'unknown') {
+        stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
+    }
+});
             }
         }
 
-        res.json(stats);
+res.json(stats);
     } catch (e) {
-        console.error('[Stats] Error generating stats:', e);
-        res.status(500).json({ error: 'Failed to fetch stats' });
-    }
+    console.error('[Stats] Error generating stats:', e);
+    res.status(500).json({ error: 'Failed to fetch stats' });
+}
 });
 
 // Get Config

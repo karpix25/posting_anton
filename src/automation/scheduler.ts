@@ -64,14 +64,14 @@ export class ContentScheduler {
                         currentCounts.youtube < this.config.limits.youtube;
 
                     if (!needsPost) {
-                        // console.log(`[Scheduler] SKIP: ${profile.username} reached limits.`);
+                        console.log(`[Scheduler DEBUG] SKIP '${profile.username}': Reached limits (IG:${currentCounts.instagram}/${this.config.limits.instagram}, TT:${currentCounts.tiktok}/${this.config.limits.tiktok}, YT:${currentCounts.youtube}/${this.config.limits.youtube})`);
                         continue;
                     }
 
                     // Find matching videos
                     const themeVideos = videosByTheme[profile.theme_key] || [];
                     if (themeVideos.length === 0) {
-                        if (dayIndex === 0 && pass === 0) console.log(`[Scheduler] WARN: No videos found for theme '${profile.theme_key}' (Profile: ${profile.username})`);
+                        if (pass === 0) console.log(`[Scheduler DEBUG] SKIP '${profile.username}': No videos found for theme '${profile.theme_key}' (Available themes: ${Object.keys(videosByTheme).join(', ')})`);
                         continue;
                     }
 
