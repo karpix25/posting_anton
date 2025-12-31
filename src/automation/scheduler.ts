@@ -157,13 +157,7 @@ export class ContentScheduler {
             console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
         }
 
-        const aliasesMap = this.config.themeAliases || {
-            smart: ["smart"],
-            toplash: ["toplash"],
-            wb: ["wb"],
-            pokypki: ["pokypki"],
-            synergetic: ["synergetic"]
-        };
+
 
         // We must check aliases in a specific order to avoid partial matches
         // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
