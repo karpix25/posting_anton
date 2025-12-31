@@ -25,11 +25,18 @@ export class ContentGenerator {
             systemPrompt += `\n\nЕсли автор найден (${authorName}), добавь #by${authorName} в конец.`;
         }
 
+        let userPrompt = `Путь к файлу: ${videoPath}. Платформа: ${platform}.`;
+        userPrompt += `\n\nВАЖНО: Твой ответ должен состоять из двух частей, разделенных символами "$$$".\n`;
+        userPrompt += `Первая часть - это ЗАГОЛОВОК (короткий, цепляющий).\n`;
+        userPrompt += `Вторая часть - это ОПИСАНИЕ (с хештегами).\n`;
+        userPrompt += `Пример ответа: Крутая новинка! $$$ Смотрите, какая удобная штука. #хештег\n\n`;
+        userPrompt += `ЗАПРЕЩЕНО писать технические инструкции (типа "Нажмите кнопку", "Опубликуйте"). Пиши ТОЛЬКО креативный текст для самого поста от имени автора.`;
+
         const response = await this.openai.chat.completions.create({
-            model: 'gpt-4',
+            model: 'gpt-4o', // Use gpt-4o or gpt-4-turbo for better instruction following if available, else gpt-4
             messages: [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Путь к файлу: ${videoPath}. Платформа: ${platform}` }
+                { role: 'user', content: userPrompt }
             ]
         });
 

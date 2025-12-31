@@ -66,15 +66,15 @@ export class UploadPostClient {
 
         switch (post.platform) {
             case 'instagram':
-                form.append('instagram_title', post.caption || '');
+                form.append('instagram_title', post.title || post.caption || '');
                 form.append('media_type', 'REELS');
                 break;
             case 'tiktok':
-                form.append('tiktok_title', post.caption || '');
+                form.append('tiktok_title', post.title || post.caption || '');
                 form.append('post_mode', 'DIRECT_POST');
                 break;
             case 'youtube':
-                form.append('youtube_title', post.caption || ''); // YouTube title
+                form.append('youtube_title', post.title || post.caption || ''); // YouTube title
                 form.append('youtube_description', post.caption || ''); // YouTube description
                 form.append('categoryId', '22');
                 form.append('privacyStatus', 'public');

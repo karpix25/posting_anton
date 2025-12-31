@@ -20,6 +20,7 @@ export interface ScheduledPost {
   platform: 'instagram' | 'tiktok' | 'youtube';
   publish_at: string;
   caption?: string;
+  title?: string;
   hashtags?: string[];
 }
 
