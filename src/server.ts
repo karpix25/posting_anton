@@ -3,16 +3,84 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import { YandexDiskClient } from './automation/yandex'; // Import Yandex client
 
 const app = express();
-const PORT = process.env.PORT || 3001; // user requested to change from 3000/8000
+const PORT = process.env.PORT || 3001;
 const CONFIG_PATH = path.join(__dirname, '../config.json');
+const USED_HASHES_PATH = path.join(__dirname, 'automation/used_hashes.json'); // Adjust path based on build structure
+// In prod, main.ts is in dist/automation, server is in dist/. 
+// used_hashes is likely alongside main.ts or in app root? 
+// main.ts: path.join(__dirname, 'used_hashes.json'); -> dist/automation/used_hashes.json
+// server.ts: path.join(__dirname, 'automation/used_hashes.json'); -> dist/automation/used_hashes.json
+// Seems correct relative to server.ts in dist/
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
 
+// Helper to extract theme (duplicated from scheduler to avoid complex deps if lazy)
+function extractTheme(filePath: string): string {
+    const parts = filePath.split('/');
+    if (parts.length >= 4) {
+        return parts[3].toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+    }
+    return 'unknown';
+}
+
 // --- API Endpoints ---
+
+// Get Statistics
+app.get('/api/stats', async (req, res) => {
+    try {
+        const stats = {
+            totalVideos: 0,
+            publishedCount: 0, // Effectively "Published & Deleted" or just "Processed"
+            byCategory: {} as Record<string, number>
+        };
+
+        // 1. Get History Count
+        if (fs.existsSync(USED_HASHES_PATH)) {
+            const used = JSON.parse(fs.readFileSync(USED_HASHES_PATH, 'utf-8'));
+            stats.publishedCount = Array.isArray(used) ? used.length : 0;
+        }
+
+        // 2. Get Yandex Stats (Live)
+        // We need config to know folders
+        if (fs.existsSync(CONFIG_PATH)) {
+            const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+            const folders = config.yandexFolders || [];
+
+            if (folders.length > 0 && process.env.YANDEX_TOKEN) {
+                const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
+
+                let allFiles: any[] = [];
+                // We'll limit this to avoid timeouts on huge disks, or assume reasonable size
+                for (const folder of folders) {
+                    try {
+                        const files = await yandex.listFiles(folder, 2000); // Higher limit?
+                        allFiles = allFiles.concat(files);
+                    } catch (e) {
+                        console.error(`[Stats] Failed to list ${folder}`, e);
+                    }
+                }
+
+                stats.totalVideos = allFiles.length;
+
+                // Group by Category
+                allFiles.forEach(f => {
+                    const theme = extractTheme(f.path);
+                    stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
+                });
+            }
+        }
+
+        res.json(stats);
+    } catch (e) {
+        console.error('[Stats] Error generating stats:', e);
+        res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
 
 // Get Config
 app.get('/api/config', (req, res) => {
