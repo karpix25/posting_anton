@@ -92,7 +92,12 @@ app.get('/api/stats', async (req, res) => {
                 // Limit to 5000 to cover most cases.
                 let allFiles: any[] = [];
                 try {
+                    console.log(`[Stats] fetching files...`);
                     allFiles = await yandex.listFiles('/', 5000);
+                    console.log(`[Stats] Fetched ${allFiles.length} files from Yandex.`);
+                    if (allFiles.length > 0) {
+                        console.log(`[Stats] Sample file path: ${allFiles[0].path}`);
+                    }
                 } catch (e) {
                     console.error('[Stats] Failed to list files', e);
                 }
@@ -109,8 +114,14 @@ app.get('/api/stats', async (req, res) => {
                     let inFolder = false;
                     if (folders.length === 0) inFolder = true; // If no folders defined, scan all? Or none? Assume all.
                     else {
-                        // Check strict prefix
-                        inFolder = folders.some(folder => f.path.startsWith(folder));
+                        // Normalize paths to avoid slash/prefix issues
+                        // remove "disk:" and leading/trailing slashes
+                        const normPath = f.path.replace(/^disk:\/?/, '').replace(/^\//, '');
+
+                        inFolder = folders.some(folder => {
+                            const normFolder = folder.replace(/^disk:\/?/, '').replace(/^\//, '');
+                            return normPath.startsWith(normFolder);
+                        });
                     }
 
                     if (!inFolder) return false;
@@ -120,6 +131,7 @@ app.get('/api/stats', async (req, res) => {
 
                     return true;
                 });
+                console.log(`[Stats] availableFiles after filtering: ${availableFiles.length}`);
 
                 stats.totalVideos = availableFiles.length;
 
