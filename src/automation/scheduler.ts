@@ -32,7 +32,8 @@ export class ContentScheduler {
         startDate.setHours(8, 0, 0, 0); // Start at 8 AM today (or tomorrow, logic can vary)
 
         // Iterate over days
-        for (let dayIndex = 0; dayIndex < this.config.daysToGenerate; dayIndex++) {
+        const days = this.config.daysToGenerate || 7;
+        for (let dayIndex = 0; dayIndex < days; dayIndex++) {
             const currentDayStart = new Date(startDate);
             currentDayStart.setDate(startDate.getDate() + dayIndex);
 

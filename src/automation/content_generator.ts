@@ -6,7 +6,14 @@ export class ContentGenerator {
     private config: AutomationConfig;
 
     constructor(apiKey: string, config: AutomationConfig) {
-        this.openai = new OpenAI({ apiKey });
+        this.openai = new OpenAI({
+            apiKey,
+            baseURL: 'https://openrouter.ai/api/v1',
+            defaultHeaders: {
+                'HTTP-Referer': 'https://github.com/karpix25/posting_anton', // Optional, good practice for OpenRouter
+                'X-Title': 'Automation Dashboard',
+            }
+        });
         this.config = config;
     }
 
