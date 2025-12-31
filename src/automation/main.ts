@@ -75,10 +75,21 @@ async function main() {
                     const exists = config.profiles.find(p => p.username === apiProfile.username);
                     if (!exists) {
                         // Default to instagram if new
+                        // Auto-detect theme from username
+                        let theme = apiProfile.theme_key || '';
+                        if (!theme && apiProfile.username) {
+                            const name = apiProfile.username.toLowerCase();
+                            if (name.includes('smart')) theme = 'smart';
+                            else if (name.includes('toplash') || name.includes('beauty')) theme = 'toplash'; // Assumption based on logs
+                            else if (name.includes('beauty')) theme = 'beauty';
+                            else if (name.includes('wb') || name.includes('pokypki')) theme = 'wb';
+                            else if (name.includes('synergetic') || name.includes('синергетик')) theme = 'synergetic';
+                        }
+
                         config.profiles.push({
                             username: apiProfile.username,
                             platform: 'instagram',
-                            theme_key: ''
+                            theme_key: theme
                         });
                         addedCount++;
                     }
