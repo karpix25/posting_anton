@@ -151,6 +151,12 @@ export class ContentScheduler {
             synergetic: ["synergetic"]
         };
 
+        // Debug log for the first few checks to realize what's happening
+        // (Use a simple counter or random check to avoid spam, or just log once)
+        if (Math.random() < 0.005) {
+            console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
+        }
+
         // Check if any alias exists in the path
         for (const [canonical, aliases] of Object.entries(aliasesMap)) {
             for (const alias of aliases) {
