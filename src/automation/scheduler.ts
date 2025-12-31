@@ -134,12 +134,34 @@ export class ContentScheduler {
     }
 
     private extractTheme(path: string): string {
-        // Ported from n8n: extract from 3rd segment usually
-        // path: disk:/ВИДЕО/Блогер/Категория/...
+        // More robust extraction: scan the whole path for known keywords
+        const normalizedPath = this.normalize(path);
+
+        const THEME_ALIASES: Record<string, string[]> = {
+            smart: ["smart"],
+            toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
+            wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"],
+            synergetic: ["synergetic", "синергетик"],
+            beauty: ["beauty", "бьюти"]
+        };
+
+        // Check if any alias exists in the path
+        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
+            for (const alias of aliases) {
+                if (normalizedPath.includes(alias)) {
+                    // Found a match!
+                    return canonical;
+                }
+            }
+        }
+
+        // Fallback: if no keyword found, try the old parts[3] method but carefully
         const parts = path.split('/');
+        // If path is disk:/ВИДЕО/Blogger/Theme/... -> parts[3] is Theme
         if (parts.length >= 4) {
             return this.normalizeTheme(parts[3]);
         }
+
         return 'unknown';
     }
 
