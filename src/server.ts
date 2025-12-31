@@ -27,41 +27,52 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
 
-// Helper to extract theme using aliases
-function extractTheme(filePath: string, aliasesMap?: Record<string, string[]>): string {
+// Helper to extract metadata (Theme and Author)
+function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>) {
     const normalize = (str: string) => str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
-    const normalizedPath = normalize(filePath);
 
     // Structural extraction: .../VIDEO/Name/Category/...
     const parts = filePath.split('/').filter(p => p.length > 0 && p !== 'disk:');
     let categoryCandidate = '';
+    let authorCandidate = 'unknown';
 
     const videoIndex = parts.findIndex(p => {
         const lower = p.toLowerCase();
         return lower === 'video' || lower === 'видео';
     });
 
-    if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
-        categoryCandidate = parts[videoIndex + 2];
+    if (videoIndex !== -1) {
+        // Author is usually immediately after VIDEO
+        if (videoIndex + 1 < parts.length) {
+            authorCandidate = parts[videoIndex + 1];
+        }
+        // Category is after Author
+        if (videoIndex + 2 < parts.length) {
+            categoryCandidate = parts[videoIndex + 2];
+        }
     } else if (parts.length >= 2) {
         // Fallback: Parent folder
         categoryCandidate = parts[parts.length - 2];
     }
 
+    let theme = 'unknown';
     if (categoryCandidate) {
         const normCandidate = normalize(categoryCandidate);
+        theme = normCandidate; // Default to raw name
+
         if (aliasesMap) {
             for (const [key, list] of Object.entries(aliasesMap)) {
                 for (const alias of list) {
                     if (normCandidate.includes(normalize(alias))) {
-                        return key;
+                        theme = key;
+                        break;
                     }
                 }
             }
         }
-        return normCandidate;
     }
-    return 'unknown';
+
+    return { theme, author: authorCandidate };
 }
 
 // --- API Endpoints ---
@@ -72,7 +83,8 @@ app.get('/api/stats', async (req, res) => {
         const stats = {
             totalVideos: 0,
             publishedCount: 0,
-            byCategory: {} as Record<string, number>
+            byCategory: {} as Record<string, number>,
+            byAuthor: {} as Record<string, number>
         };
 
         let usedSet = new Set<string>();
@@ -100,7 +112,8 @@ app.get('/api/stats', async (req, res) => {
                 let allFiles: any[] = [];
                 try {
                     console.log(`[Stats] fetching files...`);
-                    allFiles = await yandex.listFiles('/', 5000);
+                    // Increased limit to 10000 per user request
+                    allFiles = await yandex.listFiles('/', 10000);
                     console.log(`[Stats] Fetched ${allFiles.length} files from Yandex.`);
                     if (allFiles.length > 0) {
                         console.log(`[Stats] Sample file path: ${allFiles[0].path}`);
@@ -144,31 +157,39 @@ app.get('/api/stats', async (req, res) => {
 
                 stats.totalVideos = availableFiles.length;
 
-                // Group by Category
+                // Group by Category & Author
 
-                // 1. Pre-fill with all configured aliases (optional, but good for visibility)
+                // 1. Pre-fill categories from aliases
                 if (config.themeAliases) {
                     for (const key of Object.keys(config.themeAliases)) {
                         stats.byCategory[key] = 0;
                     }
                 }
 
-                // 2. Scan ALL files to detect existence of categories (even if 0 available)
+                // 2. Scan ALL files to detect existence of categories/authors
                 allFiles.forEach(f => {
-                    // We only care about detecting the category here, not counting
-                    const theme = extractTheme(f.path, config.themeAliases);
+                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+                    // Init Category
                     if (theme !== 'unknown') {
-                        if (stats.byCategory[theme] === undefined) {
-                            stats.byCategory[theme] = 0;
-                        }
+                        if (stats.byCategory[theme] === undefined) stats.byCategory[theme] = 0;
+                    }
+                    // Init Author
+                    if (author !== 'unknown') {
+                        if (stats.byAuthor[author] === undefined) stats.byAuthor[author] = 0;
                     }
                 });
 
                 // 3. Count AVAILABLE videos
                 availableFiles.forEach(f => {
-                    const theme = extractTheme(f.path, config.themeAliases);
-                    // increment
-                    stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
+                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+                    if (theme !== 'unknown') {
+                        stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
+                    }
+                    if (author !== 'unknown') {
+                        stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
+                    }
                 });
             }
         }

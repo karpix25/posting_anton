@@ -99,22 +99,37 @@
               </div>
 
               <!-- Categories Breakdown -->
-              <h3 class="text-xl font-bold mb-4">Разбивка по категориям (Тематики)</h3>
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : 'Авторам' }}
+                </h3>
+
+                <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
+                  <button @click="statsViewMode = 'category'"
+                    :class="['px-3 py-1 rounded-md transition', statsViewMode === 'category' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                    По Темам
+                  </button>
+                  <button @click="statsViewMode = 'author'"
+                    :class="['px-3 py-1 rounded-md transition', statsViewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                    По Авторам
+                  </button>
+                </div>
+              </div>
               <div class="bg-white border rounded-lg overflow-hidden">
                 <table class="w-full">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="text-left p-3 border-b">Категория / Папка</th>
+                      <th class="text-left p-3 border-b">{{ statsViewMode === 'category' ? 'Категория / Папка' : 'Имя
+                        Автора / Папка' }}</th>
                       <th class="text-right p-3 border-b">Количество</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(count, theme) in stats.byCategory" :key="theme"
+                    <tr v-for="(count, key) in currentStatsList" :key="key"
                       class="border-b last:border-0 hover:bg-gray-50">
-                      <td class="p-3 capitalize">{{ theme }}</td>
+                      <td class="p-3 capitalize">{{ key }}</td>
                       <td class="p-3 text-right font-mono">{{ count }}</td>
                     </tr>
-                    <tr v-if="Object.keys(stats.byCategory).length === 0">
+                    <tr v-if="Object.keys(currentStatsList).length === 0">
                       <td colspan="2" class="p-4 text-center text-gray-400">Категории не найдены.</td>
                     </tr>
                   </tbody>
@@ -297,10 +312,12 @@
           stats: {
             totalVideos: 0,
             publishedCount: 0,
-            byCategory: {}
+            byCategory: {},
+            byAuthor: {}
           },
           loading: true,
           statsLoading: false,
+          statsViewMode: 'category', // 'category' or 'author'
           foldersInput: ''
         }
       },
@@ -310,6 +327,14 @@
         // Let's load initially for dashboard summary maybe, or just lazy load.
         // Let's lazy load or separate call.
         this.loadStats();
+      },
+      computed: {
+        currentStatsList() {
+          if (this.statsViewMode === 'author') {
+            return this.stats.byAuthor || {};
+          }
+          return this.stats.byCategory || {};
+        }
       },
       methods: {
         async loadStats() {
