@@ -79,11 +79,15 @@ async function main() {
                         let theme = apiProfile.theme_key || '';
                         if (!theme && apiProfile.username) {
                             const name = apiProfile.username.toLowerCase();
-                            if (name.includes('smart')) theme = 'smart';
-                            else if (name.includes('toplash') || name.includes('beauty')) theme = 'toplash'; // Assumption based on logs
-                            else if (name.includes('beauty')) theme = 'beauty';
-                            else if (name.includes('wb') || name.includes('pokypki')) theme = 'wb';
-                            else if (name.includes('synergetic') || name.includes('синергетик')) theme = 'synergetic';
+                            const aliasesMap = config.themeAliases || {};
+
+                            // Try to match against config aliases first
+                            for (const [canonical, aliases] of Object.entries(aliasesMap)) {
+                                if (aliases.some(alias => name.includes(alias))) {
+                                    theme = canonical;
+                                    break;
+                                }
+                            }
                         }
 
                         config.profiles.push({

@@ -2,6 +2,33 @@
   "yandexFolders": [
     "disk:/ВИДЕО"
   ],
+  "themeAliases": {
+    "smart": [
+      "smart"
+    ],
+    "toplash": [
+      "toplash",
+      "toplashbeauty",
+      "toplashбьюти",
+      "beauty",
+      "бьюти"
+    ],
+    "wb": [
+      "wb",
+      "wildberries"
+    ],
+    "pokypki": [
+      "pokypki",
+      "покупки",
+      "pokypkiwb",
+      "покупкивб",
+      "pokypki-wb"
+    ],
+    "synergetic": [
+      "synergetic",
+      "синергетик"
+    ]
+  },
   "profiles": [],
   "limits": {
     "instagram": 10,

@@ -162,6 +162,14 @@ app.get('/api/config', (req, res) => {
                         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
                     }
                 }
+
+                // Merge theme mappings if missing
+                if (exampleConfig && exampleConfig.themeAliases && !config.themeAliases) {
+                    console.log('[Config] Merging default theme aliases.');
+                    config.themeAliases = exampleConfig.themeAliases;
+                    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                }
+
             } catch (e) {
                 console.warn('[Config] Migration warning:', e);
             }

@@ -137,16 +137,16 @@ export class ContentScheduler {
         // More robust extraction: scan the whole path for known keywords
         const normalizedPath = this.normalize(path);
 
-        const THEME_ALIASES: Record<string, string[]> = {
+        const aliasesMap = this.config.themeAliases || {
             smart: ["smart"],
-            toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
-            wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"],
-            synergetic: ["synergetic", "синергетик"],
-            beauty: ["beauty", "бьюти"]
+            toplash: ["toplash"],
+            wb: ["wb"],
+            pokypki: ["pokypki"],
+            synergetic: ["synergetic"]
         };
 
         // Check if any alias exists in the path
-        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
+        for (const [canonical, aliases] of Object.entries(aliasesMap)) {
             for (const alias of aliases) {
                 if (normalizedPath.includes(alias)) {
                     // Found a match!

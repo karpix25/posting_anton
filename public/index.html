@@ -226,6 +226,46 @@
             </div>
           </div>
 
+
+          <!-- THEMES TAB -->
+          <div v-if="currentTab === 'themes'">
+            <h2 class="text-2xl font-bold mb-4">Theme Mappings</h2>
+            <p class="text-gray-500 mb-6 text-sm">
+              Map folder/profile names (Aliases) to internal Groups (Keys).
+              If a path or username contains an alias, it belongs to that Group.
+            </p>
+
+            <div class="space-y-6">
+              <div v-for="(aliases, key) in config.themeAliases" :key="key" class="bg-gray-50 p-4 rounded border">
+                <div class="flex justify-between items-center mb-2">
+                  <h3 class="font-bold text-lg capitalize text-blue-800">{{ key }}</h3>
+                  <button @click="deleteThemeKey(key)" class="text-red-400 hover:text-red-600 text-xs">Remove
+                    Group</button>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-400 mb-1">Aliases (comma separated)</label>
+                  <input type="text" :value="aliases.join(', ')" @input="updateAliases(key, $event.target.value)"
+                    class="w-full p-2 border rounded focus:ring focus:ring-blue-200"
+                    placeholder="e.g. smart, smartbox...">
+                </div>
+              </div>
+
+              <!-- Add New Group -->
+              <div class="bg-white p-4 rounded border border-dashed border-gray-300">
+                <h4 class="font-semibold text-gray-600 mb-2">Add New Group</h4>
+                <div class="flex gap-2">
+                  <input v-model="newThemeKey" placeholder="Group Name (e.g. adidas)" class="flex-1 p-2 border rounded">
+                  <button @click="addThemeKey"
+                    class="bg-gray-200 hover:bg-gray-300 px-4 rounded text-gray-700">Add</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-8 p-4 bg-yellow-50 rounded border border-yellow-100 text-sm text-yellow-800">
+              ⚠️ <b>Note:</b> Changes here affect how <b>Folders</b> and <b>Profiles</b> are matched.
+              If you change mappings, you might need to re-sync or check the logs.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -243,7 +283,8 @@
             { id: 'stats', name: 'Analytics' },
             { id: 'settings', name: 'Settings & Limits' },
             { id: 'profiles', name: 'Social Profiles' },
-            { id: 'clients', name: 'Clients (Prompts)' }
+            { id: 'clients', name: 'Clients (Prompts)' },
+            { id: 'themes', name: 'Theme Mappings' } // New Tab
           ],
           config: {
             cronSchedule: '',

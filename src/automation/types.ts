@@ -34,6 +34,7 @@ export interface AutomationConfig {
   yandexToken?: string; // Loaded from env, not config.json usually
   yandexFolders: string[];
   daysToGenerate?: number; // Optional in JSON, default in code
+  themeAliases?: Record<string, string[]>; // Canonical -> aliases map
   limits: {
     instagram: number;
     tiktok: number;
