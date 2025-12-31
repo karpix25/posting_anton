@@ -181,11 +181,14 @@ export class ContentScheduler {
             }
         }
 
-        // Fallback: if no keyword found, try the old parts[3] method but carefully
+        // Fallback: If no alias matched, use the parent folder name as the theme/category.
+        // E.g. "disk:/Folder/Subfolder/Video.mp4" -> "Subfolder"
         const parts = path.split('/');
-        // If path is disk:/ВИДЕО/Blogger/Theme/... -> parts[3] is Theme
-        if (parts.length >= 4) {
-            return this.normalizeTheme(parts[3]);
+        if (parts.length >= 2) {
+            // The segment before the filename is the folder
+            const parentFolder = parts[parts.length - 2];
+            // Normalize it roughly so it looks like a key
+            return this.normalize(parentFolder);
         }
 
         return 'unknown';

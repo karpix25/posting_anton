@@ -49,13 +49,15 @@ function extractTheme(filePath: string, aliasesMap?: Record<string, string[]>): 
         }
     }
 
-    // Fallback
+    // Fallback: Parent folder
     const parts = filePath.split('/');
-    if (parts.length >= 4) {
-        return normalize(parts[3]);
+    if (parts.length >= 2) {
+        return normalize(parts[parts.length - 2]);
     }
     return 'unknown';
 }
+
+// --- API Endpoints ---
 
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
@@ -80,23 +82,44 @@ app.get('/api/stats', async (req, res) => {
         // 2. Get Yandex Stats (Live)
         if (fs.existsSync(CONFIG_PATH)) {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-            const folders = config.yandexFolders || [];
+            const folders: string[] = config.yandexFolders || [];
 
-            if (folders.length > 0 && process.env.YANDEX_TOKEN) {
+            if (process.env.YANDEX_TOKEN) {
                 const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
 
+                // Yandex 'files' endpoint returns minimal info for ALL files flatly.
+                // It ignores 'path' param. So we fetch ONCE globally.
+                // Limit to 5000 to cover most cases.
                 let allFiles: any[] = [];
-                for (const folder of folders) {
-                    try {
-                        const files = await yandex.listFiles(folder, 2000);
-                        allFiles = allFiles.concat(files);
-                    } catch (e) {
-                        console.error(`[Stats] Failed to list ${folder}`, e);
-                    }
+                try {
+                    allFiles = await yandex.listFiles('/', 5000);
+                } catch (e) {
+                    console.error('[Stats] Failed to list files', e);
                 }
 
-                // Filter out used videos
-                const availableFiles = allFiles.filter(f => !usedSet.has(f.md5) && !usedSet.has(f.path));
+                // Filter 1: Must be video (yandex.ts handles this via media_type param)
+                // Filter 2: Must be within one of the config folders (if folders valid)
+                // Filter 3: Must NOT be in usedSet
+
+                const availableFiles = allFiles.filter(f => {
+                    // Check if file is inside one of the target folders
+                    // f.path looks like "disk:/Folder/File.mp4"
+                    // folders looks like "disk:/Folder" or just "Folder"? User usually puts "disk:/..."
+
+                    let inFolder = false;
+                    if (folders.length === 0) inFolder = true; // If no folders defined, scan all? Or none? Assume all.
+                    else {
+                        // Check strict prefix
+                        inFolder = folders.some(folder => f.path.startsWith(folder));
+                    }
+
+                    if (!inFolder) return false;
+
+                    // Check usage
+                    if (usedSet.has(f.md5) || usedSet.has(f.path)) return false;
+
+                    return true;
+                });
 
                 stats.totalVideos = availableFiles.length;
 
