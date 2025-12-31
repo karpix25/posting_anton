@@ -96,6 +96,28 @@ async function main() {
                             theme_key: theme
                         });
                         addedCount++;
+                    } else {
+                        // Profile exists, but check if theme is missing and try to self-heal
+                        if (!exists.theme_key) {
+                            let theme = '';
+                            if (apiProfile.username) {
+                                const name = apiProfile.username.toLowerCase();
+                                const aliasesMap = config.themeAliases || {};
+
+                                // Try to match against config aliases
+                                for (const [canonical, aliases] of Object.entries(aliasesMap)) {
+                                    if (aliases.some(alias => name.includes(alias))) {
+                                        theme = canonical;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (theme) {
+                                console.log(`[Main] Heal: Auto-detected theme '${theme}' for existing profile '${exists.username}'`);
+                                exists.theme_key = theme;
+                                addedCount++; // Count as update/change to trigger save
+                            }
+                        }
                     }
                 });
 
