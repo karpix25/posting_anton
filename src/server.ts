@@ -176,6 +176,11 @@ app.get('/api/stats', async (req, res) => {
                 }
 
                 // 2. Scan ALL files to detect existence of categories/authors
+                console.log('[Stats DEBUG] Sample file paths (first 5):');
+                allFiles.slice(0, 5).forEach((f, idx) => {
+                    console.log(`  ${idx + 1}. ${f.path}`);
+                });
+
                 allFiles.forEach(f => {
                     const { theme, author } = extractMetadata(f.path, config.themeAliases);
 
