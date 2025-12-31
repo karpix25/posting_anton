@@ -118,17 +118,18 @@
                 <table class="w-full">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="text-left p-3 border-b">{{ statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка' }}</th>
+                      <th class="text-left p-3 border-b">{{ statsViewMode === 'category' ? 'Категория / Папка' : 'Имя
+                        Автора / Папка' }}</th>
                       <th class="text-right p-3 border-b">Количество</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(count, key) in currentStatsList" :key="key"
+                    <tr v-for="item in currentStatsList" :key="item.name"
                       class="border-b last:border-0 hover:bg-gray-50">
-                      <td class="p-3 capitalize">{{ key }}</td>
-                      <td class="p-3 text-right font-mono">{{ count }}</td>
+                      <td class="p-3 capitalize">{{ item.name }}</td>
+                      <td class="p-3 text-right font-mono">{{ item.count }}</td>
                     </tr>
-                    <tr v-if="Object.keys(currentStatsList).length === 0">
+                    <tr v-if="currentStatsList.length === 0">
                       <td colspan="2" class="p-4 text-center text-gray-400">Категории не найдены.</td>
                     </tr>
                   </tbody>
@@ -329,10 +330,10 @@
       },
       computed: {
         currentStatsList() {
-          if (this.statsViewMode === 'author') {
-            return this.stats.byAuthor || {};
-          }
-          return this.stats.byCategory || {};
+          const source = this.statsViewMode === 'author' ? (this.stats.byAuthor || {}) : (this.stats.byCategory || {});
+          return Object.entries(source)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => a.name.localeCompare(b.name));
         }
       },
       methods: {
