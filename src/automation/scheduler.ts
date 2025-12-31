@@ -176,7 +176,9 @@ export class ContentScheduler {
         allEntries.sort((a, b) => b.alias.length - a.alias.length);
 
         for (const { key, alias } of allEntries) {
-            if (normalizedPath.includes(alias)) {
+            // Apply same normalization to alias
+            const normalizedAlias = this.normalize(alias);
+            if (normalizedPath.includes(normalizedAlias)) {
                 return key; // Return the key (group name)
             }
         }

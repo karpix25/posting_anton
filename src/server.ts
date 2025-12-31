@@ -43,7 +43,9 @@ function extractTheme(filePath: string, aliasesMap?: Record<string, string[]>): 
         allEntries.sort((a, b) => b.alias.length - a.alias.length);
 
         for (const { key, alias } of allEntries) {
-            if (normalizedPath.includes(alias)) {
+            // Normalize alias to match the path normalization (remove symbols/spaces)
+            const normalizedAlias = normalize(alias);
+            if (normalizedPath.includes(normalizedAlias)) {
                 return key;
             }
         }
