@@ -193,13 +193,24 @@
       },
       methods: {
         async loadConfig() {
+          this.loading = true;
           try {
             const res = await fetch('/api/config');
-            this.config = await res.json();
+            if (!res.ok) {
+              throw new Error(`Server returned ${res.status}`);
+            }
+            const data = await res.json();
+            // Ensure structure
+            if (!data.profiles) data.profiles = [];
+            if (!data.clients) data.clients = [];
+            this.config = data;
             this.foldersInput = (this.config.yandexFolders || []).join(', ');
-            this.loading = false;
           } catch (e) {
-            alert('Failed to load config');
+            console.error('[UI] Failed to load config:', e);
+            // alert('Failed to load config (using defaults)');
+            // Keep default config structure
+          } finally {
+            this.loading = false;
           }
         },
         async saveConfig() {

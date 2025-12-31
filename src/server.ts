@@ -16,11 +16,38 @@ app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
 
 // Get Config
 app.get('/api/config', (req, res) => {
+    // If config.json doesn't exist, try to initialize it
+    if (!fs.existsSync(CONFIG_PATH)) {
+        const EXAMPLE_PATH = path.join(__dirname, '../config.example.json');
+        if (fs.existsSync(EXAMPLE_PATH)) {
+            console.log('[Server] config.json missing, copying from config.example.json');
+            fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH);
+        } else {
+            console.log('[Server] config.json missing, creating default');
+            const defaultConfig = {
+                profiles: [],
+                limits: { instagram: 10, tiktok: 10, youtube: 2 },
+                daysToGenerate: 7,
+                clients: []
+            };
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
+        }
+    }
+
+    // Now read it
     if (fs.existsSync(CONFIG_PATH)) {
-        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-        res.json(config);
+        try {
+            const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+            // Ensure essential arrays exist
+            if (!config.profiles) config.profiles = [];
+            if (!config.clients) config.clients = [];
+            res.json(config);
+        } catch (e) {
+            console.error('[Server] Failed to parse config.json', e);
+            res.status(500).json({ error: 'Invalid config file' });
+        }
     } else {
-        res.status(404).json({ error: 'Config not found' });
+        res.status(500).json({ error: 'Failed to create config' });
     }
 });
 
