@@ -123,20 +123,36 @@ app.get('/api/config', (req, res) => {
             if (!config.limits) config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
 
             // Migration logic: If clients are empty, try to populate from example
-            if (config.clients.length === 0) {
-                const EXAMPLE_PATH = path.join(__dirname, '../config.example.json');
-                if (fs.existsSync(EXAMPLE_PATH)) {
-                    try {
-                        const exampleConfig = JSON.parse(fs.readFileSync(EXAMPLE_PATH, 'utf-8'));
-                        if (exampleConfig.clients && exampleConfig.clients.length > 0) {
-                            console.log('[Server] Migrating clients from config.example.json');
-                            config.clients = exampleConfig.clients;
-                            // Save back to make it permanent
-                            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+            if (!config.clients || config.clients.length === 0) {
+                console.log('[Server] Clients list empty. Attempting migration...');
+                // Try multiple possible paths for example config
+                const possiblePaths = [
+                    path.join(__dirname, '../config.example.json'), // From dist/
+                    path.join(process.cwd(), 'config.example.json'), // From root
+                    '/app/config.example.json' // Absolute Docker path
+                ];
+
+                let exampleConfig: any = null;
+                for (const p of possiblePaths) {
+                    if (fs.existsSync(p)) {
+                        console.log(`[Server] Found example config at: ${p}`);
+                        try {
+                            exampleConfig = JSON.parse(fs.readFileSync(p, 'utf-8'));
+                            break;
+                        } catch (e) {
+                            console.error(`[Server] Failed to parse ${p}`, e);
                         }
-                    } catch (e) {
-                        console.warn('[Server] Failed to read example config for migration', e);
                     }
+                }
+
+                if (exampleConfig && exampleConfig.clients && exampleConfig.clients.length > 0) {
+                    console.log(`[Server] Migrating ${exampleConfig.clients.length} clients from example config.`);
+                    config.clients = exampleConfig.clients;
+                    // Save back to make it permanent
+                    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                    console.log('[Server] Migration saved to config.json');
+                } else {
+                    console.warn('[Server] Could not find valid example config to migrate from. Checked:', possiblePaths);
                 }
             }
 
