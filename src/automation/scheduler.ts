@@ -31,6 +31,8 @@ export class ContentScheduler {
         const startDate = new Date();
         startDate.setHours(8, 0, 0, 0); // Start at 8 AM today (or tomorrow, logic can vary)
 
+        console.log(`[Scheduler] Grouped ${videos.length} videos into themes:`, Object.keys(videosByTheme));
+
         // Iterate over days
         const days = this.config.daysToGenerate || 7;
         for (let dayIndex = 0; dayIndex < days; dayIndex++) {
@@ -44,8 +46,6 @@ export class ContentScheduler {
             const dailyProfiles = this.shuffle([...profiles]);
 
             // Try to fill slots for each profile
-            // We iterate multiple times per day to allow multiple posts per day (e.g. Morning, Evening)
-            // Heuristic warnings: We don't want to spam. Let's try up to, say, 5 passes per day per profile.
             const maxPassesPerDay = 5;
 
             for (let pass = 0; pass < maxPassesPerDay; pass++) {
@@ -57,10 +57,18 @@ export class ContentScheduler {
                         currentCounts.tiktok < this.config.limits.tiktok ||
                         currentCounts.youtube < this.config.limits.youtube;
 
-                    if (!needsPost) continue;
+                    if (!needsPost) {
+                        // console.log(`[Scheduler] SKIP: ${profile.username} reached limits.`);
+                        continue;
+                    }
 
                     // Find matching videos
                     const themeVideos = videosByTheme[profile.theme_key] || [];
+                    if (themeVideos.length === 0) {
+                        if (dayIndex === 0 && pass === 0) console.log(`[Scheduler] WARN: No videos found for theme '${profile.theme_key}' (Profile: ${profile.username})`);
+                        continue;
+                    }
+
                     this.shuffle(themeVideos); // Shuffle again to pick random
 
                     let videoForSlot: VideoFile | null = null;
@@ -72,24 +80,16 @@ export class ContentScheduler {
                         }
                     }
 
-                    if (!videoForSlot) continue; // No unused videos for this profile
+                    if (!videoForSlot) {
+                        // console.log(`[Scheduler] SKIP: All ${themeVideos.length} videos for '${profile.theme_key}' are already used.`);
+                        continue;
+                    }
 
                     const videoId = videoForSlot.md5 || videoForSlot.path;
 
                     // Schedule
                     const baseTime = this.getRandomTimeInWindow(currentDayStart, currentDayEnd);
-                    // Anti-cluster: find slot
-                    let safeTime: Date | null = null;
-                    // We try to find a safe slot. If findSafeSlot returns collisions too much, it might return start of day (fail).
-                    // We need a way to know if it failed.
-                    // Let's improve findSafeSlot check or just check result.
-
                     const candidateTime = this.findSafeSlot(profileSlots[profile.username], baseTime, currentDayStart, currentDayEnd);
-
-                    // Simple check if candidate is "comparatively" unique or we just accept the best effort.
-                    // For now, accepting best effort but let's check if it actually conflicts with existing in a bad way?
-                    // findSafeSlot logic: looks for 45 min gap. If fails 10 times, returns last attempt. 
-                    // Let's trust it for now.
 
                     this.usedVideoMd5s.add(videoId);
                     let posted = false;
@@ -111,6 +111,7 @@ export class ContentScheduler {
 
                     if (posted) {
                         profileSlots[profile.username].push(candidateTime);
+                        console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} (${profile.theme_key})`);
                     } else {
                         this.usedVideoMd5s.delete(videoId); // Revert
                     }
