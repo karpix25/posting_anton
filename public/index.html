@@ -200,10 +200,21 @@
               throw new Error(`Server returned ${res.status}`);
             }
             const data = await res.json();
-            // Ensure structure
-            if (!data.profiles) data.profiles = [];
-            if (!data.clients) data.clients = [];
-            this.config = data;
+            // Ensure structure and merge with defaults
+            this.config = {
+              profiles: [],
+              clients: [],
+              limits: { instagram: 10, tiktok: 10, youtube: 2 },
+              yandexFolders: [],
+              ...this.config, // Keep existing if any? No, we want server data.
+              ...data // Overwrite with server data
+            };
+
+            // Explicitly ensure deep objects if missing from server data
+            if (!this.config.profiles) this.config.profiles = [];
+            if (!this.config.clients) this.config.clients = [];
+            if (!this.config.limits) this.config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
+
             this.foldersInput = (this.config.yandexFolders || []).join(', ');
           } catch (e) {
             console.error('[UI] Failed to load config:', e);

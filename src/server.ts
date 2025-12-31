@@ -38,9 +38,10 @@ app.get('/api/config', (req, res) => {
     if (fs.existsSync(CONFIG_PATH)) {
         try {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-            // Ensure essential arrays exist
+            // Ensure essential structure
             if (!config.profiles) config.profiles = [];
             if (!config.clients) config.clients = [];
+            if (!config.limits) config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
             res.json(config);
         } catch (e) {
             console.error('[Server] Failed to parse config.json', e);
