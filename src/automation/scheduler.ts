@@ -134,11 +134,27 @@ export class ContentScheduler {
 
     private extractTheme(path: string): string {
         // Ported from n8n: extract from 3rd segment usually
+        // path: disk:/ВИДЕО/Блогер/Категория/...
         const parts = path.split('/');
         if (parts.length >= 4) {
-            return this.normalize(parts[3]);
+            return this.normalizeTheme(parts[3]);
         }
         return 'unknown';
+    }
+
+    private normalizeTheme(str: string): string {
+        const raw = this.normalize(str);
+        // Aliases from legacy system
+        const THEME_ALIASES: Record<string, string[]> = {
+            smart: ["smart"],
+            toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
+            wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
+        };
+
+        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
+            if (aliases.includes(raw)) return canonical;
+        }
+        return raw;
     }
 
     private normalize(str: string): string {
