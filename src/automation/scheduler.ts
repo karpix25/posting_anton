@@ -46,7 +46,13 @@ export class ContentScheduler {
             const dailyProfiles = this.shuffle([...profiles]);
 
             // Try to fill slots for each profile
-            const maxPassesPerDay = 5;
+            // We iterate enough times to satisfy the highest limit
+            const maxPassesPerDay = Math.max(
+                this.config.limits.instagram,
+                this.config.limits.tiktok,
+                this.config.limits.youtube,
+                1 // minimum 1 pass
+            );
 
             for (let pass = 0; pass < maxPassesPerDay; pass++) {
                 for (const profile of dailyProfiles) {
