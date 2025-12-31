@@ -8,9 +8,21 @@ import * as path from 'path';
 
 async function main() {
     // Load Config
-    const configPath = path.join(__dirname, '../../config.json');
+    // Load Config
+    // const configPath = path.join(__dirname, '../../config.json');
+    const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
+
+    // Ensure data dir exists
+    if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+
+    const configPath = path.join(DATA_DIR, 'config.json');
+
     if (!fs.existsSync(configPath)) {
-        console.error('Config file not found!');
+        console.error(`Config file not found at ${configPath}!`);
+        // Fallback or exit? If server created it, it should exist.
+        // But if running standalone CLI, maybe not.
         process.exit(1);
     }
     const config: AutomationConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -19,8 +31,7 @@ async function main() {
     config.yandexToken = process.env.YANDEX_TOKEN || '';
     config.daysToGenerate = 7; // Default
 
-    const yandex = new YandexDiskClient(config.yandexToken);
-    const usedHashesPath = path.join(__dirname, 'used_hashes.json');
+    const usedHashesPath = path.join(DATA_DIR, 'used_hashes.json');
     let usedHashes: string[] = [];
     if (fs.existsSync(usedHashesPath)) {
         usedHashes = JSON.parse(fs.readFileSync(usedHashesPath, 'utf-8'));

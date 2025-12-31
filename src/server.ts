@@ -7,13 +7,21 @@ import { YandexDiskClient } from './automation/yandex'; // Import Yandex client
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const CONFIG_PATH = path.join(__dirname, '../config.json');
-const USED_HASHES_PATH = path.join(__dirname, 'automation/used_hashes.json'); // Adjust path based on build structure
-// In prod, main.ts is in dist/automation, server is in dist/. 
-// used_hashes is likely alongside main.ts or in app root? 
-// main.ts: path.join(__dirname, 'used_hashes.json'); -> dist/automation/used_hashes.json
-// server.ts: path.join(__dirname, 'automation/used_hashes.json'); -> dist/automation/used_hashes.json
-// Seems correct relative to server.ts in dist/
+
+// DATA_DIR for persistence (mounted volume)
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
+
+// Ensure data dir exists
+if (!fs.existsSync(DATA_DIR)) {
+    try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch (e) {
+        console.error('Failed to create DATA_DIR', e);
+    }
+}
+
+const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
+const USED_HASHES_PATH = path.join(DATA_DIR, 'used_hashes.json');
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -86,9 +94,11 @@ app.get('/api/stats', async (req, res) => {
 app.get('/api/config', (req, res) => {
     // If config.json doesn't exist, try to initialize it
     if (!fs.existsSync(CONFIG_PATH)) {
+        // Look for example config in the APP root (not data dir)
         const EXAMPLE_PATH = path.join(__dirname, '../config.example.json');
+
         if (fs.existsSync(EXAMPLE_PATH)) {
-            console.log('[Server] config.json missing, copying from config.example.json');
+            console.log(`[Server] config.json missing at ${CONFIG_PATH}, copying from ${EXAMPLE_PATH}`);
             fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH);
         } else {
             console.log('[Server] config.json missing, creating default');
