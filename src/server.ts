@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3001; // user requested to change from 3000/8000
 const CONFIG_PATH = path.join(__dirname, '../config.json');
 
 app.use(cors());

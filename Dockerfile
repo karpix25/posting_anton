@@ -29,6 +29,7 @@ COPY --from=builder /app/public ./public
 # If running locally without mount, copy default.
 # COPY config.json ./config.json
 
-EXPOSE 3000
+# Expose default port (can be overridden)
+EXPOSE 3001
 
 CMD ["npm", "start"]
