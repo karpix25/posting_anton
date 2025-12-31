@@ -112,8 +112,8 @@ app.get('/api/stats', async (req, res) => {
                 let allFiles: any[] = [];
                 try {
                     console.log(`[Stats] fetching files...`);
-                    // Increased limit to 10000 per user request
-                    allFiles = await yandex.listFiles('/', 10000);
+                    // Increased limit to 100000 per user request
+                    allFiles = await yandex.listFiles('/', 100000);
                     console.log(`[Stats DEBUG] Fetched ${allFiles.length} raw files from Yandex.`);
                     if (allFiles.length > 0) {
                         console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);

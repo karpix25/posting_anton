@@ -23,7 +23,7 @@ export class YandexDiskClient {
     /**
      * Recursively list files in a directory
      */
-    async listFiles(path: string, limit = 10000): Promise<VideoFile[]> {
+    async listFiles(path: string, limit = 100000): Promise<VideoFile[]> {
         try {
             const response = await axios.get(`${this.baseUrl}/files`, {
                 headers: this.headers,
