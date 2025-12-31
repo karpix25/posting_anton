@@ -32,29 +32,34 @@ function extractTheme(filePath: string, aliasesMap?: Record<string, string[]>): 
     const normalize = (str: string) => str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
     const normalizedPath = normalize(filePath);
 
-    if (aliasesMap) {
-        // Sort specifically to prioritize longer aliases
-        let allEntries: { key: string, alias: string }[] = [];
-        for (const [key, list] of Object.entries(aliasesMap)) {
-            for (const alias of list) {
-                allEntries.push({ key, alias });
-            }
-        }
-        allEntries.sort((a, b) => b.alias.length - a.alias.length);
+    // Structural extraction: .../VIDEO/Name/Category/...
+    const parts = filePath.split('/').filter(p => p.length > 0 && p !== 'disk:');
+    let categoryCandidate = '';
 
-        for (const { key, alias } of allEntries) {
-            // Normalize alias to match the path normalization (remove symbols/spaces)
-            const normalizedAlias = normalize(alias);
-            if (normalizedPath.includes(normalizedAlias)) {
-                return key;
-            }
-        }
+    const videoIndex = parts.findIndex(p => {
+        const lower = p.toLowerCase();
+        return lower === 'video' || lower === 'видео';
+    });
+
+    if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
+        categoryCandidate = parts[videoIndex + 2];
+    } else if (parts.length >= 2) {
+        // Fallback: Parent folder
+        categoryCandidate = parts[parts.length - 2];
     }
 
-    // Fallback: Parent folder
-    const parts = filePath.split('/');
-    if (parts.length >= 2) {
-        return normalize(parts[parts.length - 2]);
+    if (categoryCandidate) {
+        const normCandidate = normalize(categoryCandidate);
+        if (aliasesMap) {
+            for (const [key, list] of Object.entries(aliasesMap)) {
+                for (const alias of list) {
+                    if (normCandidate.includes(normalize(alias))) {
+                        return key;
+                    }
+                }
+            }
+        }
+        return normCandidate;
     }
     return 'unknown';
 }

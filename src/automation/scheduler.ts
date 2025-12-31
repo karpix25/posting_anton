@@ -175,22 +175,38 @@ export class ContentScheduler {
         // Sort by length of alias descending
         allEntries.sort((a, b) => b.alias.length - a.alias.length);
 
-        for (const { key, alias } of allEntries) {
-            // Apply same normalization to alias
-            const normalizedAlias = this.normalize(alias);
-            if (normalizedPath.includes(normalizedAlias)) {
-                return key; // Return the key (group name)
-            }
+        // Structural extraction: .../VIDEO/Name/Category/...
+        // We look for "video" or "видео" segment.
+        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
+
+        let categoryCandidate = '';
+
+        const videoIndex = parts.findIndex(p => {
+            const lower = p.toLowerCase();
+            return lower === 'video' || lower === 'видео';
+        });
+
+        if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
+            // Found VIDEO, skip Name, take Category
+            categoryCandidate = parts[videoIndex + 2];
+        } else if (parts.length >= 2) {
+            // Fallback: Parent folder
+            categoryCandidate = parts[parts.length - 2];
         }
 
-        // Fallback: If no alias matched, use the parent folder name as the theme/category.
-        // E.g. "disk:/Folder/Subfolder/Video.mp4" -> "Subfolder"
-        const parts = path.split('/');
-        if (parts.length >= 2) {
-            // The segment before the filename is the folder
-            const parentFolder = parts[parts.length - 2];
-            // Normalize it roughly so it looks like a key
-            return this.normalize(parentFolder);
+        if (categoryCandidate) {
+            const normCandidate = this.normalize(categoryCandidate);
+            // Check aliases
+            for (const [key, list] of Object.entries(aliasesMap)) {
+                // Normalize list items too
+                for (const alias of list) {
+                    if (normCandidate.includes(this.normalize(alias))) {
+                        return key;
+                    }
+                }
+            }
+            // If no alias, return the candidate itself (so it appears in dashboard)
+            return normCandidate;
         }
 
         return 'unknown';
