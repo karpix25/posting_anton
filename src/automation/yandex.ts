@@ -38,6 +38,15 @@ export class YandexDiskClient {
             });
 
             // Transform response to our interface
+            console.log(`[Yandex DEBUG] API Response Status: ${response.status}`);
+            console.log(`[Yandex DEBUG] Response has data: ${!!response.data}`);
+            console.log(`[Yandex DEBUG] Response.data keys: ${Object.keys(response.data || {}).join(', ')}`);
+            console.log(`[Yandex DEBUG] Items count: ${(response.data.items || []).length}`);
+
+            if (response.data.items && response.data.items.length > 0) {
+                console.log(`[Yandex DEBUG] First item sample:`, JSON.stringify(response.data.items[0], null, 2));
+            }
+
             const items = response.data.items || [];
             return items.map((item: any) => ({
                 name: item.name,
