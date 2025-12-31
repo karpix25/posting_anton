@@ -27,34 +27,57 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
 
-// Helper to extract theme (duplicated from scheduler to avoid complex deps if lazy)
-function extractTheme(filePath: string): string {
+// Helper to extract theme using aliases
+function extractTheme(filePath: string, aliasesMap?: Record<string, string[]>): string {
+    const normalize = (str: string) => str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+    const normalizedPath = normalize(filePath);
+
+    if (aliasesMap) {
+        // Sort specifically to prioritize longer aliases
+        let allEntries: { key: string, alias: string }[] = [];
+        for (const [key, list] of Object.entries(aliasesMap)) {
+            for (const alias of list) {
+                allEntries.push({ key, alias });
+            }
+        }
+        allEntries.sort((a, b) => b.alias.length - a.alias.length);
+
+        for (const { key, alias } of allEntries) {
+            if (normalizedPath.includes(alias)) {
+                return key;
+            }
+        }
+    }
+
+    // Fallback
     const parts = filePath.split('/');
     if (parts.length >= 4) {
-        return parts[3].toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+        return normalize(parts[3]);
     }
     return 'unknown';
 }
-
-// --- API Endpoints ---
 
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
         const stats = {
             totalVideos: 0,
-            publishedCount: 0, // Effectively "Published & Deleted" or just "Processed"
+            publishedCount: 0,
             byCategory: {} as Record<string, number>
         };
+
+        let usedSet = new Set<string>();
 
         // 1. Get History Count
         if (fs.existsSync(USED_HASHES_PATH)) {
             const used = JSON.parse(fs.readFileSync(USED_HASHES_PATH, 'utf-8'));
-            stats.publishedCount = Array.isArray(used) ? used.length : 0;
+            if (Array.isArray(used)) {
+                stats.publishedCount = used.length;
+                usedSet = new Set(used);
+            }
         }
 
         // 2. Get Yandex Stats (Live)
-        // We need config to know folders
         if (fs.existsSync(CONFIG_PATH)) {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
             const folders = config.yandexFolders || [];
@@ -63,21 +86,23 @@ app.get('/api/stats', async (req, res) => {
                 const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
 
                 let allFiles: any[] = [];
-                // We'll limit this to avoid timeouts on huge disks, or assume reasonable size
                 for (const folder of folders) {
                     try {
-                        const files = await yandex.listFiles(folder, 2000); // Higher limit?
+                        const files = await yandex.listFiles(folder, 2000);
                         allFiles = allFiles.concat(files);
                     } catch (e) {
                         console.error(`[Stats] Failed to list ${folder}`, e);
                     }
                 }
 
-                stats.totalVideos = allFiles.length;
+                // Filter out used videos
+                const availableFiles = allFiles.filter(f => !usedSet.has(f.md5) && !usedSet.has(f.path));
+
+                stats.totalVideos = availableFiles.length;
 
                 // Group by Category
-                allFiles.forEach(f => {
-                    const theme = extractTheme(f.path);
+                availableFiles.forEach(f => {
+                    const theme = extractTheme(f.path, config.themeAliases);
                     stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
                 });
             }

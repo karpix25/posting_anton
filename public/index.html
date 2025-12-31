@@ -455,6 +455,25 @@
         },
         removeClient(idx) {
           this.config.clients.splice(idx, 1);
+        },
+        updateAliases(key, value) {
+          const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+          this.config.themeAliases[key] = arr;
+        },
+        addThemeKey() {
+          if (!this.newThemeKey) return;
+          const key = this.newThemeKey.toLowerCase().trim();
+          if (this.config.themeAliases[key]) {
+            alert('Group already exists!');
+            return;
+          }
+          this.config.themeAliases[key] = [key];
+          this.newThemeKey = '';
+        },
+        deleteThemeKey(key) {
+          if (confirm(`Delete group '${key}'?`)) {
+            delete this.config.themeAliases[key];
+          }
         }
       }
     }).mount('#app');
