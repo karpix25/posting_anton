@@ -106,21 +106,23 @@ app.get('/api/stats', async (req, res) => {
                 // Filter 2: Must be within one of the config folders (if folders valid)
                 // Filter 3: Must NOT be in usedSet
 
+                console.log('[Stats] Using Yandex Config Folders:', folders);
+
                 const availableFiles = allFiles.filter(f => {
                     // Check if file is inside one of the target folders
                     // f.path looks like "disk:/Folder/File.mp4"
-                    // folders looks like "disk:/Folder" or just "Folder"? User usually puts "disk:/..."
 
                     let inFolder = false;
-                    if (folders.length === 0) inFolder = true; // If no folders defined, scan all? Or none? Assume all.
+                    if (folders.length === 0) inFolder = true;
                     else {
                         // Normalize paths to avoid slash/prefix issues
                         // remove "disk:" and leading/trailing slashes
-                        const normPath = f.path.replace(/^disk:\/?/, '').replace(/^\//, '');
+                        const normPath = f.path.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
 
                         inFolder = folders.some(folder => {
-                            const normFolder = folder.replace(/^disk:\/?/, '').replace(/^\//, '');
-                            return normPath.startsWith(normFolder);
+                            const normFolder = folder.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
+                            // Use includes instead of startsWith to allow partial matches (e.g. subfolders)
+                            return normPath.includes(normFolder);
                         });
                     }
 
