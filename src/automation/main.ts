@@ -221,7 +221,16 @@ async function main() {
                     post.caption = caption;
                 }
 
-                await platformManager.publishPost(post);
+                try {
+                    const result = await platformManager.publishPost(post);
+                    // process response
+                } catch (error: any) {
+                    // If 400 (Bad Request), it might be "No TikTok account", etc.
+                    // We should just log and continue, not crash.
+                    const msg = error.response?.data?.message || error.message;
+                    console.error(`[Main] Failed to publish to ${post.platform} for ${post.profile.username}: ${msg}`);
+                    continue; // Skip this post
+                }
                 console.log(`✅ Published to ${post.platform}`);
 
             } catch (error) {

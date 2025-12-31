@@ -157,13 +157,33 @@ export class ContentScheduler {
             console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
         }
 
-        // Check if any alias exists in the path
-        for (const [canonical, aliases] of Object.entries(aliasesMap)) {
-            for (const alias of aliases) {
-                if (normalizedPath.includes(alias)) {
-                    // Found a match!
-                    return canonical;
-                }
+        const aliasesMap = this.config.themeAliases || {
+            smart: ["smart"],
+            toplash: ["toplash"],
+            wb: ["wb"],
+            pokypki: ["pokypki"],
+            synergetic: ["synergetic"]
+        };
+
+        // We must check aliases in a specific order to avoid partial matches
+        // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
+        // We should sort keys such that specific ones come first? 
+        // Or simply ensure "pokypki" is checked before "wb".
+        // Let's sort entries by alias length (descending) to ensure "pokypki-wb" (len 10) is checked before "wb" (len 2)
+
+        let allEntries: { key: string, alias: string }[] = [];
+        for (const [key, list] of Object.entries(aliasesMap)) {
+            for (const alias of list) {
+                allEntries.push({ key, alias });
+            }
+        }
+
+        // Sort by length of alias descending
+        allEntries.sort((a, b) => b.alias.length - a.alias.length);
+
+        for (const { key, alias } of allEntries) {
+            if (normalizedPath.includes(alias)) {
+                return key; // Return the key (group name)
             }
         }
 
