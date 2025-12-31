@@ -112,7 +112,7 @@ app.get('/api/stats', async (req, res) => {
                 let allFiles: any[] = [];
                 try {
                     console.log(`[Stats] fetching files...`);
-                    // Increased limit to 100000 per user request
+                    // Request up to 100k files (will auto-retry with 50k/20k if timeout)
                     allFiles = await yandex.listFiles('/', 100000);
                     console.log(`[Stats DEBUG] Fetched ${allFiles.length} raw files from Yandex.`);
                     if (allFiles.length > 0) {

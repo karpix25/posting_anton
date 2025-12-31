@@ -24,47 +24,69 @@ export class YandexDiskClient {
      * Recursively list files in a directory
      */
     async listFiles(path: string, limit = 100000): Promise<VideoFile[]> {
-        try {
-            const response = await axios.get(`${this.baseUrl}/files`, {
-                headers: this.headers,
-                timeout: 30000, // 30 seconds timeout
-                httpsAgent: this.httpsAgent,
-                params: {
-                    path, // effectively ignored by /files endpoint but good to keep if they change API
-                    limit,
-                    preview_size: 'XXXL',
-                    media_type: 'video'
-                },
-            });
+        const maxRetries = 2;
+        let lastError: any;
 
-            // Transform response to our interface
-            console.log(`[Yandex DEBUG] API Response Status: ${response.status}`);
-            console.log(`[Yandex DEBUG] Response has data: ${!!response.data}`);
-            console.log(`[Yandex DEBUG] Response.data keys: ${Object.keys(response.data || {}).join(', ')}`);
-            console.log(`[Yandex DEBUG] Items count: ${(response.data.items || []).length}`);
+        // Try with decreasing limits if timeout occurs
+        const limitsToTry = [limit, Math.min(50000, limit), Math.min(20000, limit)];
 
-            if (response.data.items && response.data.items.length > 0) {
-                console.log(`[Yandex DEBUG] First item sample:`, JSON.stringify(response.data.items[0], null, 2));
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            const currentLimit = limitsToTry[attempt] || 10000;
+
+            try {
+                console.log(`[Yandex] Fetching files (limit: ${currentLimit}, attempt: ${attempt + 1}/${maxRetries})...`);
+
+                const response = await axios.get(`${this.baseUrl}/files`, {
+                    headers: this.headers,
+                    timeout: 120000, // 120 seconds for large datasets
+                    httpsAgent: this.httpsAgent,
+                    params: {
+                        path,
+                        limit: currentLimit,
+                        preview_size: 'XXXL',
+                        media_type: 'video'
+                    },
+                });
+
+                // Transform response to our interface
+                console.log(`[Yandex] ✅ API Response Status: ${response.status}`);
+                console.log(`[Yandex] Items fetched: ${(response.data.items || []).length}`);
+
+                if (response.data.items && response.data.items.length > 0) {
+                    console.log(`[Yandex] First file: ${response.data.items[0].path}`);
+                }
+
+                const items = response.data.items || [];
+                return items.map((item: any) => ({
+                    name: item.name,
+                    path: item.path,
+                    url: item.file || item.preview,
+                    md5: item.md5,
+                    size: item.size,
+                    created: item.created,
+                }));
+
+            } catch (error: any) {
+                lastError = error;
+                const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+
+                if (isTimeout && attempt < maxRetries - 1) {
+                    console.warn(`[Yandex] ⚠️  Timeout with limit ${currentLimit}, retrying with lower limit...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+                    continue;
+                }
+
+                console.error('[Yandex] ❌ Error listing files:', error.message || error);
+                // Log full error if it's a network error
+                if (error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') {
+                    console.error('[Yandex] Network error details:', error);
+                }
+                throw error;
             }
-
-            const items = response.data.items || [];
-            return items.map((item: any) => ({
-                name: item.name,
-                path: item.path,
-                url: item.file || item.preview, // Prefer direct file link
-                md5: item.md5,
-                size: item.size,
-                created: item.created,
-            }));
-
-        } catch (error: any) {
-            console.error('[Yandex] Error listing files:', error.message || error);
-            // Log full error if it's a network error
-            if (error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') {
-                console.error('[Yandex] Network error details:', error);
-            }
-            throw error;
         }
+        // This part should ideally not be reached if an error is thrown or items are returned
+        // but it's good practice to ensure a throw if all retries fail without returning.
+        throw lastError || new Error('[Yandex] Failed to list files after multiple attempts.');
     }
 
     async deleteFile(path: string, permanently = true): Promise<void> {
