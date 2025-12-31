@@ -38,10 +38,30 @@ app.get('/api/config', (req, res) => {
     if (fs.existsSync(CONFIG_PATH)) {
         try {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+
             // Ensure essential structure
             if (!config.profiles) config.profiles = [];
             if (!config.clients) config.clients = [];
             if (!config.limits) config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
+
+            // Migration logic: If clients are empty, try to populate from example
+            if (config.clients.length === 0) {
+                const EXAMPLE_PATH = path.join(__dirname, '../config.example.json');
+                if (fs.existsSync(EXAMPLE_PATH)) {
+                    try {
+                        const exampleConfig = JSON.parse(fs.readFileSync(EXAMPLE_PATH, 'utf-8'));
+                        if (exampleConfig.clients && exampleConfig.clients.length > 0) {
+                            console.log('[Server] Migrating clients from config.example.json');
+                            config.clients = exampleConfig.clients;
+                            // Save back to make it permanent
+                            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                        }
+                    } catch (e) {
+                        console.warn('[Server] Failed to read example config for migration', e);
+                    }
+                }
+            }
+
             res.json(config);
         } catch (e) {
             console.error('[Server] Failed to parse config.json', e);
