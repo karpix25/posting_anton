@@ -2,7 +2,7 @@ import { YandexDiskClient } from './yandex';
 import { ContentScheduler } from './scheduler';
 import { ContentGenerator } from './content_generator';
 import { PlatformManager } from './platforms';
-import { AutomationConfig } from './types';
+import { AutomationConfig, ScheduledPost } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -78,21 +78,71 @@ async function main() {
     }
 
     console.log('3. Processing posts...');
+
+    // Group posts by video path to handle "1 video -> multiple platforms -> delete" logic
+    const postsByVideo = new Map<string, ScheduledPost[]>();
     for (const post of schedule) {
-        try {
-            console.log(`Processing post for ${post.profile.username} on ${post.platform}...`);
+        const key = post.video.path;
+        if (!postsByVideo.has(key)) postsByVideo.set(key, []);
+        postsByVideo.get(key)!.push(post);
+    }
 
-            const caption = await generator.generateCaption(post.video.path, post.platform);
-            post.caption = caption;
-            post.hashtags = [];
+    console.log(`Processing ${postsByVideo.size} unique videos across platforms...`);
 
-            await platformManager.publishPost(post);
+    for (const [videoPath, posts] of postsByVideo) {
+        let allSuccess = true;
+        const videoName = posts[0].video.name;
+        console.log(`\n--- Processing Video: ${videoName} ---`);
 
-            usedHashes.push(post.video.md5 || post.video.path);
-            fs.writeFileSync(usedHashesPath, JSON.stringify(usedHashes));
+        // Generate caption once per video (optimization) or per platform?
+        // User prompts might be platform specific? 
+        // Current content_generator takes platform argument. 
+        // But usually the prompt is the same "text for Reels". 
+        // Let's keep it per-post to be safe with existing logic, or optimize if needed.
+        // Actually, prompts in config are per "Client" (Folder), not Platform. 
+        // The prompt text usually says "generate text". 
+        // Let's generate once and reuse? 
+        // The prompt says "Output only 1 text". 
+        // If we reuse, it's consistent. If we regenerate, it might vary slightly.
+        // Let's regenerate for now to match n8n logic which likely ran parallel branches or sequential nodes.
 
-        } catch (error) {
-            console.error(`Failed to process post:`, error);
+        for (const post of posts) {
+            try {
+                console.log(`[${post.profile.username}] Publishing to ${post.platform}...`);
+
+                // Generate ID/Caption if not already
+                if (!post.caption) {
+                    const caption = await generator.generateCaption(post.video.path, post.platform, post.profile.username);
+                    post.caption = caption;
+                }
+
+                await platformManager.publishPost(post);
+                console.log(`✅ Published to ${post.platform}`);
+
+            } catch (error) {
+                console.error(`❌ Failed to process ${post.platform}:`, error);
+                allSuccess = false;
+            }
+        }
+
+        if (allSuccess) {
+            console.log(`[Cleanup] All platforms published successfully. Deleting ${videoName} from source...`);
+            try {
+                await yandex.deleteFile(videoPath);
+
+                // Mark as used (redundant if deleted? but good for history)
+                // Actually if deleted, we can't accidentally pick it again from Yandex.
+                // But keeping hash ensures if it's re-uploaded, we know?
+                // Logic:
+                const hash = posts[0].video.md5 || posts[0].video.path;
+                usedHashes.push(hash);
+                fs.writeFileSync(usedHashesPath, JSON.stringify(usedHashes));
+                console.log(`🗑️ Deleted and hash saved.`);
+            } catch (e) {
+                console.error(`[Cleanup] Failed to delete file:`, e);
+            }
+        } else {
+            console.warn(`[Cleanup] Skipping deletion for ${videoName} because some posts failed.`);
         }
     }
 }
