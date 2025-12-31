@@ -29,7 +29,20 @@ async function main() {
 
     // Inject Env Vars
     config.yandexToken = process.env.YANDEX_TOKEN || '';
-    config.daysToGenerate = 7; // Default
+
+    // Override limits if FORCE_LIMITS is set (Test Mode)
+    if (process.env.FORCE_LIMITS) {
+        const limit = parseInt(process.env.FORCE_LIMITS, 10);
+        console.log(`[Main] Test Mode Active: Overriding all limits to ${limit}`);
+        config.limits = {
+            instagram: limit,
+            tiktok: limit,
+            youtube: limit
+        };
+        config.daysToGenerate = 1; // Only generate for today
+    } else {
+        config.daysToGenerate = 7; // Default
+    }
 
     const usedHashesPath = path.join(DATA_DIR, 'used_hashes.json');
     let usedHashes: string[] = [];

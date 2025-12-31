@@ -61,10 +61,17 @@
               </div>
             </div>
 
-            <button @click="triggerRun"
-              class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold w-full">
-              Run Automation Now
-            </button>
+            <div class="flex gap-4">
+              <button @click="triggerRun(false)"
+                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold">
+                Run Automation Now
+              </button>
+              <button @click="triggerRun(true)"
+                class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded text-lg font-semibold"
+                title="Only 1 post per platform (Safe Mode)">
+                🧪 Test Run (1 item)
+              </button>
+            </div>
           </div>
 
           <!-- STATS TAB -->
@@ -320,13 +327,17 @@
             alert('Save failed');
           }
         },
-        async triggerRun() {
-          if (!confirm('Start automation process now?')) return;
+        async triggerRun(testMode = false) {
+          if (!confirm(testMode ? 'Run in TEST MODE (1 post per platform)?' : 'Start FULL automation process?')) return;
           try {
-            await fetch('/api/run', { method: 'POST' });
-            alert('Process started!');
+            await fetch('/api/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ testMode })
+            });
+            alert('Automation started in background. Check server logs.');
           } catch (e) {
-            alert('Failed to start process');
+            alert('Failed to start run');
           }
         },
         async syncProfiles() {

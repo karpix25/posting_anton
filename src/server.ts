@@ -195,14 +195,17 @@ app.post('/api/run', (req, res) => {
 
     // In Docker (prod), we run the compiled JS. In dev, ts-node.
     // For simplicity in this structure, we assume we are running 'node dist/automation/main.js' or similar.
-    const { spawn } = require('child_process');
+    const { testMode } = req.body;
+    const env = { ...process.env };
 
-    const scriptPath = path.join(__dirname, 'automation/main.js'); // Assuming built structure
-    // If running in dev with ts-node, this might need adjustment, but for Docker it's fine.
+    if (testMode) {
+        console.log('[Server] Running in TEST MODE (Limits = 1)');
+        env.FORCE_LIMITS = '1';
+    }
 
     const child = spawn('node', [scriptPath], {
         stdio: 'inherit',
-        env: { ...process.env }
+        env
     });
 
     child.on('error', (err: any) => {
