@@ -67,19 +67,15 @@ app.post('/api/run', (req, res) => {
 
 // Sync Profiles from Upload Post API
 app.get('/api/profiles/sync', async (req, res) => {
+    console.log('[API] /api/profiles/sync requested');
     const apiKey = process.env.UPLOAD_POST_API_KEY;
     if (!apiKey) {
+        console.error('[API] Error: UPLOAD_POST_API_KEY is missing in env');
         return res.status(500).json({ error: 'UPLOAD_POST_API_KEY not configured on server' });
     }
 
     try {
-        // We import the client dynamically or duplicates logic, 
-        // but since we are in a simple setup, we'll make a direct axios call here 
-        // OR better, import the class if we can. 
-        // Given compilation complexity with allowJs/ts-node, let's just use axios directly here 
-        // to avoid importing from 'automation/platforms' which might bring other deps.
-        // ACTUALLY, we can just copy the simple fetch logic to avoid coupling issues in this simple script.
-
+        console.log('[API] Fetching profiles using Axios...');
         const axios = require('axios');
         const USER_PROFILES_API_URL = 'https://api.upload-post.com/api/uploadposts/users';
 
@@ -88,12 +84,14 @@ app.get('/api/profiles/sync', async (req, res) => {
         });
 
         if (response.data.success) {
+            console.log(`[API] Sync success. Found ${response.data.profiles?.length || 0} profiles.`);
             res.json({ success: true, profiles: response.data.profiles });
         } else {
+            console.error('[API] Sync failed:', response.data.message);
             res.status(400).json({ error: response.data.message || 'Failed to fetch profiles' });
         }
     } catch (error: any) {
-        console.error('Profile sync error:', error.message);
+        console.error('[API] Profile sync error:', error.message, error.response?.data);
         res.status(500).json({ error: 'Failed to sync profiles: ' + error.message });
     }
 });

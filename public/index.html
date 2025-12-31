@@ -224,9 +224,11 @@
           }
         },
         async syncProfiles() {
+          console.log('[UI] Sync button clicked');
           try {
             const res = await fetch('/api/profiles/sync');
             const data = await res.json();
+            console.log('[UI] Sync response:', data);
 
             if (data.success && data.profiles) {
               let addedCount = 0;
@@ -273,11 +275,12 @@
               alert(`Profiles synced! Added ${addedCount} new entries.`);
               // Auto-save? Maybe let user save.
             } else {
+              console.error('[UI] Sync failed:', data.error);
               alert('Sync failed: ' + (data.error || 'Unknown error'));
             }
           } catch (e) {
-            console.error(e);
-            alert('Failed to sync profiles');
+            console.error('[UI] Fetch error:', e);
+            alert('Failed to sync profiles (Check console)');
           }
         },
         updateFolders() {
