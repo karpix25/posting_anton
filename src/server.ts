@@ -114,7 +114,8 @@ app.get('/api/stats', async (req, res) => {
             totalVideos: 0,
             publishedCount: 0,
             byCategory: {} as Record<string, number>,
-            byAuthor: {} as Record<string, number>
+            byAuthor: {} as Record<string, number>,
+            profilesByCategory: {} as Record<string, string[]> // NEW: profiles per category
         };
 
         let usedSet = new Set<string>();
@@ -243,6 +244,20 @@ app.get('/api/stats', async (req, res) => {
                 });
             }
         }
+
+        // Map profiles to categories based on theme_key
+        config.profiles.forEach(profile => {
+            const themeKey = profile.theme_key?.toLowerCase().trim();
+            if (themeKey && themeKey !== 'unknown') {
+                if (!stats.profilesByCategory[themeKey]) {
+                    stats.profilesByCategory[themeKey] = [];
+                }
+                // Only add if enabled
+                if (profile.enabled !== false) {
+                    stats.profilesByCategory[themeKey].push(profile.username);
+                }
+            }
+        });
 
         // Update cache
         statsCache = stats;

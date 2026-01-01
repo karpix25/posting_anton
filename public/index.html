@@ -136,21 +136,34 @@
                 </div>
               </div>
               <div class="bg-white border rounded-lg overflow-hidden">
-                <table class="w-full">
-                  <thead class="bg-gray-50">
+                <table class="w-full border-collapse mt-6">
+                  <thead class="bg-gray-100">
                     <tr>
                       <th class="text-left p-3 border-b">{{ statsHeader }}</th>
-                      <th class="text-right p-3 border-b">Количество</th>
+                      <th class="text-left p-3 border-b">Профили</th>
+                      <th class="text-right p-3 border-b w-32">Количество</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="item in currentStatsList" :key="item.name"
-                      class="border-b last:border-0 hover:bg-gray-50">
+                    <tr v-for="item in currentStatsList" :key="item.name" class="border-b hover:bg-gray-50">
                       <td class="p-3 capitalize">{{ item.name }}</td>
-                      <td class="p-3 text-right font-mono">{{ item.count }}</td>
+                      <td class="p-3">
+                        <div class="flex gap-2 flex-wrap">
+                          <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
+                            class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
+                            {{ profile }}
+                          </span>
+                          <span
+                            v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
+                            class="text-gray-400 text-sm italic">
+                            Нет профилей
+                          </span>
+                        </div>
+                      </td>
+                      <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
                     </tr>
                     <tr v-if="currentStatsList.length === 0">
-                      <td colspan="2" class="p-4 text-center text-gray-400">Категории не найдены.</td>
+                      <td colspan="3" class="p-4 text-center text-gray-400">Категории не найдены.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -395,7 +408,8 @@
             totalVideos: 0,
             publishedCount: 0,
             byCategory: {},
-            byAuthor: {}
+            byAuthor: {},
+            profilesByCategory: {}
           },
           statsSummary: null,
           loading: true,
@@ -430,6 +444,9 @@
         }
       },
       methods: {
+        getProfilesForCategory(categoryName) {
+          return this.stats.profilesByCategory[categoryName] || [];
+        },
         async loadStats() {
           this.statsLoading = true;
           try {
