@@ -204,8 +204,12 @@
 
             <!-- Active Profiles -->
             <div v-if="activeProfiles.length > 0">
-              <h3 class="text-lg font-semibold mb-3">Активные Профили ({{ activeProfiles.length}})</h3>
-              <table class="w-full border-collapse mb-6">
+              <button @click="showActiveProfiles = !showActiveProfiles"
+                class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded">
+                <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
+                <span class="text-2xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
+              </button>
+              <table v-if="showActiveProfiles" class="w-full border-collapse mb-6">
                 <thead class="bg-gray-100">
                   <tr>
                     <th class="text-left p-3 border-b w-12">Статус</th>
@@ -250,8 +254,12 @@
 
             <!-- Disabled Profiles -->
             <div v-if="disabledProfiles.length > 0">
-              <h3 class="text-lg font-semibold mb-3 text-gray-600">Деактивированные ({{ disabledProfiles.length }})</h3>
-              <table class="w-full border-collapse opacity-60">
+              <button @click="showDisabledProfiles = !showDisabledProfiles"
+                class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded text-gray-600">
+                <span>⚫ Деактивированные ({{ disabledProfiles.length }})</span>
+                <span class="text-2xl">{{ showDisabledProfiles ? '▼' : '▶' }}</span>
+              </button>
+              <table v-if="showDisabledProfiles" class="w-full border-collapse opacity-60">
                 <thead class="bg-gray-100">
                   <tr>
                     <th class="text-left p-3 border-b w-12">Статус</th>
