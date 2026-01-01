@@ -23,12 +23,12 @@ export class YandexDiskClient {
     /**
      * Recursively list files in a directory
      */
-    async listFiles(path: string, limit = 100000): Promise<VideoFile[]> {
-        const maxRetries = 2;
+    async listFiles(path: string, limit = 10000): Promise<VideoFile[]> {
+        const maxRetries = 3;
         let lastError: any;
 
-        // Try with decreasing limits if timeout occurs
-        const limitsToTry = [limit, Math.min(50000, limit), Math.min(20000, limit)];
+        // Try with decreasing limits if timeout/error occurs
+        const limitsToTry = [limit, Math.min(5000, limit), Math.min(2000, limit)];
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
             const currentLimit = limitsToTry[attempt] || 10000;
@@ -71,14 +71,18 @@ export class YandexDiskClient {
             } catch (error: any) {
                 lastError = error;
                 const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+                const is500Error = error.response?.status === 500;
 
-                if (isTimeout && attempt < maxRetries - 1) {
-                    console.warn(`[Yandex] ⚠️  Timeout with limit ${currentLimit}, retrying with lower limit...`);
-                    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+                if ((isTimeout || is500Error) && attempt < maxRetries - 1) {
+                    console.warn(`[Yandex] ⚠️  ${is500Error ? 'Server error (500)' : 'Timeout'} with limit ${currentLimit}, retrying with lower limit...`);
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3s before retry
                     continue;
                 }
 
                 console.error('[Yandex] ❌ Error listing files:', error.message || error);
+                if (error.response?.status === 500) {
+                    console.error('[Yandex] API returned 500 - try reducing file count or check Yandex Disk status');
+                }
                 // Log full error if it's a network error
                 if (error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') {
                     console.error('[Yandex] Network error details:', error);
