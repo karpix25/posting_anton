@@ -565,18 +565,24 @@
           }, {});
         },
         availableThemes() {
-          // Get themes from config aliases
+          // 1. Start with actual Folders found on Yandex Disk
+          const themeSet = new Set(Object.keys(this.stats.byCategory || {}));
+
+          // 2. Add manual aliases (legacy support, or if folder is empty but config exists)
           if (this.config && this.config.themeAliases) {
-            const themes = Object.keys(this.config.themeAliases);
-            // Also add themes currently present in profiles but missing from config
-            this.config.profiles.forEach(p => {
-              if (p.theme_key && !themes.includes(p.theme_key)) {
-                themes.push(p.theme_key);
-              }
-            });
-            return themes.sort();
+            Object.keys(this.config.themeAliases).forEach(k => themeSet.add(k));
           }
-          return [];
+
+          // 3. Add themes currently used in profiles (to display correctly even if no folder exists)
+          if (this.config && this.config.profiles) {
+            this.config.profiles.forEach(p => {
+              if (p.theme_key) themeSet.add(p.theme_key);
+            });
+          }
+
+          // Convert to sorted array
+          // Filter out empty strings
+          return Array.from(themeSet).filter(Boolean).sort();
         }
       },
       methods: {
