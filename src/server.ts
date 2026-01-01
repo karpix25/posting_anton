@@ -27,13 +27,14 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
 
-// Helper to extract metadata (Theme and Author)
+// Helper to extract metadata (Theme, Brand, and Author)
 function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>) {
     const normalize = (str: string) => str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
 
-    // Structural extraction: .../VIDEO/Name/Category/...
+    // Structural extraction: /ВИДЕО/Автор/Категория/Бренд/файл.mp4
     const parts = filePath.split('/').filter(p => p.length > 0 && p !== 'disk:');
     let categoryCandidate = '';
+    let brandCandidate = '';
     let authorCandidate = 'unknown';
 
     const videoIndex = parts.findIndex(p => {
@@ -43,13 +44,21 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
 
     if (videoIndex !== -1) {
         // Structure: /ВИДЕО/Автор/Категория/Бренд/файл.mp4
+        //              0      1      2         3      4
+
         // Author is immediately after VIDEO
         if (videoIndex + 1 < parts.length) {
             authorCandidate = parts[videoIndex + 1];
         }
-        // БРЕНД (theme) is after Author/Category - parts[videoIndex + 3]
+
+        // КАТЕГОРИЯ (theme) - 3rd level
+        if (videoIndex + 2 < parts.length) {
+            categoryCandidate = parts[videoIndex + 2];
+        }
+
+        // БРЕНД - 4th level
         if (videoIndex + 3 < parts.length) {
-            categoryCandidate = parts[videoIndex + 3]; // This is actually BRAND
+            brandCandidate = parts[videoIndex + 3];
         }
     } else if (parts.length >= 2) {
         // Fallback: Parent folder
@@ -73,7 +82,10 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
         }
     }
 
-    return { theme, author: authorCandidate };
+    // Normalize brand name
+    const brand = brandCandidate ? normalize(brandCandidate) : 'unknown';
+
+    return { theme, brand, author: authorCandidate };
 }
 
 // --- API Endpoints ---
@@ -183,12 +195,12 @@ app.get('/api/stats', async (req, res) => {
                 });
 
                 allFiles.forEach(f => {
-                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+                    const { theme, brand, author } = extractMetadata(f.path, config.themeAliases);
 
                     // Debug first few extractions
                     if (allFiles.indexOf(f) < 3) {
                         console.log(`[Stats DEBUG] File: ${f.path}`);
-                        console.log(`[Stats DEBUG]   → Author: "${author}", Brand: "${theme}"`);
+                        console.log(`[Stats DEBUG]   → Author: "${author}", Category: "${theme}", Brand: "${brand}"`);
                     }
 
                     // Init Category
