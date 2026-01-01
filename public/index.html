@@ -298,8 +298,8 @@
                         <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
                           :class="{'bg-blue-50': selectedProfiles.includes(profile.username)}">
                           <td class="p-3 text-center">
-                            <input type="checkbox" :value="profile.username" v-model="selectedProfiles"
-                              class="w-4 h-4 cursor-pointer">
+                            <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
+                              @click="handleProfileSelect($event, profile, profiles)" class="w-4 h-4 cursor-pointer">
                           </td>
                           <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
                           <td class="p-2 font-medium">
@@ -518,6 +518,8 @@
           showDisabledProfiles: false,  // Collapsible - collapsed by default
           expandedGroups: {}, // For accordion view
           selectedProfiles: [], // List of selected usernames for bulk actions
+          lastSelected: null, // For Shift+Click
+          bulkThemeKey: '', // Model for bulk edit input
           bulkThemeKey: '', // Model for bulk edit input
         }
       },
@@ -771,6 +773,53 @@
           keys.forEach(key => {
             this.expandedGroups[key] = expand;
           });
+        },
+        handleProfileSelect(event, profile, groupProfiles) {
+          const username = profile.username;
+          const isSelected = this.selectedProfiles.includes(username);
+          // Standard checkbox behavior toggles value. 
+          // But since we use @click, we need to know what the NEW state will be.
+          // If it was selected, it will become unselected.
+          // Note: browser checkbox toggles visually on click immediately.
+          // We just need to sync our array.
+
+          let targetState = !isSelected;
+
+          // Use event.shiftKey to detect range selection
+          if (event.shiftKey && this.lastSelected) {
+            const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelected);
+            const currIdx = groupProfiles.findIndex(p => p.username === username);
+
+            if (lastIdx !== -1 && currIdx !== -1) {
+              const start = Math.min(lastIdx, currIdx);
+              const end = Math.max(lastIdx, currIdx);
+
+              const range = groupProfiles.slice(start, end + 1);
+
+              range.forEach(p => {
+                const idx = this.selectedProfiles.indexOf(p.username);
+                if (targetState && idx === -1) {
+                  this.selectedProfiles.push(p.username);
+                } else if (!targetState && idx !== -1) {
+                  this.selectedProfiles.splice(idx, 1);
+                }
+              });
+            } else {
+              this.toggleSelectionSingle(username, targetState);
+            }
+          } else {
+            this.toggleSelectionSingle(username, targetState);
+          }
+
+          this.lastSelected = username;
+        },
+        toggleSelectionSingle(username, state) {
+          const idx = this.selectedProfiles.indexOf(username);
+          if (state && idx === -1) {
+            this.selectedProfiles.push(username);
+          } else if (!state && idx !== -1) {
+            this.selectedProfiles.splice(idx, 1);
+          }
         },
         toggleGroupSelection(profiles, checked) {
           if (checked) {
