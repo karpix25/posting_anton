@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ScheduledPost } from './types';
 import FormData from 'form-data';
+import { YandexDiskClient } from './yandex';
 
 const UPLOAD_POST_API_URL = 'https://api.upload-post.com/api/upload';
 const USER_PROFILES_API_URL = 'https://api.upload-post.com/api/uploadposts/users';
@@ -105,17 +106,32 @@ export class UploadPostClient {
 
 export class PlatformManager {
     private client: UploadPostClient;
+    private yandexClient?: YandexDiskClient;
 
-    constructor() {
+    constructor(yandexClient?: YandexDiskClient) {
         // We expect the key to be in env, loaded by main.ts or config
         const apiKey = process.env.UPLOAD_POST_API_KEY || '';
         if (!apiKey) {
             console.warn('WARNING: UPLOAD_POST_API_KEY is missing!');
         }
         this.client = new UploadPostClient(apiKey);
+        this.yandexClient = yandexClient;
     }
 
     async publishPost(post: ScheduledPost): Promise<void> {
+        // If video.url is a Yandex path (starts with "disk:/"), fetch real download URL
+        if (post.video.url.startsWith('disk:/') && this.yandexClient) {
+            console.log(`[PlatformManager] Fetching download URL for ${post.video.path}...`);
+            try {
+                const downloadUrl = await this.yandexClient.getDownloadLink(post.video.path);
+                post.video.url = downloadUrl;
+                console.log(`[PlatformManager] ✅ Got download URL (${downloadUrl.substring(0, 50)}...)`);
+            } catch (error) {
+                console.error(`[PlatformManager] ❌ Failed to get download URL:`, error);
+                throw new Error(`Cannot publish: failed to get download URL for ${post.video.path}`);
+            }
+        }
+
         await this.client.publish(post);
     }
 

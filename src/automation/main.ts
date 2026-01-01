@@ -54,7 +54,7 @@ async function main() {
     // Pass config to generator for dynamic prompts
     const generator = new ContentGenerator(process.env.OPENAI_API_KEY || '', config);
     const yandex = new YandexDiskClient(config.yandexToken);
-    const platformManager = new PlatformManager();
+    const platformManager = new PlatformManager(yandex); // Pass yandex client for download URLs
 
     // Auto-Sync Profiles from API
     try {
