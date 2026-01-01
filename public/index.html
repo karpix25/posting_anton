@@ -673,48 +673,33 @@
 
             if (data.success && data.profiles) {
               let addedCount = 0;
-              // Merge logic: Add if username (API ID) doesn't exist
+
               data.profiles.forEach(apiProfile => {
-                const exists = this.config.profiles.find(p => p.username === apiProfile.username);
+                // Find existing profile by username
+                const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
 
-                // API returns structured social_accounts. We might want to create entries for each *connected* platform 
-                // OR just add the user and let user choose platform. 
-                // Simpler: Just add the user. Logic handles separate entries per platform usually if we want distinct queues.
-                // But here 'username' in config acts as the API 'user' ID.
-                // So we just ensure this 'user' ID is in our list.
+                // Get platforms from API (keys of social_accounts)
+                const platforms = Object.keys(apiProfile.social_accounts || {});
+                if (platforms.length === 0) platforms.push('instagram'); // Default fallback
 
-                if (!exists) {
-                  // Add a generic entry, default to instagram? Or maybe add all detected platforms?
-                  // Let's check social_accounts keys
-                  const platforms = Object.keys(apiProfile.social_accounts || {});
-                  if (platforms.length > 0) {
-                    platforms.forEach(plat => {
-                      // Check if we have this user+platform combination? 
-                      // Current config structure is array of { username, platform, ... }
-                      const exactMatch = this.config.profiles.find(p => p.username === apiProfile.username && p.platform === plat);
-                      if (!exactMatch) {
-                        this.config.profiles.push({
-                          username: apiProfile.username,
-                          platform: plat,
-                          theme_key: '' // User must fill this to match folders
-                        });
-                        addedCount++;
-                      }
-                    });
-                  } else {
-                    // No specific platforms found, just add generic
-                    this.config.profiles.push({
-                      username: apiProfile.username,
-                      platform: 'instagram',
-                      theme_key: ''
-                    });
-                    addedCount++;
-                  }
+                if (existingProfile) {
+                  // Update existing profile's platforms if needed (merge or overwrite)
+                  // We overwrite to ensure it reflects current state
+                  existingProfile.platforms = platforms;
+                } else {
+                  // Add new profile
+                  this.config.profiles.push({
+                    username: apiProfile.username,
+                    theme_key: '',
+                    platforms: platforms,
+                    enabled: true
+                  });
+                  addedCount++;
                 }
               });
 
-              alert(`Профили синхронизированы! Добавлено: ${addedCount}.`);
-              // Auto-save? Maybe let user save.
+              alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
+              this.saveConfig();
             } else {
               console.error('[UI] Sync failed:', data.error);
               alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
