@@ -97,6 +97,11 @@ let statsCache: any = null;
 let statsCacheTime: number = 0;
 const STATS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+// Files cache (raw Yandex data, separate from stats)
+let filesCache: any[] = [];
+let filesCacheTime: number = 0;
+const FILES_CACHE_TTL = 30 * 60 * 1000; // 30 minutes - files change rarely
+
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
