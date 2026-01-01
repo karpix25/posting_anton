@@ -45,7 +45,8 @@ export class YandexDiskClient {
                         limit: currentLimit,
                         media_type: 'video',
                         // Request only fields we actually need - dramatically reduces response size!
-                        fields: 'items.name,items.path,items.md5,items.size,items.created,limit,offset'
+                        // items.file = URL для скачивания оригинала в полном качестве
+                        fields: 'items.name,items.path,items.file,items.md5,items.size,items.created,limit,offset'
                     },
                 });
 
