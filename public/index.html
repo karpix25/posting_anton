@@ -217,11 +217,18 @@
 
             <!-- Active Profiles -->
             <div v-if="activeProfiles.length > 0">
-              <button @click="showActiveProfiles = !showActiveProfiles"
-                class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded">
-                <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
-                <span class="text-2xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
-              </button>
+              <div class="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded">
+                <button @click="showActiveProfiles = !showActiveProfiles"
+                  class="flex-1 text-left text-lg font-semibold hover:text-blue-600 flex items-center gap-2">
+                  <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
+                  <span class="text-xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
+                </button>
+                <div class="flex gap-2 text-sm" v-if="showActiveProfiles">
+                  <button @click="expandAllGroups(true)" class="text-blue-600 hover:underline">Развернуть все</button>
+                  <span class="text-gray-300">|</span>
+                  <button @click="expandAllGroups(false)" class="text-blue-600 hover:underline">Свернуть все</button>
+                </div>
+              </div>
 
               <div v-if="showActiveProfiles">
                 <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
@@ -701,6 +708,12 @@
         },
         toggleGroup(key) {
           this.expandedGroups[key] = !this.expandedGroups[key];
+        },
+        expandAllGroups(expand) {
+          const keys = Object.keys(this.groupedActiveProfiles);
+          keys.forEach(key => {
+            this.expandedGroups[key] = expand;
+          });
         }
       }
     }).mount('#app');
