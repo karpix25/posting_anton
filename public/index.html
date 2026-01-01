@@ -373,6 +373,17 @@
             this.statsLoading = false;
           }
         },
+        async fetchStatsSummary() {
+          try {
+            const res = await fetch('/api/stats/summary');
+            const data = await res.json();
+            if (data.success) {
+              this.statsSummary = data.stats;
+            }
+          } catch (error) {
+            console.error('Failed to fetch stats summary:', error);
+          }
+        },
         async loadConfig() {
           this.loading = true;
           try {
