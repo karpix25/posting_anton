@@ -96,12 +96,21 @@ async function main() {
                         config.profiles.push({
                             username: apiProfile.username,
                             theme_key: theme || apiProfile.username.toLowerCase(),
-                            platforms: detectedPlatforms.length > 0 ? detectedPlatforms : ['instagram'], // Default to instagram if no platforms detected
+                            platforms: detectedPlatforms.length > 0 ? detectedPlatforms : ['instagram'],
+                            enabled: true, // New profiles enabled by default
                             last_posted: {}
                         });
                         addedCount++;
                     } else {
-                        // Profile exists, but check if theme is missing and try to self-heal
+                        // UPDATE existing profile: update platforms, preserve user edits
+                        const detectedPlatforms = Object.keys(apiProfile.social_accounts || {}) as ('instagram' | 'tiktok' | 'youtube')[];
+
+                        if (JSON.stringify(exists.platforms) !== JSON.stringify(detectedPlatforms)) {
+                            exists.platforms = detectedPlatforms;
+                            addedCount++; // Count as change to trigger save
+                        }
+
+                        // Self-heal theme if missing
                         if (!exists.theme_key) {
                             let theme = '';
                             if (apiProfile.username) {
@@ -122,6 +131,7 @@ async function main() {
                                 addedCount++; // Count as update/change to trigger save
                             }
                         }
+                        // DON'T touch: enabled (preserve user's deactivation)
                     }
                 });
 
