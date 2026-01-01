@@ -97,11 +97,6 @@ let statsCache: any = null;
 let statsCacheTime: number = 0;
 const STATS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-// Files cache (raw Yandex data, separate from stats)
-let filesCache: any[] = [];
-let filesCacheTime: number = 0;
-const FILES_CACHE_TTL = 30 * 60 * 1000; // 30 minutes - files change rarely
-
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
@@ -134,7 +129,7 @@ app.get('/api/stats', async (req, res) => {
             }
         }
 
-        // 2. Get Yandex Files (with caching)
+        // 2. Get Yandex Stats (Live)
         if (fs.existsSync(CONFIG_PATH)) {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
             const folders: string[] = config.yandexFolders || [];
@@ -142,153 +137,139 @@ app.get('/api/stats', async (req, res) => {
             if (process.env.YANDEX_TOKEN) {
                 const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
 
-                // Check if we need to fetch files from Yandex
-                const now = Date.now();
+                // Yandex 'files' endpoint returns minimal info for ALL files flatly.
+                // It ignores 'path' param. So we fetch ONCE globally.
+                // Limit to 5000 to cover most cases.
                 let allFiles: any[] = [];
-
-                if (forceRefresh || !filesCache.length || (now - filesCacheTime) > FILES_CACHE_TTL) {
-                    // Fetch fresh files from Yandex
-                    try {
-                        console.log(`[Stats] Fetching files from Yandex Disk (cache ${forceRefresh ? 'forced refresh' : 'expired'})...`);
-                        allFiles = await yandex.listFiles('/', 100000);
-                        console.log(`[Stats] ✅ Fetched ${allFiles.length} files from Yandex.`);
-
-                        // Update files cache
-                        filesCache = allFiles;
-                        filesCacheTime = now;
-                    } catch (error: any) {
-                        console.error('[Stats] Failed to list files', error);
-                        throw error;
+                try {
+                    console.log(`[Stats] fetching files...`);
+                    // Request up to 100k files (will auto-retry with 50k/20k if timeout)
+                    allFiles = await yandex.listFiles('/', 100000);
+                    console.log(`[Stats DEBUG] Fetched ${allFiles.length} raw files from Yandex.`);
+                    if (allFiles.length > 0) {
+                        console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);
+                        console.log(`[Stats DEBUG] Last file: ${allFiles[allFiles.length - 1].path}`);
                     }
-                } else {
-                    // Use cached files
-                    console.log(`[Stats] Using cached files (${filesCache.length} files, age: ${Math.round((now - filesCacheTime) / 1000)}s)`);
-                    allFiles = filesCache;
+                } catch (e) {
+                    console.error('[Stats] Failed to list files', e);
                 }
-                if (allFiles.length > 0) {
-                    console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);
-                    console.log(`[Stats DEBUG] Last file: ${allFiles[allFiles.length - 1].path}`);
+
+                // Filter 1: Must be video (yandex.ts handles this via media_type param)
+                // Filter 2: Must be within one of the config folders (if folders valid)
+                // Filter 3: Must NOT be in usedSet
+
+                console.log('[Stats DEBUG] Configured folders:', folders);
+                console.log(`[Stats DEBUG] Filtering ${allFiles.length} files against folders...`);
+
+                const availableFiles = allFiles.filter(f => {
+                    // Check if file is inside one of the target folders
+                    // f.path looks like "disk:/Folder/File.mp4"
+
+                    let inFolder = false;
+                    if (folders.length === 0) inFolder = true;
+                    else {
+                        // Normalize paths to avoid slash/prefix issues
+                        // remove "disk:" and leading/trailing slashes
+                        const normPath = f.path.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
+
+                        inFolder = folders.some(folder => {
+                            const normFolder = folder.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
+                            // Use includes instead of startsWith to allow partial matches (e.g. subfolders)
+                            return normPath.includes(normFolder);
+                        });
+                    }
+
+                    // Log exclusion reason for first few failures for debug
+                    if (!inFolder && Math.random() < 0.001) {
+                        // console.log(`[Stats TRACE] Excluded folder: ${f.path}`);
+                    }
+
+                    if (!inFolder) return false;
+
+                    // Check usage
+                    if (usedSet.has(f.md5) || usedSet.has(f.path)) {
+                        return false;
+                    }
+
+                    return true;
+                });
+                console.log(`[Stats DEBUG] availableFiles after filtering: ${availableFiles.length}`);
+
+                stats.totalVideos = availableFiles.length;
+
+                // Group by Category & Author
+
+                // 1. Pre-fill categories from aliases
+                if (config.themeAliases) {
+                    for (const key of Object.keys(config.themeAliases)) {
+                        stats.byCategory[key] = 0;
+                    }
                 }
-            } catch (e) {
-                console.error('[Stats] Failed to list files', e);
+
+                // 2. Scan ALL files to detect existence of categories/authors
+                console.log('[Stats DEBUG] Sample file paths (first 5):');
+                allFiles.slice(0, 5).forEach((f, idx) => {
+                    console.log(`  ${idx + 1}. ${f.path}`);
+                });
+
+                allFiles.forEach(f => {
+                    const { theme, brand, author } = extractMetadata(f.path, config.themeAliases);
+
+                    // Debug first few extractions
+                    if (allFiles.indexOf(f) < 3) {
+                        console.log(`[Stats DEBUG] File: ${f.path}`);
+                        console.log(`[Stats DEBUG]   → Author: "${author}", Category: "${theme}", Brand: "${brand}"`);
+                    }
+
+                    // Init Category
+                    if (theme !== 'unknown') {
+                        if (stats.byCategory[theme] === undefined) stats.byCategory[theme] = 0;
+                    }
+                    // Init Author
+                    if (author !== 'unknown') {
+                        if (stats.byAuthor[author] === undefined) stats.byAuthor[author] = 0;
+                    }
+                });
+
+                // 3. Count AVAILABLE videos
+                availableFiles.forEach(f => {
+                    const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+                    if (theme !== 'unknown') {
+                        stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
+                    }
+                    if (author !== 'unknown') {
+                        stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
+                    }
+                });
             }
-
-            // Filter 1: Must be video (yandex.ts handles this via media_type param)
-            // Filter 2: Must be within one of the config folders (if folders valid)
-            // Filter 3: Must NOT be in usedSet
-
-            console.log('[Stats DEBUG] Configured folders:', folders);
-            console.log(`[Stats DEBUG] Filtering ${allFiles.length} files against folders...`);
-
-            const availableFiles = allFiles.filter(f => {
-                // Check if file is inside one of the target folders
-                // f.path looks like "disk:/Folder/File.mp4"
-
-                let inFolder = false;
-                if (folders.length === 0) inFolder = true;
-                else {
-                    // Normalize paths to avoid slash/prefix issues
-                    // remove "disk:" and leading/trailing slashes
-                    const normPath = f.path.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
-
-                    inFolder = folders.some(folder => {
-                        const normFolder = folder.replace(/^disk:\/?/, '').replace(/^\//, '').toLowerCase();
-                        // Use includes instead of startsWith to allow partial matches (e.g. subfolders)
-                        return normPath.includes(normFolder);
-                    });
-                }
-
-                // Log exclusion reason for first few failures for debug
-                if (!inFolder && Math.random() < 0.001) {
-                    // console.log(`[Stats TRACE] Excluded folder: ${f.path}`);
-                }
-
-                if (!inFolder) return false;
-
-                // Check usage
-                if (usedSet.has(f.md5) || usedSet.has(f.path)) {
-                    return false;
-                }
-
-                return true;
-            });
-            console.log(`[Stats DEBUG] availableFiles after filtering: ${availableFiles.length}`);
-
-            stats.totalVideos = availableFiles.length;
-
-            // Group by Category & Author
-
-            // 1. Pre-fill categories from aliases
-            if (config.themeAliases) {
-                for (const key of Object.keys(config.themeAliases)) {
-                    stats.byCategory[key] = 0;
-                }
+            // Map profiles to categories based on theme_key
+            if (config && config.profiles) {
+                config.profiles.forEach((profile: any) => {
+                    const themeKey = profile.theme_key?.toLowerCase().trim();
+                    if (themeKey && themeKey !== 'unknown') {
+                        if (!stats.profilesByCategory[themeKey]) {
+                            stats.profilesByCategory[themeKey] = [];
+                        }
+                        // Only add if enabled
+                        if (profile.enabled !== false) {
+                            stats.profilesByCategory[themeKey].push(profile.username);
+                        }
+                    }
+                });
             }
-
-            // 2. Scan ALL files to detect existence of categories/authors
-            console.log('[Stats DEBUG] Sample file paths (first 5):');
-            allFiles.slice(0, 5).forEach((f, idx) => {
-                console.log(`  ${idx + 1}. ${f.path}`);
-            });
-
-            allFiles.forEach(f => {
-                const { theme, brand, author } = extractMetadata(f.path, config.themeAliases);
-
-                // Debug first few extractions
-                if (allFiles.indexOf(f) < 3) {
-                    console.log(`[Stats DEBUG] File: ${f.path}`);
-                    console.log(`[Stats DEBUG]   → Author: "${author}", Category: "${theme}", Brand: "${brand}"`);
-                }
-
-                // Init Category
-                if (theme !== 'unknown') {
-                    if (stats.byCategory[theme] === undefined) stats.byCategory[theme] = 0;
-                }
-                // Init Author
-                if (author !== 'unknown') {
-                    if (stats.byAuthor[author] === undefined) stats.byAuthor[author] = 0;
-                }
-            });
-
-            // 3. Count AVAILABLE videos
-            availableFiles.forEach(f => {
-                const { theme, author } = extractMetadata(f.path, config.themeAliases);
-
-                if (theme !== 'unknown') {
-                    stats.byCategory[theme] = (stats.byCategory[theme] || 0) + 1;
-                }
-                if (author !== 'unknown') {
-                    stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
-                }
-            });
         }
-        // Map profiles to categories based on theme_key
-        if (config && config.profiles) {
-            config.profiles.forEach((profile: any) => {
-                const themeKey = profile.theme_key?.toLowerCase().trim();
-                if (themeKey && themeKey !== 'unknown') {
-                    if (!stats.profilesByCategory[themeKey]) {
-                        stats.profilesByCategory[themeKey] = [];
-                    }
-                    // Only add if enabled
-                    if (profile.enabled !== false) {
-                        stats.profilesByCategory[themeKey].push(profile.username);
-                    }
-                }
-            });
-        }
-    }
 
         // Update cache
         statsCache = stats;
-    statsCacheTime = Date.now();
-    console.log('[Stats] Cache updated');
+        statsCacheTime = Date.now();
+        console.log('[Stats] Cache updated');
 
-    res.json(stats);
-} catch (e) {
-    console.error('[Stats] Error generating stats:', e);
-    res.status(500).json({ error: 'Failed to fetch stats' });
-}
+        res.json(stats);
+    } catch (e) {
+        console.error('[Stats] Error generating stats:', e);
+        res.status(500).json({ error: 'Failed to fetch stats' });
+    }
 });
 
 // Get Config
