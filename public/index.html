@@ -505,7 +505,11 @@
           this.config.yandexFolders = this.foldersInput.split(',').map(s => s.trim()).filter(Boolean);
         },
         addProfile() {
-          this.config.profiles.push({ username: '', platform: 'instagram', theme_key: '' });
+          this.config.profiles.push({
+            username: '',
+            theme_key: '',
+            platforms: [] // Start with empty array, user will check boxes
+          });
         },
         removeProfile(idx) {
           this.config.profiles.splice(idx, 1);
