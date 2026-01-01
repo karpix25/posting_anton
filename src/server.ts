@@ -80,8 +80,25 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
     // This shows actual folder names like "Beauty не трогать" instead of "toplash"
     let theme = 'unknown';
     if (categoryCandidate) {
-        // Just normalize to lowercase for consistency, keep original name
-        theme = categoryCandidate.toLowerCase().trim();
+        const rawTheme = categoryCandidate.toLowerCase().trim();
+        theme = rawTheme; // Default to raw name
+
+        // Check aliases if provided
+        if (aliasesMap) {
+            for (const [groupKey, aliases] of Object.entries(aliasesMap)) {
+                // Check if rawTheme is in aliases array
+                // normalize aliases too just in case
+                if (aliases.some(a => a.toLowerCase().trim() === rawTheme)) {
+                    theme = groupKey;
+                    break;
+                }
+                // Also check if matches the group key itself? Usually redundant if key is listed in aliases or expected behavior
+                if (groupKey.toLowerCase().trim() === rawTheme) {
+                    theme = groupKey;
+                    break;
+                }
+            }
+        }
     }
 
     // Normalize brand name
