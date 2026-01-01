@@ -552,7 +552,9 @@
       },
       methods: {
         getProfilesForCategory(categoryName) {
-          return this.stats.profilesByCategory[categoryName] || [];
+          // keys in profilesByCategory are always lowercase/trimmed
+          const key = categoryName.toLowerCase().trim();
+          return this.stats.profilesByCategory[key] || [];
         },
         async loadStats() {
           this.statsLoading = true;
