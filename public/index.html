@@ -98,6 +98,27 @@
                 </div>
               </div>
 
+              <!-- Statistics Summary Cards -->
+              <div v-if="statsSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
+                  <div class="text-sm opacity-90">Опубликовано</div>
+                  <div class="text-3xl font-bold mt-2">{{ statsSummary.published_total }}</div>
+                </div>
+                <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
+                  <div class="text-sm opacity-90">Удалено</div>
+                  <div class="text-3xl font-bold mt-2">{{ statsSummary.deleted_total }}</div>
+                </div>
+                <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white shadow-lg">
+                  <div class="text-sm opacity-90">Instagram</div>
+                  <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.instagram }}</div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white shadow-lg">
+                  <div class="text-sm opacity-90">TikTok + YouTube</div>
+                  <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.tiktok +
+                    statsSummary.by_platform.youtube }}</div>
+                </div>
+              </div>
+
               <!-- Categories Breakdown -->
               <div class="flex justify-between items-center mb-4">
                 <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : 'Авторам' }}
@@ -314,18 +335,18 @@
             byCategory: {},
             byAuthor: {}
           },
+          statsSummary: null,
           loading: true,
           statsLoading: false,
           statsViewMode: 'category', // 'category' or 'author'
-          foldersInput: ''
+          foldersInput: '',
+          newThemeKey: ''
         }
       },
       async mounted() {
         await this.loadConfig();
-        // Load stats initially too? Or only when tab clicked?
-        // Let's load initially for dashboard summary maybe, or just lazy load.
-        // Let's lazy load or separate call.
         this.loadStats();
+        this.fetchStatsSummary();
       },
       computed: {
         currentStatsList() {
@@ -333,6 +354,9 @@
           return Object.entries(source)
             .map(([name, count]) => ({ name, count }))
             .sort((a, b) => a.name.localeCompare(b.name));
+        },
+        statsHeader() {
+          return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
         }
       },
       methods: {

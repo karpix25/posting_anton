@@ -3,6 +3,7 @@ import { ContentScheduler } from './scheduler';
 import { ContentGenerator } from './content_generator';
 import { PlatformManager } from './platforms';
 import { AutomationConfig, ScheduledPost } from './types';
+import { StatsManager } from './stats';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -55,6 +56,7 @@ async function main() {
     const generator = new ContentGenerator(process.env.OPENAI_API_KEY || '', config);
     const yandex = new YandexDiskClient(config.yandexToken);
     const platformManager = new PlatformManager(yandex); // Pass yandex client for download URLs
+    const statsManager = new StatsManager(DATA_DIR);
 
     // Auto-Sync Profiles from API
     try {
@@ -251,6 +253,9 @@ async function main() {
                 }
                 console.log(`✅ Published to ${post.platform}`);
 
+                // Increment statistics
+                statsManager.incrementPublished(post.platform);
+
             } catch (error) {
                 console.error(`❌ Failed to process ${post.platform}:`, error);
                 allSuccess = false;
@@ -270,6 +275,9 @@ async function main() {
                 usedHashes.push(hash);
                 fs.writeFileSync(usedHashesPath, JSON.stringify(usedHashes));
                 console.log(`🗑️ Deleted and hash saved.`);
+
+                // Increment deletion statistics
+                statsManager.incrementDeleted();
             } catch (e) {
                 console.error(`[Cleanup] Failed to delete file:`, e);
             }

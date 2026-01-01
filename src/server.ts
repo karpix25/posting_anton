@@ -1,9 +1,11 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
-import fs from 'fs';
-import path from 'path';
 import { YandexDiskClient } from './automation/yandex'; // Import Yandex client
+import { PlatformManager } from './automation/platforms';
+import { StatsManager } from './automation/stats';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
