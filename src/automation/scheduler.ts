@@ -56,87 +56,80 @@ export class ContentScheduler {
 
             for (let pass = 0; pass < maxPassesPerDay; pass++) {
                 for (const profile of dailyProfiles) {
-                    // Check limits (Global/Batch limits)
+                    // Check if ANY platform needs posts
                     const currentCounts = profilePublishCounts[profile.username];
-                    const needsPost =
-                        currentCounts.instagram < this.config.limits.instagram ||
-                        currentCounts.tiktok < this.config.limits.tiktok ||
-                        currentCounts.youtube < this.config.limits.youtube;
 
-                    if (!needsPost) {
-                        console.log(`[Scheduler DEBUG] SKIP '${profile.username}': Reached limits (IG:${currentCounts.instagram}/${this.config.limits.instagram}, TT:${currentCounts.tiktok}/${this.config.limits.tiktok}, YT:${currentCounts.youtube}/${this.config.limits.youtube})`);
-                        continue;
-                    }
-
-                    // Find matching videos
-                    const themeVideos = videosByTheme[profile.theme_key] || [];
-                    if (themeVideos.length === 0) {
-                        if (pass === 0) console.log(`[Scheduler DEBUG] SKIP '${profile.username}': No videos found for theme '${profile.theme_key}' (Available themes: ${Object.keys(videosByTheme).join(', ')})`);
-                        continue;
-                    }
-
-                    this.shuffle(themeVideos); // Shuffle again to pick random
-
-                    const themeKey = profile.theme_key;
-
-                    console.log(`[Scheduler] Processing profile: ${profile.username} (theme: ${themeKey}, platforms: ${profile.platforms.join(', ')})`);
-
-                    // Get videos for this profile's theme
-                    const currentThemeVideos = videosByTheme[themeKey] || []; // Renamed to avoid conflict with outer scope themeVideos
-
-                    if (currentThemeVideos.length === 0) {
-                        console.log(`[Scheduler] No videos found for theme '${themeKey}', skipping profile ${profile.username}`);
-                        continue;
-                    }
-
-                    // For EACH platform this profile is active on
+                    // Check if we need posts for any of this profile's platforms
+                    let needsPost = false;
                     for (const platform of profile.platforms) {
-                        const limitKey = platform as keyof typeof this.config.limits;
-                        const limit = this.config.limits[limitKey] || 0;
-
-                        console.log(`[Scheduler] Profile ${profile.username} on ${platform}: limit=${limit}`);
-
-                        for (let i = 0; i < limit; i++) {
-                            // Select next unused video for this theme
-                            const video = currentThemeVideos.find(v => !this.usedVideoMd5s.has(v.md5 || v.path));
-
-                            if (!video) {
-                                console.log(`[Scheduler] No more unused videos for ${profile.username} on ${platform}`);
-                                break;
-                            }
-
-                            // Mark as used
-                            this.usedVideoMd5s.add(video.md5 || video.path);
-
-                            // Calculate publish time
-                            const date = new Date();
-                            date.setDate(date.getDate() + dayIndex); // Use dayIndex instead of dayOffset
-                            date.setHours(10 + i * 2, 0, 0, 0); // Spread posts every 2 hours
-
-                            // Avoid collision with occupied slots
-                            const occupiedTimes = profileSlots[profile.username] || []; // Use profileSlots
-                            while (occupiedTimes.some(t => Math.abs(t.getTime() - date.getTime()) < 3600000)) {
-                                date.setHours(date.getHours() + 1);
-                            }
-
-                            schedule.push({
-                                video,
-                                profile,
-                                platform, // ← Each platform gets same video
-                                publish_at: date.toISOString()
-                            });
-                            if (posted) {
-                                profileSlots[profile.username].push(candidateTime);
-                                console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} (${profile.theme_key})`);
-                            } else {
-                                this.usedVideoMd5s.delete(videoId); // Revert
-                            }
+                        if (currentCounts[platform] < this.config.limits[platform]) {
+                            needsPost = true;
+                            break;
                         }
                     }
-                }
 
-                return schedule;
+                    if (!needsPost) {
+                        continue;
+                    }
+
+                    // Find matching videos for this profile's theme
+                    const themeVideos = videosByTheme[profile.theme_key] || [];
+                    if (themeVideos.length === 0) {
+                        if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (profile: ${profile.username})`);
+                        continue;
+                    }
+
+                    this.shuffle(themeVideos);
+
+                    // Find an unused video
+                    let videoForSlot: VideoFile | null = null;
+                    for (const v of themeVideos) {
+                        const videoId = v.md5 || v.path;
+                        if (!this.usedVideoMd5s.has(videoId)) {
+                            videoForSlot = v;
+                            break;
+                        }
+                    }
+
+                    if (!videoForSlot) {
+                        continue;
+                    }
+
+                    const videoId = videoForSlot.md5 || videoForSlot.path;
+
+                    // Calculate publish time
+                    const baseTime = this.getRandomTimeInWindow(currentDayStart, currentDayEnd);
+                    const candidateTime = this.findSafeSlot(profileSlots[profile.username], baseTime, currentDayStart, currentDayEnd);
+
+                    this.usedVideoMd5s.add(videoId);
+                    let posted = false;
+
+                    // Publish the SAME video to ALL platforms this profile is active on
+                    for (const platform of profile.platforms) {
+                        if (currentCounts[platform] < this.config.limits[platform]) {
+                            schedule.push({
+                                video: videoForSlot,
+                                profile,
+                                platform,
+                                publish_at: candidateTime.toISOString()
+                            });
+                            currentCounts[platform]++;
+                            posted = true;
+                            console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} on ${platform}`);
+                        }
+                    }
+
+                    if (posted) {
+                        profileSlots[profile.username].push(candidateTime);
+                    } else {
+                        this.usedVideoMd5s.delete(videoId); // Revert
+                    }
+                }
             }
+        }
+
+        return schedule;
+    }
 
     private groupVideosByTheme(videos: VideoFile[]): Record<string, VideoFile[]> {
         const groups: Record<string, VideoFile[]> = {};
