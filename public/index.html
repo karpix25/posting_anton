@@ -571,6 +571,11 @@
             platforms: [] // Start with empty array, user will check boxes
           });
         },
+        toggleProfileEnabled(profile) {
+          // Toggle between enabled=true and enabled=false
+          profile.enabled = profile.enabled === false ? true : false;
+          this.saveConfig();
+        },
         removeProfile(idx) {
           this.config.profiles.splice(idx, 1);
         },
