@@ -97,6 +97,11 @@ let statsCache: any = null;
 let statsCacheTime: number = 0;
 const STATS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+// Files cache (raw Yandex data, separate from stats)
+let filesCache: any[] = [];
+let filesCacheTime: number = 0;
+const FILES_CACHE_TTL = 30 * 60 * 1000; // 30 minutes - files change rarely
+
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
@@ -137,21 +142,38 @@ app.get('/api/stats', async (req, res) => {
             if (process.env.YANDEX_TOKEN) {
                 const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
 
-                // Yandex 'files' endpoint returns minimal info for ALL files flatly.
-                // It ignores 'path' param. So we fetch ONCE globally.
-                // Limit to 5000 to cover most cases.
                 let allFiles: any[] = [];
-                try {
-                    console.log(`[Stats] fetching files...`);
-                    // Request up to 100k files (will auto-retry with 50k/20k if timeout)
-                    allFiles = await yandex.listFiles('/', 100000);
-                    console.log(`[Stats DEBUG] Fetched ${allFiles.length} raw files from Yandex.`);
-                    if (allFiles.length > 0) {
-                        console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);
-                        console.log(`[Stats DEBUG] Last file: ${allFiles[allFiles.length - 1].path}`);
+                const now = Date.now();
+
+                // Check if we can use cached files
+                const filesExpired = (now - filesCacheTime) > FILES_CACHE_TTL;
+
+                if (!forceRefresh && filesCache.length > 0 && !filesExpired) {
+                    // Use cached files
+                    console.log(`[Stats] Using cached files (${filesCache.length} files, age: ${Math.round((now - filesCacheTime) / 1000)}s)`);
+                    allFiles = filesCache;
+                } else {
+                    // Fetch fresh files from Yandex
+                    try {
+                        const reason = forceRefresh ? 'force refresh' : filesExpired ? 'cache expired' : 'no cache';
+                        console.log(`[Stats] Fetching files from Yandex Disk (${reason})...`);
+                        allFiles = await yandex.listFiles('/', 100000); // 100k limit
+                        console.log(`[Stats] ✅ Fetched ${allFiles.length} files from Yandex.`);
+
+                        // Update files cache
+                        filesCache = allFiles;
+                        filesCacheTime = now;
+
+                        // Debug first few files
+                        if (allFiles.length > 0) {
+                            console.log(`[Stats DEBUG] First file: ${allFiles[0].path}`);
+                            console.log(`[Stats DEBUG] Last file: ${allFiles[allFiles.length - 1].path}`);
+                        }
+                    } catch (e: any) {
+                        console.error('[Stats] Failed to list files', e);
+                        // If cache exists (even expired), use it as fallback?
+                        // For now, simple fail logic, or empty array
                     }
-                } catch (e) {
-                    console.error('[Stats] Failed to list files', e);
                 }
 
                 // Filter 1: Must be video (yandex.ts handles this via media_type param)
@@ -255,6 +277,9 @@ app.get('/api/stats', async (req, res) => {
                         if (profile.enabled !== false) {
                             stats.profilesByCategory[themeKey].push(profile.username);
                         }
+                    } else {
+                        // Debug unmapped profiles
+                        // console.log(`[Stats DEBUG] Profile ${profile.username} has no valid theme_key: "${profile.theme_key}"`);
                     }
                 });
             }
@@ -421,8 +446,13 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
     try {
         const newConfig = req.body;
-        // Basic validation could go here
+        // Basic validation
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
+
+        // Clear stats cache so it recalculates with new config
+        statsCache = null;
+        console.log('[Config] Saved. Stats cache cleared (Files cache preserved).');
+
         res.json({ success: true, message: 'Config saved' });
     } catch (error) {
         res.status(500).json({ error: 'Failed to save config' });
