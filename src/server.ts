@@ -312,12 +312,47 @@ app.get('/api/config', (req, res) => {
                 // Merge theme mappings if missing
                 if (exampleConfig && exampleConfig.themeAliases && !config.themeAliases) {
                     console.log('[Config] Merging default theme aliases.');
+                    console.log('[Server] Merging themeAliases from example config');
                     config.themeAliases = exampleConfig.themeAliases;
-                    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
                 }
-
             } catch (e) {
-                console.warn('[Config] Migration warning:', e);
+                console.error('[Server] Error during theme alias migration:', e);
+            }
+
+            // MIGRATION: Convert old profile format (platform field) to new format (platforms array)
+            if (config.profiles && config.profiles.length > 0) {
+                const firstProfile = config.profiles[0];
+
+                // Detect old format by presence of 'platform' field
+                if (firstProfile && 'platform' in firstProfile && !('platforms' in firstProfile)) {
+                    console.log('[Server] 🔄 Migrating old profile format to new multi-platform format...');
+
+                    // Group by username
+                    const grouped: Record<string, any> = {};
+
+                    config.profiles.forEach((profile: any) => {
+                        if (!grouped[profile.username]) {
+                            grouped[profile.username] = {
+                                username: profile.username,
+                                theme_key: profile.theme_key || '',
+                                platforms: [],
+                                last_posted: profile.last_posted || {}
+                            };
+                        }
+
+                        // Add platform to array if not already there
+                        if (profile.platform && !grouped[profile.username].platforms.includes(profile.platform)) {
+                            grouped[profile.username].platforms.push(profile.platform);
+                        }
+                    });
+
+                    // Replace with grouped profiles
+                    config.profiles = Object.values(grouped);
+
+                    // Save migrated config
+                    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                    console.log(`[Server] ✅ Migration complete: ${config.profiles.length} profiles converted`);
+                }
             }
 
             res.json(config);
