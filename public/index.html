@@ -210,6 +210,10 @@
                 <button @click="syncProfiles"
                   class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Синхронизировать
                   (UploadPost)</button>
+                <button @click="fullResync"
+                  class="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 border border-red-300">
+                  ⚠️ Полный Сброс (Скачать заново)
+                </button>
                 <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
                   профиль</button>
               </div>
@@ -719,6 +723,13 @@
             console.error('[UI] Fetch error:', e);
             alert('Не удалось синхронизировать профили (см. консоль)');
           }
+        },
+        async fullResync() {
+          if (!confirm("ВНИМАНИЕ! \nЭто удалит все текущие настройки категорий (Smart, Toplash и др.) для профилей.\nСписок профилей будет загружен начисто из UploadPost.\n\nВы уверены?")) return;
+
+          this.config.profiles = []; // Clear all local profiles
+          await this.syncProfiles(); // Fetch fresh
+          this.saveConfig(); // Save the new clean state
         },
         updateFolders() {
           this.config.yandexFolders = this.foldersInput.split(',').map(s => s.trim()).filter(Boolean);
