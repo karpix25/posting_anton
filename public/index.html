@@ -238,7 +238,12 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <span>Применить категорию ко всем:</span>
-                  <input v-model="bulkThemeKey" placeholder="Напр: toplash" class="p-1 px-2 rounded text-black w-40">
+                  <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
+                    <option disabled value="">Выберите...</option>
+                    <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                      {{ theme }}
+                    </option>
+                  </select>
                   <button @click="applyBulkCategory"
                     class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
                     Применить
@@ -299,9 +304,13 @@
                               placeholder="Username">
                           </td>
                           <td class="p-2">
-                            <input v-model="profile.theme_key"
-                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
-                              placeholder="Category">
+                            <select v-model="profile.theme_key"
+                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
+                              <option value="" class="text-gray-400">Без категории</option>
+                              <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                                {{ theme }}
+                              </option>
+                            </select>
                           </td>
                           <td class="p-2">
                             <div class="flex gap-1 flex-wrap">
@@ -506,6 +515,20 @@
           expandedGroups: {}, // For accordion view
           selectedProfiles: [], // List of selected usernames for bulk actions
           bulkThemeKey: '', // Model for bulk edit input
+        },
+          availableThemes() {
+          // Get themes from config aliases
+          if (this.config && this.config.themeAliases) {
+            const themes = Object.keys(this.config.themeAliases);
+            // Also add themes currently present in profiles but missing from config (optional)
+            this.config.profiles.forEach(p => {
+              if (p.theme_key && !themes.includes(p.theme_key)) {
+                themes.push(p.theme_key);
+              }
+            });
+            return themes.sort();
+          }
+          return [];
         }
       },
       async mounted() {
@@ -549,6 +572,20 @@
             return acc;
           }, {});
         },
+        availableThemes() {
+          // Get themes from config aliases
+          if (this.config && this.config.themeAliases) {
+            const themes = Object.keys(this.config.themeAliases);
+            // Also add themes currently present in profiles but missing from config
+            this.config.profiles.forEach(p => {
+              if (p.theme_key && !themes.includes(p.theme_key)) {
+                themes.push(p.theme_key);
+              }
+            });
+            return themes.sort();
+          }
+          return [];
+        }
       },
       methods: {
         getProfilesForCategory(categoryName) {
