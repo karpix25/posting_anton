@@ -67,6 +67,15 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
         categoryCandidate = parts[parts.length - 2];
     }
 
+    // DEBUG: Log first 5 paths to see what's being parsed
+    if (Math.random() < 0.001) { // Log ~0.1% of paths
+        console.log('[extractMetadata] DEBUG:');
+        console.log('  filePath:', filePath);
+        console.log('  parts:', parts);
+        console.log('  videoIndex:', videoIndex);
+        console.log('  categoryCandidate:', categoryCandidate);
+    }
+
     let theme = 'unknown';
     if (categoryCandidate) {
         const normCandidate = normalize(categoryCandidate);
