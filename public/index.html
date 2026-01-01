@@ -230,18 +230,44 @@
                 </div>
               </div>
 
+              <!-- BULK ACTIONS BAR (Floating / Top) -->
+              <div v-if="selectedProfiles.length > 0"
+                class="sticky top-0 z-10 bg-blue-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
+                <div class="font-bold">
+                  Выбрано профилей: {{ selectedProfiles.length }}
+                </div>
+                <div class="flex items-center gap-2">
+                  <span>Применить категорию ко всем:</span>
+                  <input v-model="bulkThemeKey" placeholder="Напр: toplash" class="p-1 px-2 rounded text-black w-40">
+                  <button @click="applyBulkCategory"
+                    class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                    Применить
+                  </button>
+                  <button @click="selectedProfiles = []" class="ml-4 text-sm text-blue-200 hover:text-white underline">
+                    Сбросить выделение
+                  </button>
+                </div>
+              </div>
+
               <div v-if="showActiveProfiles">
                 <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
                   class="mb-4 border rounded overflow-hidden">
                   <!-- Group Header -->
-                  <div @click="toggleGroup(theme)"
-                    class="bg-blue-50 p-3 font-semibold cursor-pointer flex justify-between items-center hover:bg-blue-100 transition-colors">
-                    <div class="flex items-center gap-2">
-                      <span>📁 {{ theme }}</span>
-                      <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
-                        }}</span>
+                  <div
+                    class="bg-blue-50 p-3 font-semibold flex justify-between items-center hover:bg-blue-100 transition-colors">
+                    <div class="flex items-center gap-3 flex-1">
+                      <input type="checkbox" :checked="profiles.every(p => selectedProfiles.includes(p.username))"
+                        @change="toggleGroupSelection(profiles, $event.target.checked)"
+                        class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
+
+                      <div @click="toggleGroup(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
+                        <span>📁 {{ theme }}</span>
+                        <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                          }}</span>
+                      </div>
                     </div>
-                    <span class="text-gray-500">{{ expandedGroups[theme] ? '▼' : '▶' }}</span>
+                    <span @click="toggleGroup(theme)" class="text-gray-500 cursor-pointer p-2">{{ expandedGroups[theme]
+                      ? '▼' : '▶' }}</span>
                   </div>
 
                   <!-- Group Content (Table) -->
@@ -249,6 +275,9 @@
                     <table class="w-full border-collapse">
                       <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
+                          <th class="p-3 w-8"><input type="checkbox"
+                              @change="toggleGroupSelection(profiles, $event.target.checked)"
+                              :checked="profiles.every(p => selectedProfiles.includes(p.username))"></th>
                           <th class="text-left p-3 w-12"></th>
                           <th class="text-left p-3">Профиль</th>
                           <th class="text-left p-3">Категория</th>
@@ -257,7 +286,12 @@
                         </tr>
                       </thead>
                       <tbody>
-                        <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                        <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
+                          :class="{'bg-blue-50': selectedProfiles.includes(profile.username)}">
+                          <td class="p-3 text-center">
+                            <input type="checkbox" :value="profile.username" v-model="selectedProfiles"
+                              class="w-4 h-4 cursor-pointer">
+                          </td>
                           <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
                           <td class="p-2 font-medium">
                             <input v-model="profile.username"
@@ -470,6 +504,8 @@
           showActiveProfiles: true,    // Collapsible - active by default
           showDisabledProfiles: false,  // Collapsible - collapsed by default
           expandedGroups: {}, // For accordion view
+          selectedProfiles: [], // List of selected usernames for bulk actions
+          bulkThemeKey: '', // Model for bulk edit input
         }
       },
       async mounted() {
@@ -714,6 +750,41 @@
           keys.forEach(key => {
             this.expandedGroups[key] = expand;
           });
+        },
+        toggleGroupSelection(profiles, checked) {
+          if (checked) {
+            // Add all profiles in group to selection
+            profiles.forEach(p => {
+              if (!this.selectedProfiles.includes(p.username)) {
+                this.selectedProfiles.push(p.username);
+              }
+            });
+          } else {
+            // Remove all profiles in group from selection
+            profiles.forEach(p => {
+              const idx = this.selectedProfiles.indexOf(p.username);
+              if (idx > -1) this.selectedProfiles.splice(idx, 1);
+            });
+          }
+        },
+        applyBulkCategory() {
+          if (!this.bulkThemeKey) return alert('Введите название категории!');
+          if (this.selectedProfiles.length === 0) return alert('Выберите профили!');
+
+          const category = this.bulkThemeKey.toLowerCase().trim();
+
+          let count = 0;
+          this.config.profiles.forEach(p => {
+            if (this.selectedProfiles.includes(p.username)) {
+              p.theme_key = category;
+              count++;
+            }
+          });
+
+          this.saveConfig();
+          this.selectedProfiles = []; // Clear selection
+          this.bulkThemeKey = '';
+          alert(`Успешно обновлено профилей: ${count}`);
         }
       }
     }).mount('#app');
