@@ -45,8 +45,8 @@ export class YandexDiskClient {
                         limit: currentLimit,
                         media_type: 'video',
                         // Request only fields we actually need - dramatically reduces response size!
-                        // items.file = URL для скачивания оригинала в полном качестве
-                        fields: 'items.name,items.path,items.file,items.md5,items.size,items.created,limit,offset'
+                        // NOTE: API /files не возвращает прямые ссылки (file). Нужно делать отдельный запрос /download
+                        fields: 'items.name,items.path,items.md5,items.size,items.created,limit,offset'
                     },
                 });
 
@@ -62,7 +62,7 @@ export class YandexDiskClient {
                 return items.map((item: any) => ({
                     name: item.name,
                     path: item.path,
-                    url: item.file || item.preview,
+                    url: item.path, // Store path - download link fetched via getDownloadLink() when needed
                     md5: item.md5,
                     size: item.size,
                     created: item.created,
