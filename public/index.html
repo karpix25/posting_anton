@@ -202,42 +202,88 @@
               </div>
             </div>
 
-            <table class="w-full border-collapse">
-              <thead class="bg-gray-100">
-                <tr>
-                  <th class="text-left p-3 border-b">Профиль</th>
-                  <th class="text-left p-3 border-b">Папка Категории</th>
-                  <th class="text-left p-3 border-b">Подключенные Платформы</th>
-                  <th class="text-center p-3 border-b w-24">Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(profile, idx) in config.profiles" :key="idx" class="border-b hover:bg-gray-50">
-                  <td class="p-2"><input v-model="profile.username" class="w-full border p-1 rounded"
-                      placeholder="e.g. Toplash1"></td>
-                  <td class="p-2"><input v-model="profile.theme_key" class="w-full border p-1 rounded"
-                      placeholder="напр: toplash, smart, pokypki..."></td>
-                  <td class="p-2">
-                    <div class="flex gap-2">
-                      <span v-for="platform in profile.platforms" :key="platform" class="px-2 py-1 text-xs rounded"
-                        :class="{
-                          'bg-pink-100 text-pink-700': platform === 'instagram',
-                          'bg-blue-100 text-blue-700': platform === 'tiktok',
-                          'bg-red-100 text-red-700': platform === 'youtube'
-                        }">
-                        {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
-                      </span>
-                      <span v-if="!profile.platforms || profile.platforms.length === 0" class="text-gray-400 text-sm">
-                        Нет подключенных
-                      </span>
-                    </div>
-                  </td>
-                  <td class="p-2 text-center">
-                    <button @click="removeProfile(idx)" class="text-red-500 hover:text-red-700">Удалить</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <!-- Active Profiles -->
+            <div v-if="activeProfiles.length > 0">
+              <h3 class="text-lg font-semibold mb-3">Активные Профили ({{ activeProfiles.length}})</h3>
+              <table class="w-full border-collapse mb-6">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="text-left p-3 border-b w-12">Статус</th>
+                    <th class="text-left p-3 border-b">Профиль</th>
+                    <th class="text-left p-3 border-b">Папка Категории</th>
+                    <th class="text-left p-3 border-b">Подключенные Платформы</th>
+                    <th class="text-center p-3 border-b w-32">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="profile in activeProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                    <td class="p-2 text-center text-2xl" :title="'Активный профиль'">🟢</td>
+                    <td class="p-2"><input v-model="profile.username" class="w-full border p-1 rounded"
+                        placeholder="e.g. Toplash1"></td>
+                    <td class="p-2"><input v-model="profile.theme_key" class="w-full border p-1 rounded"
+                        placeholder="напр: toplash, smart, pokypki..."></td>
+                    <td class="p-2">
+                      <div class="flex gap-2">
+                        <span v-for="platform in profile.platforms" :key="platform" class="px-2 py-1 text-xs rounded"
+                          :class="{
+                            'bg-pink-100 text-pink-700': platform === 'instagram',
+                            'bg-blue-100 text-blue-700': platform === 'tiktok',
+                            'bg-red-100 text-red-700': platform === 'youtube'
+                          }">
+                          {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
+                        </span>
+                        <span v-if="!profile.platforms || profile.platforms.length === 0" class="text-gray-400 text-sm">
+                          Нет подключенных
+                        </span>
+                      </div>
+                    </td>
+                    <td class="p-2 text-center">
+                      <button @click="toggleProfileEnabled(profile)"
+                        class="px-3 py-1 text-sm rounded bg-gray-200 hover:bg-gray-300">
+                        ⏸️ Деактивировать
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Disabled Profiles -->
+            <div v-if="disabledProfiles.length > 0">
+              <h3 class="text-lg font-semibold mb-3 text-gray-600">Деактивированные ({{ disabledProfiles.length }})</h3>
+              <table class="w-full border-collapse opacity-60">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="text-left p-3 border-b w-12">Статус</th>
+                    <th class="text-left p-3 border-b">Профиль</th>
+                    <th class="text-left p-3 border-b">Папка Категории</th>
+                    <th class="text-left p-3 border-b">Подключенные Платформы</th>
+                    <th class="text-center p-3 border-b w-32">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="profile in disabledProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                    <td class="p-2 text-center text-2xl" :title="'Деактивирован'">⚫</td>
+                    <td class="p-2 text-gray-500">{{ profile.username }}</td>
+                    <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
+                    <td class="p-2">
+                      <div class="flex gap-2">
+                        <span v-for="platform in profile.platforms" :key="platform"
+                          class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                          {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
+                        </span>
+                      </div>
+                    </td>
+                    <td class="p-2 text-center">
+                      <button @click="toggleProfileEnabled(profile)"
+                        class="px-3 py-1 text-sm rounded bg-green-100 hover:bg-green-200 text-green-700">
+                        ▶️ Восстановить
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- CLIENTS TAB -->
@@ -365,6 +411,12 @@
         },
         statsHeader() {
           return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
+        },
+        activeProfiles() {
+          return (this.config.profiles || []).filter(p => p.enabled !== false);
+        },
+        disabledProfiles() {
+          return (this.config.profiles || []).filter(p => p.enabled === false);
         }
       },
       methods: {
