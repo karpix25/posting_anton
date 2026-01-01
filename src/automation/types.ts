@@ -11,6 +11,7 @@ export interface SocialProfile {
   username: string;
   theme_key: string;
   platforms: ('instagram' | 'tiktok' | 'youtube')[];
+  enabled?: boolean; // For soft delete - default true
   last_posted?: Record<string, string>;
 }
 

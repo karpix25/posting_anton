@@ -375,6 +375,22 @@ app.get('/api/config', (req, res) => {
                 }
             }
 
+            // MIGRATION: Add enabled field to profiles (default true)
+            if (config.profiles && config.profiles.length > 0) {
+                let addedEnabled = false;
+                config.profiles.forEach((profile: any) => {
+                    if (profile.enabled === undefined) {
+                        profile.enabled = true;
+                        addedEnabled = true;
+                    }
+                });
+
+                if (addedEnabled) {
+                    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                    console.log('[Server] ✅ Added enabled field to profiles');
+                }
+            }
+
             res.json(config);
         } catch (e) {
             console.error('[Server] Failed to parse config.json', e);

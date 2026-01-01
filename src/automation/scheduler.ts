@@ -17,13 +17,17 @@ export class ContentScheduler {
         profiles: SocialProfile[],
         occupiedSlots: Record<string, Date[]> = {} // Map of username -> Date[] of occupied slots
     ): ScheduledPost[] {
+        // Filter out disabled profiles
+        const activeProfiles = profiles.filter(p => p.enabled !== false);
+        console.log(`[Scheduler] Active profiles: ${activeProfiles.length}/${profiles.length}`);
+
         const schedule: ScheduledPost[] = [];
         const videosByTheme = this.groupVideosByTheme(videos);
         const profilePublishCounts: Record<string, { instagram: number; tiktok: number; youtube: number }> = {};
         const profileSlots: Record<string, Date[]> = { ...occupiedSlots }; // Start with occupied slots
 
         // Initialize counts and slots
-        profiles.forEach(p => {
+        activeProfiles.forEach(p => {
             profilePublishCounts[p.username] = { instagram: 0, tiktok: 0, youtube: 0 };
             if (!profileSlots[p.username]) profileSlots[p.username] = [];
         });
@@ -43,7 +47,7 @@ export class ContentScheduler {
             currentDayEnd.setHours(23, 0, 0, 0);
 
             // Shuffle profiles to ensure fairness each day
-            const dailyProfiles = this.shuffle([...profiles]);
+            const dailyProfiles = this.shuffle([...activeProfiles]);
 
             // Try to fill slots for each profile
             // We iterate enough times to satisfy the highest limit
