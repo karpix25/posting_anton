@@ -9,8 +9,8 @@ export interface VideoFile {
 
 export interface SocialProfile {
   username: string;
-  platform: 'instagram' | 'tiktok' | 'youtube';
   theme_key: string;
+  platforms: ('instagram' | 'tiktok' | 'youtube')[];
   last_posted?: Record<string, string>;
 }
 

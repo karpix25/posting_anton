@@ -77,56 +77,66 @@ export class ContentScheduler {
 
                     this.shuffle(themeVideos); // Shuffle again to pick random
 
-                    let videoForSlot: VideoFile | null = null;
-                    for (const v of themeVideos) {
-                        const videoId = v.md5 || v.path;
-                        if (!this.usedVideoMd5s.has(videoId)) {
-                            videoForSlot = v;
-                            break;
-                        }
-                    }
+                    const themeKey = profile.theme_key;
 
-                    if (!videoForSlot) {
-                        // console.log(`[Scheduler] SKIP: All ${themeVideos.length} videos for '${profile.theme_key}' are already used.`);
+                    console.log(`[Scheduler] Processing profile: ${profile.username} (theme: ${themeKey}, platforms: ${profile.platforms.join(', ')})`);
+
+                    // Get videos for this profile's theme
+                    const currentThemeVideos = videosByTheme[themeKey] || []; // Renamed to avoid conflict with outer scope themeVideos
+
+                    if (currentThemeVideos.length === 0) {
+                        console.log(`[Scheduler] No videos found for theme '${themeKey}', skipping profile ${profile.username}`);
                         continue;
                     }
 
-                    const videoId = videoForSlot.md5 || videoForSlot.path;
+                    // For EACH platform this profile is active on
+                    for (const platform of profile.platforms) {
+                        const limitKey = platform as keyof typeof this.config.limits;
+                        const limit = this.config.limits[limitKey] || 0;
 
-                    // Schedule
-                    const baseTime = this.getRandomTimeInWindow(currentDayStart, currentDayEnd);
-                    const candidateTime = this.findSafeSlot(profileSlots[profile.username], baseTime, currentDayStart, currentDayEnd);
+                        console.log(`[Scheduler] Profile ${profile.username} on ${platform}: limit=${limit}`);
 
-                    this.usedVideoMd5s.add(videoId);
-                    let posted = false;
+                        for (let i = 0; i < limit; i++) {
+                            // Select next unused video for this theme
+                            const video = currentThemeVideos.find(v => !this.usedVideoMd5s.has(v.md5 || v.path));
 
-                    // Distribute to platforms
-                    (['instagram', 'tiktok', 'youtube'] as const).forEach(platform => {
-                        if (currentCounts[platform] < this.config.limits[platform]) {
+                            if (!video) {
+                                console.log(`[Scheduler] No more unused videos for ${profile.username} on ${platform}`);
+                                break;
+                            }
+
+                            // Mark as used
+                            this.usedVideoMd5s.add(video.md5 || video.path);
+
+                            // Calculate publish time
+                            const date = new Date();
+                            date.setDate(date.getDate() + dayIndex); // Use dayIndex instead of dayOffset
+                            date.setHours(10 + i * 2, 0, 0, 0); // Spread posts every 2 hours
+
+                            // Avoid collision with occupied slots
+                            const occupiedTimes = profileSlots[profile.username] || []; // Use profileSlots
+                            while (occupiedTimes.some(t => Math.abs(t.getTime() - date.getTime()) < 3600000)) {
+                                date.setHours(date.getHours() + 1);
+                            }
+
                             schedule.push({
-                                video: videoForSlot!,
+                                video,
                                 profile,
-                                platform,
-                                publish_at: candidateTime.toISOString()
+                                platform, // ← Each platform gets same video
+                                publish_at: date.toISOString()
                             });
-                            currentCounts[platform]++;
-                            posted = true;
-                            candidateTime.setMinutes(candidateTime.getMinutes() + this.randomInt(2, 5));
+                            if (posted) {
+                                profileSlots[profile.username].push(candidateTime);
+                                console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} (${profile.theme_key})`);
+                            } else {
+                                this.usedVideoMd5s.delete(videoId); // Revert
+                            }
                         }
-                    });
-
-                    if (posted) {
-                        profileSlots[profile.username].push(candidateTime);
-                        console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} (${profile.theme_key})`);
-                    } else {
-                        this.usedVideoMd5s.delete(videoId); // Revert
                     }
                 }
-            }
-        }
 
-        return schedule;
-    }
+                return schedule;
+            }
 
     private groupVideosByTheme(videos: VideoFile[]): Record<string, VideoFile[]> {
         const groups: Record<string, VideoFile[]> = {};
