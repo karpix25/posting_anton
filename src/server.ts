@@ -92,9 +92,24 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
 
 // --- API Endpoints ---
 
+// Cache for stats (avoid re-scanning Yandex on every page load)
+let statsCache: any = null;
+let statsCacheTime: number = 0;
+const STATS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 // Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
+        const forceRefresh = req.query.refresh === 'true';
+        const now = Date.now();
+
+        // Return cache if valid and not forcing refresh
+        if (!forceRefresh && statsCache && (now - statsCacheTime) < STATS_CACHE_TTL) {
+            console.log('[Stats] Returning cached stats (age: ' + Math.round((now - statsCacheTime) / 1000) + 's)');
+            return res.json(statsCache);
+        }
+
+        console.log('[Stats] Fetching fresh stats from Yandex Disk...');
         const stats = {
             totalVideos: 0,
             publishedCount: 0,
@@ -228,6 +243,11 @@ app.get('/api/stats', async (req, res) => {
                 });
             }
         }
+
+        // Update cache
+        statsCache = stats;
+        statsCacheTime = Date.now();
+        console.log('[Stats] Cache updated');
 
         res.json(stats);
     } catch (e) {
