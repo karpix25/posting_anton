@@ -516,20 +516,6 @@
           selectedProfiles: [], // List of selected usernames for bulk actions
           bulkThemeKey: '', // Model for bulk edit input
         },
-          availableThemes() {
-          // Get themes from config aliases
-          if (this.config && this.config.themeAliases) {
-            const themes = Object.keys(this.config.themeAliases);
-            // Also add themes currently present in profiles but missing from config (optional)
-            this.config.profiles.forEach(p => {
-              if (p.theme_key && !themes.includes(p.theme_key)) {
-                themes.push(p.theme_key);
-              }
-            });
-            return themes.sort();
-          }
-          return [];
-        }
       },
       async mounted() {
         await this.loadConfig();
