@@ -42,13 +42,14 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
     });
 
     if (videoIndex !== -1) {
-        // Author is usually immediately after VIDEO
+        // Structure: /ВИДЕО/Автор/Категория/Бренд/файл.mp4
+        // Author is immediately after VIDEO
         if (videoIndex + 1 < parts.length) {
             authorCandidate = parts[videoIndex + 1];
         }
-        // Category is after Author
-        if (videoIndex + 2 < parts.length) {
-            categoryCandidate = parts[videoIndex + 2];
+        // БРЕНД (theme) is after Author/Category - parts[videoIndex + 3]
+        if (videoIndex + 3 < parts.length) {
+            categoryCandidate = parts[videoIndex + 3]; // This is actually BRAND
         }
     } else if (parts.length >= 2) {
         // Fallback: Parent folder
@@ -183,6 +184,12 @@ app.get('/api/stats', async (req, res) => {
 
                 allFiles.forEach(f => {
                     const { theme, author } = extractMetadata(f.path, config.themeAliases);
+
+                    // Debug first few extractions
+                    if (allFiles.indexOf(f) < 3) {
+                        console.log(`[Stats DEBUG] File: ${f.path}`);
+                        console.log(`[Stats DEBUG]   → Author: "${author}", Brand: "${theme}"`);
+                    }
 
                     // Init Category
                     if (theme !== 'unknown') {
