@@ -203,27 +203,35 @@
             </div>
 
             <table class="w-full border-collapse">
-              <thead>
-                <tr class="bg-gray-100 text-left">
-                  <th class="p-2 border">Username (API ID)</th>
-                  <th class="p-2 border">Платформа</th>
-                  <th class="p-2 border">Ключ Темы (Alias)</th>
-                  <th class="p-2 border">Действие</th>
+              <thead class="bg-gray-100">
+                <tr>
+                  <th class="text-left p-3 border-b">Профиль</th>
+                  <th class="text-left p-3 border-b">Папка Категории</th>
+                  <th class="text-left p-3 border-b">Подключенные Платформы</th>
+                  <th class="text-center p-3 border-b w-24">Действия</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(profile, idx) in config.profiles" :key="idx" class="border-t">
+                <tr v-for="(profile, idx) in config.profiles" :key="idx" class="border-b hover:bg-gray-50">
                   <td class="p-2"><input v-model="profile.username" class="w-full border p-1 rounded"
-                      placeholder="API User ID"></td>
-                  <td class="p-2">
-                    <select v-model="profile.platform" class="w-full border p-1 rounded">
-                      <option value="instagram">Instagram</option>
-                      <option value="tiktok">TikTok</option>
-                      <option value="youtube">YouTube</option>
-                    </select>
-                  </td>
+                      placeholder="e.g. Toplash1"></td>
                   <td class="p-2"><input v-model="profile.theme_key" class="w-full border p-1 rounded"
-                      placeholder="Regex Key"></td>
+                      placeholder="напр: toplash, smart, pokypki..."></td>
+                  <td class="p-2">
+                    <div class="flex gap-2">
+                      <span v-for="platform in profile.platforms" :key="platform" class="px-2 py-1 text-xs rounded"
+                        :class="{
+                          'bg-pink-100 text-pink-700': platform === 'instagram',
+                          'bg-blue-100 text-blue-700': platform === 'tiktok',
+                          'bg-red-100 text-red-700': platform === 'youtube'
+                        }">
+                        {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
+                      </span>
+                      <span v-if="!profile.platforms || profile.platforms.length === 0" class="text-gray-400 text-sm">
+                        Нет подключенных
+                      </span>
+                    </div>
+                  </td>
                   <td class="p-2 text-center">
                     <button @click="removeProfile(idx)" class="text-red-500 hover:text-red-700">Удалить</button>
                   </td>
