@@ -43,8 +43,9 @@ export class YandexDiskClient {
                     params: {
                         path,
                         limit: currentLimit,
-                        preview_size: 'XXXL',
-                        media_type: 'video'
+                        media_type: 'video',
+                        // Request only fields we actually need - dramatically reduces response size!
+                        fields: 'items.name,items.path,items.md5,items.size,items.created,limit,offset'
                     },
                 });
 
