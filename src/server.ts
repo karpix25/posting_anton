@@ -76,21 +76,12 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
         console.log('  categoryCandidate:', categoryCandidate);
     }
 
+    // Use the RAW category name, not alias matching
+    // This shows actual folder names like "Beauty не трогать" instead of "toplash"
     let theme = 'unknown';
     if (categoryCandidate) {
-        const normCandidate = normalize(categoryCandidate);
-        theme = normCandidate; // Default to raw name
-
-        if (aliasesMap) {
-            for (const [key, list] of Object.entries(aliasesMap)) {
-                for (const alias of list) {
-                    if (normCandidate.includes(normalize(alias))) {
-                        theme = key;
-                        break;
-                    }
-                }
-            }
-        }
+        // Just normalize to lowercase for consistency, keep original name
+        theme = categoryCandidate.toLowerCase().trim();
     }
 
     // Normalize brand name
