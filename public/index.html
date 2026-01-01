@@ -419,64 +419,13 @@
               </div>
             </div>
           </div>
-
-
-          <!-- THEMES TAB -->
-          <div v-if="currentTab === 'themes'" class="bg-white rounded-lg shadow p-6">
-            <h2 class="text-2xl font-bold mb-4">Группы Категорий (Темы)</h2>
-
-            <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded">
-              <p class="text-sm text-blue-800">
-                <strong>💡 Для чего это нужно:</strong><br>
-                Здесь вы объединяете похожие названия папок в одну тему.<br>
-                Например: папки "toplash", "toplashbeauty", "бьюти" → группа <strong>"Toplash"</strong>
-              </p>
-            </div>
-
-            <p class="text-gray-600 mb-4">
-              Добавьте разные варианты написания для каждой темы, разделяя их запятыми.
-            </p>
-
-            <div class="space-y-6">
-              <div v-for="(aliases, key) in config.themeAliases" :key="key" class="bg-gray-50 p-4 rounded border">
-                <div class="flex justify-between items-center mb-2">
-                  <h3 class="font-bold text-lg capitalize text-blue-800">{{ key }}</h3>
-                  <button @click="deleteThemeKey(key)" class="text-red-400 hover:text-red-600 text-xs">Удалить
-                    группу</button>
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-400 mb-1">Синонимы (через запятую)</label>
-                  <input type="text" :value="aliases.join(', ')" @input="updateAliases(key, $event.target.value)"
-                    class="w-full p-2 border rounded focus:ring focus:ring-blue-200"
-                    placeholder="например: smart, smartbox...">
-                </div>
-              </div>
-
-              <!-- Add New Group -->
-              <div class="bg-white p-4 rounded border border-dashed border-gray-300">
-                <h4 class="font-semibold text-gray-600 mb-2">Добавить новую группу</h4>
-                <div class="flex gap-2">
-                  <input v-model="newThemeKey" placeholder="Имя группы (например: adidas)"
-                    class="flex-1 p-2 border rounded">
-                  <button @click="addThemeKey"
-                    class="bg-gray-200 hover:bg-gray-300 px-4 rounded text-gray-700">Добавить</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-6 p-4 bg-gray-50 rounded border">
-              <p class="text-sm text-gray-700">
-                <strong>📌 Как это работает:</strong><br>
-                1. Создайте группу (например "Smart")<br>
-                2. Добавьте синонимы: smart, смарт, smartbeauty<br>
-                3. В разделе "Профили" укажите <code class="bg-gray-200 px-1 rounded">theme_key = "smart"</code><br>
-                4. Профиль будет публиковать видео из всех папок с этими названиями
-              </p>
-            </div>
-          </div>
+          4. Профиль будет публиковать видео из всех папок с этими названиями
+          </p>
         </div>
       </div>
     </div>
+  </div>
+  </div>
   </div>
 
   <script>
@@ -491,8 +440,9 @@
             { id: 'stats', name: 'Аналитика' },
             { id: 'settings', name: 'Настройки' },
             { id: 'profiles', name: 'Профили' },
-            { id: 'clients', name: 'AI Промты' },
-            { id: 'themes', name: 'Темы и Группы' }
+            { id: 'settings', name: 'Настройки' },
+            { id: 'profiles', name: 'Профили' },
+            { id: 'clients', name: 'AI Клиенты' }
           ],
           config: {
             cronSchedule: '',
@@ -565,24 +515,11 @@
           }, {});
         },
         availableThemes() {
-          // 1. Start with actual Folders found on Yandex Disk
-          const themeSet = new Set(Object.keys(this.stats.byCategory || {}));
-
-          // 2. Add manual aliases (legacy support, or if folder is empty but config exists)
+          // Source strictly from config.themeAliases (which is auto-populated from Yandex Stats)
           if (this.config && this.config.themeAliases) {
-            Object.keys(this.config.themeAliases).forEach(k => themeSet.add(k));
+            return Object.keys(this.config.themeAliases).sort();
           }
-
-          // 3. Add themes currently used in profiles (to display correctly even if no folder exists)
-          if (this.config && this.config.profiles) {
-            this.config.profiles.forEach(p => {
-              if (p.theme_key) themeSet.add(p.theme_key);
-            });
-          }
-
-          // Convert to sorted array
-          // Filter out empty strings
-          return Array.from(themeSet).filter(Boolean).sort();
+          return [];
         }
       },
       methods: {
@@ -597,6 +534,27 @@
             const res = await fetch('/api/stats');
             if (res.ok) {
               this.stats = await res.json();
+
+              // Auto-persist found folders as themes
+              let changed = false;
+              if (!this.config.themeAliases) this.config.themeAliases = {};
+
+              const foundFolders = Object.keys(this.stats.byCategory || {});
+              foundFolders.forEach(folder => {
+                // Use exact folder name as key
+                // If not exists, add it.
+                // We don't delete old ones automatically to preserve history? 
+                // User said "upsert or add new". Cleaning old ones isn't explicitly requested but safe to keep.
+                if (!this.config.themeAliases[folder]) {
+                  this.config.themeAliases[folder] = [folder]; // Default alias is itself
+                  changed = true;
+                }
+              });
+
+              if (changed) {
+                this.saveConfig();
+                // No alert needed, just silent save
+              }
             }
           } catch (e) {
             console.error('Failed to load stats', e);
