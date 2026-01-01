@@ -82,7 +82,6 @@ async function main() {
                         if (!theme && apiProfile.username) {
                             const name = apiProfile.username.toLowerCase();
                             const aliasesMap = config.themeAliases || {};
-
                             // Try to match against config aliases first
                             for (const [canonical, aliases] of Object.entries(aliasesMap)) {
                                 if (aliases.some(alias => name.includes(alias))) {
@@ -92,10 +91,13 @@ async function main() {
                             }
                         }
 
+                        const detectedPlatforms = Object.keys(apiProfile.social_accounts || {}) as ('instagram' | 'tiktok' | 'youtube')[];
+
                         config.profiles.push({
                             username: apiProfile.username,
-                            platform: 'instagram',
-                            theme_key: theme
+                            theme_key: theme || apiProfile.username.toLowerCase(),
+                            platforms: detectedPlatforms.length > 0 ? detectedPlatforms : ['instagram'], // Default to instagram if no platforms detected
+                            last_posted: {}
                         });
                         addedCount++;
                     } else {
