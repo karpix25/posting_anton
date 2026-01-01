@@ -60,9 +60,9 @@ export class YandexDiskClient {
 
                 const items = response.data.items || [];
                 return items.map((item: any) => ({
-                    name: item.name,
-                    path: item.path,
-                    url: item.path, // Store path - download link fetched via getDownloadLink() when needed
+                    name: decodeURIComponent(item.name || ''),
+                    path: decodeURIComponent(item.path || ''),
+                    url: item.path, // Store original path for API calls
                     md5: item.md5,
                     size: item.size,
                     created: item.created,
