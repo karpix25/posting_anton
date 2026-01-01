@@ -222,50 +222,74 @@
                 <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
                 <span class="text-2xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
               </button>
-              <table v-if="showActiveProfiles" class="w-full border-collapse mb-6">
-                <thead class="bg-gray-100">
-                  <tr>
-                    <th class="text-left p-3 border-b w-12">Статус</th>
-                    <th class="text-left p-3 border-b">Профиль</th>
-                    <th class="text-left p-3 border-b">
-                      Категория/Тема
-                      <span class="text-xs font-normal text-gray-500">(название папки или группы)</span>
-                    </th>
-                    <th class="text-left p-3 border-b">Подключенные Платформы</th>
-                    <th class="text-center p-3 border-b w-32">Действия</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="profile in activeProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
-                    <td class="p-2 text-center text-2xl" :title="'Активный профиль'">🟢</td>
-                    <td class="p-2"><input v-model="profile.username" class="w-full border p-1 rounded"
-                        placeholder="e.g. Toplash1"></td>
-                    <td class="p-2"><input v-model="profile.theme_key" class="w-full border p-1 rounded"
-                        placeholder="напр: toplash, smart, pokypki..."></td>
-                    <td class="p-2">
-                      <div class="flex gap-2">
-                        <span v-for="platform in profile.platforms" :key="platform" class="px-2 py-1 text-xs rounded"
-                          :class="{
-                            'bg-pink-100 text-pink-700': platform === 'instagram',
-                            'bg-blue-100 text-blue-700': platform === 'tiktok',
-                            'bg-red-100 text-red-700': platform === 'youtube'
-                          }">
-                          {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
-                        </span>
-                        <span v-if="!profile.platforms || profile.platforms.length === 0" class="text-gray-400 text-sm">
-                          Нет подключенных
-                        </span>
-                      </div>
-                    </td>
-                    <td class="p-2 text-center">
-                      <button @click="toggleProfileEnabled(profile)"
-                        class="px-3 py-1 text-sm rounded bg-gray-200 hover:bg-gray-300">
-                        ⏸️ Деактивировать
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+
+              <div v-if="showActiveProfiles">
+                <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
+                  class="mb-4 border rounded overflow-hidden">
+                  <!-- Group Header -->
+                  <div @click="toggleGroup(theme)"
+                    class="bg-blue-50 p-3 font-semibold cursor-pointer flex justify-between items-center hover:bg-blue-100 transition-colors">
+                    <div class="flex items-center gap-2">
+                      <span>📁 {{ theme }}</span>
+                      <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                        }}</span>
+                    </div>
+                    <span class="text-gray-500">{{ expandedGroups[theme] ? '▼' : '▶' }}</span>
+                  </div>
+
+                  <!-- Group Content (Table) -->
+                  <div v-show="expandedGroups[theme]" class="border-t">
+                    <table class="w-full border-collapse">
+                      <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <tr>
+                          <th class="text-left p-3 w-12"></th>
+                          <th class="text-left p-3">Профиль</th>
+                          <th class="text-left p-3">Категория</th>
+                          <th class="text-left p-3">Платформы</th>
+                          <th class="text-center p-3 w-32">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                          <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
+                          <td class="p-2 font-medium">
+                            <input v-model="profile.username"
+                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
+                              placeholder="Username">
+                          </td>
+                          <td class="p-2">
+                            <input v-model="profile.theme_key"
+                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
+                              placeholder="Category">
+                          </td>
+                          <td class="p-2">
+                            <div class="flex gap-1 flex-wrap">
+                              <span v-for="platform in profile.platforms" :key="platform"
+                                class="px-2 py-0.5 text-xs rounded border" :class="{
+                                    'bg-pink-50 border-pink-200 text-pink-700': platform === 'instagram',
+                                    'bg-blue-50 border-blue-200 text-blue-700': platform === 'tiktok',
+                                    'bg-red-50 border-red-200 text-red-700': platform === 'youtube'
+                                  }">
+                                {{ platform }}
+                              </span>
+                              <span v-if="!profile.platforms || profile.platforms.length === 0"
+                                class="text-gray-400 text-xs italic">
+                                Нет платформ
+                              </span>
+                            </div>
+                          </td>
+                          <td class="p-2 text-center">
+                            <button @click="toggleProfileEnabled(profile)"
+                              class="px-3 py-1 text-xs rounded border hover:bg-gray-100 text-gray-600">
+                              ⏸️ Откл
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- Disabled Profiles -->
@@ -437,7 +461,8 @@
           foldersInput: '',
           newThemeKey: '',
           showActiveProfiles: true,    // Collapsible - active by default
-          showDisabledProfiles: false  // Collapsible - collapsed by default
+          showDisabledProfiles: false,  // Collapsible - collapsed by default
+          expandedGroups: {}, // For accordion view
         }
       },
       async mounted() {
@@ -456,11 +481,31 @@
           return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
         },
         activeProfiles() {
-          return (this.config.profiles || []).filter(p => p.enabled !== false);
+          if (!this.config.profiles) return [];
+          return this.config.profiles.filter(p => p.enabled !== false);
         },
         disabledProfiles() {
-          return (this.config.profiles || []).filter(p => p.enabled === false);
-        }
+          if (!this.config.profiles) return [];
+          return this.config.profiles.filter(p => p.enabled === false);
+        },
+        groupedActiveProfiles() {
+          const groups = {};
+          this.activeProfiles.forEach(p => {
+            // Create a consistent key
+            const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+            // Capitalize for display
+            const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+
+            if (!groups[displayKey]) groups[displayKey] = [];
+            groups[displayKey].push(p);
+          });
+
+          // Sort keys alphabetically
+          return Object.keys(groups).sort().reduce((acc, key) => {
+            acc[key] = groups[key];
+            return acc;
+          }, {});
+        },
       },
       methods: {
         getProfilesForCategory(categoryName) {
@@ -649,6 +694,13 @@
           if (confirm(`Удалить группу '${key}'?`)) {
             delete this.config.themeAliases[key];
           }
+        },
+        deleteTheme(key) {
+          // Alias for deleteThemeKey for backward compatibility if template calls it
+          this.deleteThemeKey(key);
+        },
+        toggleGroup(key) {
+          this.expandedGroups[key] = !this.expandedGroups[key];
         }
       }
     }).mount('#app');
