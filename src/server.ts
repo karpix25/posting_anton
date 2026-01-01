@@ -241,23 +241,22 @@ app.get('/api/stats', async (req, res) => {
                     if (author !== 'unknown') {
                         stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
                     }
-                });
-            }
-        }
-
+                    ```
         // Map profiles to categories based on theme_key
-        config.profiles.forEach(profile => {
-            const themeKey = profile.theme_key?.toLowerCase().trim();
-            if (themeKey && themeKey !== 'unknown') {
-                if (!stats.profilesByCategory[themeKey]) {
-                    stats.profilesByCategory[themeKey] = [];
+        if (config && config.profiles) {
+            config.profiles.forEach((profile: any) => {
+                const themeKey = profile.theme_key?.toLowerCase().trim();
+                if (themeKey && themeKey !== 'unknown') {
+                    if (!stats.profilesByCategory[themeKey]) {
+                        stats.profilesByCategory[themeKey] = [];
+                    }
+                    // Only add if enabled
+                    if (profile.enabled !== false) {
+                        stats.profilesByCategory[themeKey].push(profile.username);
+                    }
                 }
-                // Only add if enabled
-                if (profile.enabled !== false) {
-                    stats.profilesByCategory[themeKey].push(profile.username);
-                }
-            }
-        });
+            });
+        }
 
         // Update cache
         statsCache = stats;
@@ -279,7 +278,7 @@ app.get('/api/config', (req, res) => {
         const EXAMPLE_PATH = path.join(__dirname, '../config.example.json');
 
         if (fs.existsSync(EXAMPLE_PATH)) {
-            console.log(`[Server] config.json missing at ${CONFIG_PATH}, copying from ${EXAMPLE_PATH}`);
+            console.log(`[Server] config.json missing at ${ CONFIG_PATH }, copying from ${ EXAMPLE_PATH } `);
             fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH);
         } else {
             console.log('[Server] config.json missing, creating default');
@@ -386,7 +385,7 @@ app.get('/api/config', (req, res) => {
 
                     // Save migrated config
                     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-                    console.log(`[Server] ✅ Migration complete: ${config.profiles.length} profiles converted`);
+                    console.log(`[Server] ✅ Migration complete: ${ config.profiles.length } profiles converted`);
                 }
             }
 
@@ -456,7 +455,7 @@ app.post('/api/run', (req, res) => {
     });
 
     child.on('close', (code: number) => {
-        console.log(`Automation process exited with code ${code}`);
+        console.log(`Automation process exited with code ${ code } `);
     });
 
     // We can spawn a child process or import main() directly if it's async safe
@@ -478,11 +477,11 @@ app.get('/api/profiles/sync', async (req, res) => {
         const USER_PROFILES_API_URL = 'https://api.upload-post.com/api/uploadposts/users';
 
         const response = await axios.get(USER_PROFILES_API_URL, {
-            headers: { 'Authorization': `Apikey ${apiKey}` }
+            headers: { 'Authorization': `Apikey ${ apiKey } ` }
         });
 
         if (response.data.success) {
-            console.log(`[API] Sync success. Found ${response.data.profiles?.length || 0} profiles.`);
+            console.log(`[API] Sync success.Found ${ response.data.profiles?.length || 0 } profiles.`);
             res.json({ success: true, profiles: response.data.profiles });
         } else {
             console.error('[API] Sync failed:', response.data.message);
@@ -504,19 +503,19 @@ const server = app.listen(PORT, () => {
     console.log(`Dashboard running at http://localhost:${PORT}`);
 });
 
-// Graceful Shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Closing HTTP server...');
-    server.close(() => {
-        console.log('HTTP server closed.');
-        process.exit(0);
-    });
-});
+                // Graceful Shutdown
+                process.on('SIGTERM', () => {
+                    console.log('SIGTERM received. Closing HTTP server...');
+                    server.close(() => {
+                        console.log('HTTP server closed.');
+                        process.exit(0);
+                    });
+                });
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received. Shutting down...');
-    server.close(() => {
-        console.log('HTTP server closed.');
-        process.exit(0);
-    });
-});
+                process.on('SIGINT', () => {
+                    console.log('SIGINT received. Shutting down...');
+                    server.close(() => {
+                        console.log('HTTP server closed.');
+                        process.exit(0);
+                    });
+                });
