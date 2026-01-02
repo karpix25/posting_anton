@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "main": "dist/server.js",
   "scripts": {
-    "start": "ts-node src/automation/main.ts",
-    "cleanup": "ts-node src/scripts/cleanup.ts",
+    "start": "node dist/automation/main.js",
+    "cleanup": "node dist/scripts/cleanup.js",
     "build": "tsc",
     "dev": "ts-node src/server.js"
   },
