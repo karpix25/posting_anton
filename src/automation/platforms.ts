@@ -155,13 +155,32 @@ export class PlatformManager {
         // If video.url is a Yandex path (starts with "disk:/"), fetch real download URL
         if (post.video.url.startsWith('disk:/') && this.yandexClient) {
             console.log(`[PlatformManager] Fetching download URL for ${post.video.path}...`);
-            try {
-                const downloadUrl = await this.yandexClient.getDownloadLink(post.video.path);
-                post.video.url = downloadUrl;
-                console.log(`[PlatformManager] ✅ Got download URL (${downloadUrl.substring(0, 50)}...)`);
-            } catch (error) {
-                console.error(`[PlatformManager] ❌ Failed to get download URL:`, error);
-                throw new Error(`Cannot publish: failed to get download URL for ${post.video.path}`);
+
+            // Retry logic for network failures
+            const maxRetries = 3;
+            let lastError: any;
+
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    const downloadUrl = await this.yandexClient.getDownloadLink(post.video.path);
+                    post.video.url = downloadUrl;
+                    console.log(`[PlatformManager] ✅ Got download URL (${downloadUrl.substring(0, 50)}...)`);
+                    break; // Success, exit retry loop
+                } catch (error: any) {
+                    lastError = error;
+                    const isNetworkError = error.code === 'ETIMEDOUT' || error.code === 'ENETUNREACH' || error.code === 'ECONNRESET';
+
+                    if (attempt < maxRetries && isNetworkError) {
+                        const waitMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
+                        console.warn(`[PlatformManager] ⚠️ Network error (attempt ${attempt}/${maxRetries}), retrying in ${waitMs}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                    } else {
+                        console.error(`[PlatformManager] ❌ Failed to get download URL (attempt ${attempt}/${maxRetries}):`, error.message || error);
+                        if (attempt === maxRetries) {
+                            throw new Error(`Cannot publish: failed to get download URL for ${post.video.path} after ${maxRetries} attempts`);
+                        }
+                    }
+                }
             }
         }
 
