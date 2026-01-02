@@ -73,811 +73,822 @@
               </div>
             </div>
 
-            <div class="flex gap-4">
+            <button @click="triggerRun(false)"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold">
+              Запустить автоматизацию
+            </button>
+            <button @click="triggerRun(true)"
+              class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded text-lg font-semibold"
+              title="Only 1 post per platform (Safe Mode)">
               🧪 Тестовый запуск (1 пост)
-              </button>
-            </div>
+            </button>
+            <button @click="triggerCleanup"
+              class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded text-lg font-semibold"
+              title="Удалить все запланированные посты">
+              🗑️ Сброс
+            </button>
+          </div>
+        </div>
+
+        <!-- STATS TAB -->
+        <div v-if="currentTab === 'stats'">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
+            <button @click="loadStats(true)" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">🔄
+              Обновить</button>
           </div>
 
-          <!-- STATS TAB -->
-          <div v-if="currentTab === 'stats'">
-            <div class="flex justify-between items-center mb-6">
-              <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
-              <button @click="loadStats(true)" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">🔄
-                Обновить</button>
-            </div>
-
-            <div v-if="statsLoading" class="text-center py-8 text-gray-500">Сканирование Яндекс Диска...</div>
-            <div v-else>
-              <!-- Overview Cards -->
-              <div class="grid grid-cols-2 gap-6 mb-8">
-                <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 text-center">
-                  <div class="text-gray-500 mb-1">Всего доступно видео</div>
-                  <div class="text-4xl font-bold text-blue-700">{{ stats.totalVideos }}</div>
-                  <div class="text-xs text-blue-400 mt-2">Готовы к публикации (Yandex Disk)</div>
-                </div>
-                <div class="bg-green-50 p-6 rounded-lg border border-green-100 text-center">
-                  <div class="text-gray-500 mb-1">Опубликовано и удалено</div>
-                  <div class="text-4xl font-bold text-green-700">{{ stats.publishedCount }}</div>
-                  <div class="text-xs text-green-400 mt-2">За всё время</div>
-                </div>
+          <div v-if="statsLoading" class="text-center py-8 text-gray-500">Сканирование Яндекс Диска...</div>
+          <div v-else>
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-2 gap-6 mb-8">
+              <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 text-center">
+                <div class="text-gray-500 mb-1">Всего доступно видео</div>
+                <div class="text-4xl font-bold text-blue-700">{{ stats.totalVideos }}</div>
+                <div class="text-xs text-blue-400 mt-2">Готовы к публикации (Yandex Disk)</div>
               </div>
-
-              <!-- Statistics Summary Cards -->
-              <div v-if="statsSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
-                  <div class="text-sm opacity-90">Опубликовано</div>
-                  <div class="text-3xl font-bold mt-2">{{ statsSummary.published_total }}</div>
-                </div>
-                <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
-                  <div class="text-sm opacity-90">Удалено</div>
-                  <div class="text-3xl font-bold mt-2">{{ statsSummary.deleted_total }}</div>
-                </div>
-                <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white shadow-lg">
-                  <div class="text-sm opacity-90">Instagram</div>
-                  <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.instagram }}</div>
-                </div>
-                <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white shadow-lg">
-                  <div class="text-sm opacity-90">TikTok + YouTube</div>
-                  <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.tiktok +
-                    statsSummary.by_platform.youtube }}</div>
-                </div>
-              </div>
-
-              <!-- Categories Breakdown -->
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : 'Авторам' }}
-                </h3>
-
-                <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
-                  <button @click="statsViewMode = 'category'"
-                    :class="['px-3 py-1 rounded-md transition', statsViewMode === 'category' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
-                    По Темам
-                  </button>
-                  <button @click="statsViewMode = 'author'"
-                    :class="['px-3 py-1 rounded-md transition', statsViewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
-                    По Авторам
-                  </button>
-                </div>
-              </div>
-              <div class="bg-white border rounded-lg overflow-hidden">
-                <table class="w-full border-collapse mt-6">
-                  <thead class="bg-gray-100">
-                    <tr>
-                      <th class="text-left p-3 border-b">{{ statsHeader }}</th>
-                      <th class="text-left p-3 border-b">Профили</th>
-                      <th class="text-right p-3 border-b w-32">Количество</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="item in currentStatsList" :key="item.name" class="border-b hover:bg-gray-50">
-                      <td class="p-3 capitalize">{{ item.name }}</td>
-                      <td class="p-3">
-                        <div class="flex gap-2 flex-wrap">
-                          <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
-                            class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
-                            {{ profile }}
-                          </span>
-                          <span
-                            v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
-                            class="text-gray-400 text-sm italic">
-                            Нет профилей
-                          </span>
-                        </div>
-                      </td>
-                      <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
-                    </tr>
-                    <tr v-if="currentStatsList.length === 0">
-                      <td colspan="3" class="p-4 text-center text-gray-400">Категории не найдены.</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div class="bg-green-50 p-6 rounded-lg border border-green-100 text-center">
+                <div class="text-gray-500 mb-1">Опубликовано и удалено</div>
+                <div class="text-4xl font-bold text-green-700">{{ stats.publishedCount }}</div>
+                <div class="text-xs text-green-400 mt-2">За всё время</div>
               </div>
             </div>
-          </div>
 
-          <!-- SETTINGS TAB -->
-          <div v-if="currentTab === 'settings'">
-            <h2 class="text-2xl font-bold mb-4">Общие настройки</h2>
-
-            <div class="mb-4">
-              <label class="block mb-2 font-semibold">Расписание (Cron)</label>
-              <input v-model="config.cronSchedule" class="w-full border p-2 rounded" placeholder="0 8 * * *">
-            </div>
-
-            <div class="mb-4">
-              <label class="block mb-2 font-semibold">Папки Яндекс Диска (через запятую)</label>
-              <input v-model="foldersInput" @input="updateFolders" class="w-full border p-2 rounded">
-            </div>
-
-            <div class="mb-4">
-              <label class="block mb-2 font-semibold">На сколько дней планировать вперед?</label>
-              <input type="number" min="1" max="30" v-model.number="config.daysToGenerate"
-                class="w-full border p-2 rounded" placeholder="1">
-              <p class="text-xs text-gray-500 mt-1">1 = только сегодня. 7 = неделя.</p>
-            </div>
-
-            <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (постов в день на профиль)</h3>
-            <div class="grid grid-cols-3 gap-4">
-              <div>
-                <label>Instagram</label>
-                <input type="number" v-model="config.limits.instagram" class="w-full border p-2 rounded">
+            <!-- Statistics Summary Cards -->
+            <div v-if="statsSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Опубликовано</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.published_total }}</div>
               </div>
-              <div>
-                <label>TikTok</label>
-                <input type="number" v-model="config.limits.tiktok" class="w-full border p-2 rounded">
+              <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Удалено</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.deleted_total }}</div>
               </div>
-              <div>
-                <label>YouTube</label>
-                <input type="number" v-model="config.limits.youtube" class="w-full border p-2 rounded">
+              <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Instagram</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.instagram }}</div>
+              </div>
+              <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">TikTok + YouTube</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.tiktok +
+                  statsSummary.by_platform.youtube }}</div>
               </div>
             </div>
-          </div>
 
-          <!-- PROFILES TAB -->
-          <div v-if="currentTab === 'profiles'">
+            <!-- Categories Breakdown -->
             <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold">Социальные профили</h2>
-              <div class="space-x-2">
-                <button @click="syncProfiles"
-                  class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Синхронизировать
-                  (UploadPost)</button>
-                <button @click="fullResync"
-                  class="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 border border-red-300">
-                  ⚠️ Полный Сброс (Скачать заново)
+              <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : 'Авторам' }}
+              </h3>
+
+              <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
+                <button @click="statsViewMode = 'category'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'category' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Темам
                 </button>
-                <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
-                  профиль</button>
+                <button @click="statsViewMode = 'author'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Авторам
+                </button>
               </div>
             </div>
-
-            <!-- Active Profiles -->
-            <div v-if="activeProfiles.length > 0">
-              <div class="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded">
-                <button @click="showActiveProfiles = !showActiveProfiles"
-                  class="flex-1 text-left text-lg font-semibold hover:text-blue-600 flex items-center gap-2">
-                  <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
-                  <span class="text-xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
-                </button>
-                <div class="flex gap-2 text-sm" v-if="showActiveProfiles">
-                  <button @click="expandAllGroups(true)" class="text-blue-600 hover:underline">Развернуть все</button>
-                  <span class="text-gray-300">|</span>
-                  <button @click="expandAllGroups(false)" class="text-blue-600 hover:underline">Свернуть все</button>
-                </div>
-              </div>
-
-              <!-- BULK ACTIONS BAR (Floating / Top) -->
-              <div v-if="selectedProfiles.length > 0"
-                class="sticky top-0 z-10 bg-blue-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
-                <div class="font-bold">
-                  Выбрано профилей: {{ selectedProfiles.length }}
-                </div>
-                <div class="flex items-center gap-2">
-                  <span>Применить категорию ко всем:</span>
-                  <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
-                    <option disabled value="">Выберите...</option>
-                    <option v-for="theme in availableThemes" :key="theme" :value="theme">
-                      {{ theme }}
-                    </option>
-                  </select>
-                  <button @click="applyBulkCategory"
-                    class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
-                    Применить
-                  </button>
-
-                  <div class="border-l border-blue-400 pl-4 ml-2 flex items-center gap-2">
-                    <span class="text-sm font-medium">Активность:</span>
-                    <label class="inline-flex items-center cursor-pointer">
-                      <input type="checkbox"
-                        :checked="selectedProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)"
-                        @change="toggleBulkEnabled($event.target.checked)" class="sr-only peer">
-                      <div
-                        class="relative w-11 h-6 bg-blue-800 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400">
-                      </div>
-                      <span class="ml-2 text-sm font-medium text-blue-100"
-                        v-if="selectedProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)">ВКЛ</span>
-                      <span class="ml-2 text-sm font-medium text-blue-200" v-else>ВЫКЛ</span>
-                    </label>
-                  </div>
-                  <button @click="selectedProfiles = []" class="ml-4 text-sm text-blue-200 hover:text-white underline">
-                    Сбросить выделение
-                  </button>
-                </div>
-              </div>
-
-              <div v-if="showActiveProfiles">
-                <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
-                  class="mb-4 border rounded overflow-hidden">
-                  <!-- Group Header -->
-                  <div
-                    class="bg-blue-50 p-3 font-semibold flex justify-between items-center hover:bg-blue-100 transition-colors">
-                    <div class="flex items-center gap-3 flex-1">
-                      <input type="checkbox" :checked="profiles.every(p => selectedProfiles.includes(p.username))"
-                        @change="toggleGroupSelection(profiles, $event.target.checked)"
-                        class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
-
-                      <div @click="toggleGroup(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
-                        <span>📁 {{ theme }}</span>
-                        <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
-                          }}</span>
-                      </div>
-                    </div>
-                    <span @click="toggleGroup(theme)" class="text-gray-500 cursor-pointer p-2">{{ expandedGroups[theme]
-                      ? '▼' : '▶' }}</span>
-                  </div>
-
-                  <!-- Group Content (Table) -->
-                  <div v-show="expandedGroups[theme]" class="border-t">
-                    <table class="w-full border-collapse">
-                      <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
-                        <tr>
-                          <th class="p-3 w-8"><input type="checkbox"
-                              @change="toggleGroupSelection(profiles, $event.target.checked)"
-                              :checked="profiles.every(p => selectedProfiles.includes(p.username))"></th>
-                          <th class="text-left p-3 w-12"></th>
-                          <th class="text-left p-3">Профиль</th>
-                          <th class="text-left p-3">Категория</th>
-                          <th class="text-left p-3">Платформы</th>
-                          <th class="text-left p-3 w-20">Лимит</th>
-                          <th class="text-center p-3 w-32">Действия</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
-                          :class="{'bg-blue-50': selectedProfiles.includes(profile.username)}">
-                          <td class="p-3 text-center">
-                            <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
-                              @click="handleProfileSelect($event, profile, profiles)" class="w-4 h-4 cursor-pointer">
-                          </td>
-                          <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
-                          <td class="p-2 font-medium">
-                            <input v-model="profile.username"
-                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
-                              placeholder="Username">
-                          </td>
-                          <td class="p-2">
-                            <select v-model="profile.theme_key"
-                              class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
-                              <option value="" class="text-gray-400">Без категории</option>
-                              <option v-for="theme in availableThemes" :key="theme" :value="theme">
-                                {{ theme }}
-                              </option>
-                            </select>
-                          </td>
-                          <td class="p-2">
-                            <div class="flex gap-1 flex-wrap">
-                              <span v-for="platform in profile.platforms" :key="platform"
-                                class="px-2 py-0.5 text-xs rounded border" :class="{
-                                    'bg-pink-50 border-pink-200 text-pink-700': platform === 'instagram',
-                                    'bg-blue-50 border-blue-200 text-blue-700': platform === 'tiktok',
-                                    'bg-red-50 border-red-200 text-red-700': platform === 'youtube'
-                                  }">
-                                {{ platform }}
-                              </span>
-                              <span v-if="!profile.platforms || profile.platforms.length === 0"
-                                class="text-gray-400 text-xs italic">
-                                Нет платформ
-                              </span>
-                              <span v-if="!profile.platforms || profile.platforms.length === 0"
-                                class="text-gray-400 text-xs italic">
-                                Нет платформ
-                              </span>
-                            </div>
-                          </td>
-                          <td class="p-2">
-                            <input type="number" min="0" max="50" v-model.number="profile.limit" placeholder="-"
-                              class="w-16 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center"
-                              title="Лимит постов/день (пусто = глобальный)">
-                          </td>
-                          <td class="p-2 text-center">
-                            <label class="inline-flex items-center cursor-pointer">
-                              <input type="checkbox" :checked="profile.enabled !== false"
-                                @change="toggleProfileEnabled(profile)" class="sr-only peer">
-                              <div
-                                class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
-                              </div>
-                            </label>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Disabled Profiles -->
-            <div v-if="disabledProfiles.length > 0">
-              <button @click="showDisabledProfiles = !showDisabledProfiles"
-                class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded text-gray-600">
-                <span>⚫ Деактивированные ({{ disabledProfiles.length }})</span>
-                <span class="text-2xl">{{ showDisabledProfiles ? '▼' : '▶' }}</span>
-              </button>
-              <table v-if="showDisabledProfiles" class="w-full border-collapse opacity-60">
+            <div class="bg-white border rounded-lg overflow-hidden">
+              <table class="w-full border-collapse mt-6">
                 <thead class="bg-gray-100">
                   <tr>
-                    <th class="text-left p-3 border-b w-12">Статус</th>
-                    <th class="text-left p-3 border-b">Профиль</th>
-                    <th class="text-left p-3 border-b">
-                      Категория/Тема
-                      <span class="text-xs font-normal text-gray-500">(название папки или группы)</span>
-                    </th>
-                    <th class="text-left p-3 border-b">Подключенные Платформы</th>
-                    <th class="text-left p-3 border-b">Лимит</th>
-                    <th class="text-center p-3 border-b w-32">Действия</th>
+                    <th class="text-left p-3 border-b">{{ statsHeader }}</th>
+                    <th class="text-left p-3 border-b">Профили</th>
+                    <th class="text-right p-3 border-b w-32">Количество</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="profile in disabledProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
-                    <td class="p-2 text-center text-2xl" :title="'Деактивирован'">⚫</td>
-                    <td class="p-2 text-gray-500">{{ profile.username }}</td>
-                    <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
-                    <td class="p-2">
-                      <div class="flex gap-2">
-                        <span v-for="platform in profile.platforms" :key="platform"
-                          class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
-                          {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
+                  <tr v-for="item in currentStatsList" :key="item.name" class="border-b hover:bg-gray-50">
+                    <td class="p-3 capitalize">{{ item.name }}</td>
+                    <td class="p-3">
+                      <div class="flex gap-2 flex-wrap">
+                        <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
+                          class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
+                          {{ profile }}
+                        </span>
+                        <span
+                          v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
+                          class="text-gray-400 text-sm italic">
+                          Нет профилей
                         </span>
                       </div>
                     </td>
-                    <td class="p-2 text-gray-400 text-center">
-                      {{ profile.limit || '-' }}
-                    </td>
-                    <td class="p-2 text-center">
-                      <label class="inline-flex items-center cursor-pointer">
-                        <input type="checkbox" :checked="profile.enabled !== false"
-                          @change="toggleProfileEnabled(profile)" class="sr-only peer">
-                        <div
-                          class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
-                        </div>
-                      </label>
-                    </td>
+                    <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
+                  </tr>
+                  <tr v-if="currentStatsList.length === 0">
+                    <td colspan="3" class="p-4 text-center text-gray-400">Категории не найдены.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
+        </div>
 
-          <!-- CLIENTS TAB -->
-          <div v-if="currentTab === 'clients'">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold">Клиенты и Промты (AI)</h2>
-              <button @click="addClient" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
-                клиента</button>
+        <!-- SETTINGS TAB -->
+        <div v-if="currentTab === 'settings'">
+          <h2 class="text-2xl font-bold mb-4">Общие настройки</h2>
+
+          <div class="mb-4">
+            <label class="block mb-2 font-semibold">Расписание (Cron)</label>
+            <input v-model="config.cronSchedule" class="w-full border p-2 rounded" placeholder="0 8 * * *">
+          </div>
+
+          <div class="mb-4">
+            <label class="block mb-2 font-semibold">Папки Яндекс Диска (через запятую)</label>
+            <input v-model="foldersInput" @input="updateFolders" class="w-full border p-2 rounded">
+          </div>
+
+          <div class="mb-4">
+            <label class="block mb-2 font-semibold">На сколько дней планировать вперед?</label>
+            <input type="number" min="1" max="30" v-model.number="config.daysToGenerate"
+              class="w-full border p-2 rounded" placeholder="1">
+            <p class="text-xs text-gray-500 mt-1">1 = только сегодня. 7 = неделя.</p>
+          </div>
+
+          <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (постов в день на профиль)</h3>
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label>Instagram</label>
+              <input type="number" v-model="config.limits.instagram" class="w-full border p-2 rounded">
+            </div>
+            <div>
+              <label>TikTok</label>
+              <input type="number" v-model="config.limits.tiktok" class="w-full border p-2 rounded">
+            </div>
+            <div>
+              <label>YouTube</label>
+              <input type="number" v-model="config.limits.youtube" class="w-full border p-2 rounded">
+            </div>
+          </div>
+        </div>
+
+        <!-- PROFILES TAB -->
+        <div v-if="currentTab === 'profiles'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Социальные профили</h2>
+            <div class="space-x-2">
+              <button @click="syncProfiles"
+                class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Синхронизировать
+                (UploadPost)</button>
+              <button @click="fullResync"
+                class="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 border border-red-300">
+                ⚠️ Полный Сброс (Скачать заново)
+              </button>
+              <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+                профиль</button>
+            </div>
+          </div>
+
+          <!-- Active Profiles -->
+          <div v-if="activeProfiles.length > 0">
+            <div class="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded">
+              <button @click="showActiveProfiles = !showActiveProfiles"
+                class="flex-1 text-left text-lg font-semibold hover:text-blue-600 flex items-center gap-2">
+                <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
+                <span class="text-xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
+              </button>
+              <div class="flex gap-2 text-sm" v-if="showActiveProfiles">
+                <button @click="expandAllGroups(true)" class="text-blue-600 hover:underline">Развернуть все</button>
+                <span class="text-gray-300">|</span>
+                <button @click="expandAllGroups(false)" class="text-blue-600 hover:underline">Свернуть все</button>
+              </div>
             </div>
 
-            <div v-for="(client, idx) in config.clients" :key="idx" class="border p-4 rounded mb-4 bg-gray-50">
-              <div class="grid grid-cols-2 gap-4 mb-2">
-                <div>
-                  <label class="text-sm text-gray-500 block">Имя клиента</label>
-                  <input v-model="client.name" class="w-full border p-2 rounded">
-                </div>
-                <div>
-                  <label class="text-sm text-gray-500 block">Regex папки</label>
-                  <input v-model="client.regex" class="w-full border p-2 rounded font-mono">
-                </div>
+            <!-- BULK ACTIONS BAR (Floating / Top) -->
+            <div v-if="selectedProfiles.length > 0"
+              class="sticky top-0 z-10 bg-blue-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
+              <div class="font-bold">
+                Выбрано профилей: {{ selectedProfiles.length }}
               </div>
-              <div>
-                <label class="text-sm text-gray-500 block">AI Системный промт</label>
-                <textarea v-model="client.prompt" class="w-full border p-2 rounded h-32 font-mono text-sm"></textarea>
+              <div class="flex items-center gap-2">
+                <span>Применить категорию ко всем:</span>
+                <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
+                  <option disabled value="">Выберите...</option>
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                    {{ theme }}
+                  </option>
+                </select>
+                <button @click="applyBulkCategory"
+                  class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                  Применить
+                </button>
+
+                <div class="border-l border-blue-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Активность:</span>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                      :checked="selectedProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)"
+                      @change="toggleBulkEnabled($event.target.checked)" class="sr-only peer">
+                    <div
+                      class="relative w-11 h-6 bg-blue-800 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400">
+                    </div>
+                    <span class="ml-2 text-sm font-medium text-blue-100"
+                      v-if="selectedProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)">ВКЛ</span>
+                    <span class="ml-2 text-sm font-medium text-blue-200" v-else>ВЫКЛ</span>
+                  </label>
+                </div>
+                <button @click="selectedProfiles = []" class="ml-4 text-sm text-blue-200 hover:text-white underline">
+                  Сбросить выделение
+                </button>
               </div>
-              <div class="text-right mt-2">
-                <button @click="removeClient(idx)" class="text-red-500 text-sm hover:underline">Удалить клиента</button>
+            </div>
+
+            <div v-if="showActiveProfiles">
+              <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
+                class="mb-4 border rounded overflow-hidden">
+                <!-- Group Header -->
+                <div
+                  class="bg-blue-50 p-3 font-semibold flex justify-between items-center hover:bg-blue-100 transition-colors">
+                  <div class="flex items-center gap-3 flex-1">
+                    <input type="checkbox" :checked="profiles.every(p => selectedProfiles.includes(p.username))"
+                      @change="toggleGroupSelection(profiles, $event.target.checked)"
+                      class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
+
+                    <div @click="toggleGroup(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
+                      <span>📁 {{ theme }}</span>
+                      <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                        }}</span>
+                    </div>
+                  </div>
+                  <span @click="toggleGroup(theme)" class="text-gray-500 cursor-pointer p-2">{{ expandedGroups[theme]
+                    ? '▼' : '▶' }}</span>
+                </div>
+
+                <!-- Group Content (Table) -->
+                <div v-show="expandedGroups[theme]" class="border-t">
+                  <table class="w-full border-collapse">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th class="p-3 w-8"><input type="checkbox"
+                            @change="toggleGroupSelection(profiles, $event.target.checked)"
+                            :checked="profiles.every(p => selectedProfiles.includes(p.username))"></th>
+                        <th class="text-left p-3 w-12"></th>
+                        <th class="text-left p-3">Профиль</th>
+                        <th class="text-left p-3">Категория</th>
+                        <th class="text-left p-3">Платформы</th>
+                        <th class="text-left p-3 w-20">Лимит</th>
+                        <th class="text-center p-3 w-32">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
+                        :class="{'bg-blue-50': selectedProfiles.includes(profile.username)}">
+                        <td class="p-3 text-center">
+                          <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
+                            @click="handleProfileSelect($event, profile, profiles)" class="w-4 h-4 cursor-pointer">
+                        </td>
+                        <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
+                        <td class="p-2 font-medium">
+                          <input v-model="profile.username"
+                            class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
+                            placeholder="Username">
+                        </td>
+                        <td class="p-2">
+                          <select v-model="profile.theme_key"
+                            class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
+                            <option value="" class="text-gray-400">Без категории</option>
+                            <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                              {{ theme }}
+                            </option>
+                          </select>
+                        </td>
+                        <td class="p-2">
+                          <div class="flex gap-1 flex-wrap">
+                            <span v-for="platform in profile.platforms" :key="platform"
+                              class="px-2 py-0.5 text-xs rounded border" :class="{
+                                    'bg-pink-50 border-pink-200 text-pink-700': platform === 'instagram',
+                                    'bg-blue-50 border-blue-200 text-blue-700': platform === 'tiktok',
+                                    'bg-red-50 border-red-200 text-red-700': platform === 'youtube'
+                                  }">
+                              {{ platform }}
+                            </span>
+                            <span v-if="!profile.platforms || profile.platforms.length === 0"
+                              class="text-gray-400 text-xs italic">
+                              Нет платформ
+                            </span>
+                            <span v-if="!profile.platforms || profile.platforms.length === 0"
+                              class="text-gray-400 text-xs italic">
+                              Нет платформ
+                            </span>
+                          </div>
+                        </td>
+                        <td class="p-2">
+                          <input type="number" min="0" max="50" v-model.number="profile.limit" placeholder="-"
+                            class="w-16 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center"
+                            title="Лимит постов/день (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" :checked="profile.enabled !== false"
+                              @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                            <div
+                              class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                            </div>
+                          </label>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
 
+          <!-- Disabled Profiles -->
+          <div v-if="disabledProfiles.length > 0">
+            <button @click="showDisabledProfiles = !showDisabledProfiles"
+              class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded text-gray-600">
+              <span>⚫ Деактивированные ({{ disabledProfiles.length }})</span>
+              <span class="text-2xl">{{ showDisabledProfiles ? '▼' : '▶' }}</span>
+            </button>
+            <table v-if="showDisabledProfiles" class="w-full border-collapse opacity-60">
+              <thead class="bg-gray-100">
+                <tr>
+                  <th class="text-left p-3 border-b w-12">Статус</th>
+                  <th class="text-left p-3 border-b">Профиль</th>
+                  <th class="text-left p-3 border-b">
+                    Категория/Тема
+                    <span class="text-xs font-normal text-gray-500">(название папки или группы)</span>
+                  </th>
+                  <th class="text-left p-3 border-b">Подключенные Платформы</th>
+                  <th class="text-left p-3 border-b">Лимит</th>
+                  <th class="text-center p-3 border-b w-32">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="profile in disabledProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                  <td class="p-2 text-center text-2xl" :title="'Деактивирован'">⚫</td>
+                  <td class="p-2 text-gray-500">{{ profile.username }}</td>
+                  <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
+                  <td class="p-2">
+                    <div class="flex gap-2">
+                      <span v-for="platform in profile.platforms" :key="platform"
+                        class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                        {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="p-2 text-gray-400 text-center">
+                    {{ profile.limit || '-' }}
+                  </td>
+                  <td class="p-2 text-center">
+                    <label class="inline-flex items-center cursor-pointer">
+                      <input type="checkbox" :checked="profile.enabled !== false"
+                        @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                      <div
+                        class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                      </div>
+                    </label>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-          <script>
-            const { createApp } = Vue;
+        <!-- CLIENTS TAB -->
+        <div v-if="currentTab === 'clients'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Клиенты и Промты (AI)</h2>
+            <button @click="addClient" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+              клиента</button>
+          </div>
 
-            createApp({
-              data() {
-                return {
-                  currentTab: 'dashboard',
-                  tabs: [
-                    { id: 'dashboard', name: 'Дашборд' },
-                    { id: 'stats', name: 'Аналитика' },
-                    { id: 'settings', name: 'Настройки' },
-                    { id: 'profiles', name: 'Профили' },
-                    { id: 'clients', name: 'AI Клиенты' }
-                  ],
-                  config: {
-                    cronSchedule: '',
-                    daysToGenerate: 1, // Default for safety
-                    yandexFolders: [],
-                    limits: { instagram: 0, tiktok: 0, youtube: 0 },
-                    profiles: [],
-                    clients: []
-                  },
-                  stats: {
-                    totalVideos: 0,
-                    publishedCount: 0,
-                    byCategory: {},
-                    byAuthor: {},
-                    profilesByCategory: {}
-                  },
-                  statsSummary: null,
-                  loading: true,
-                  statsLoading: false,
-                  statsViewMode: 'category', // 'category' or 'author'
-                  foldersInput: '',
-                  newThemeKey: '',
-                  showActiveProfiles: true,    // Collapsible - active by default
-                  showDisabledProfiles: false,  // Collapsible - collapsed by default
-                  expandedGroups: {}, // For accordion view
-                  selectedProfiles: [], // List of selected usernames for bulk actions
-                  lastSelected: null, // For Shift+Click
-                  bulkThemeKey: '', // Model for bulk edit input
+          <div v-for="(client, idx) in config.clients" :key="idx" class="border p-4 rounded mb-4 bg-gray-50">
+            <div class="grid grid-cols-2 gap-4 mb-2">
+              <div>
+                <label class="text-sm text-gray-500 block">Имя клиента</label>
+                <input v-model="client.name" class="w-full border p-2 rounded">
+              </div>
+              <div>
+                <label class="text-sm text-gray-500 block">Regex папки</label>
+                <input v-model="client.regex" class="w-full border p-2 rounded font-mono">
+              </div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500 block">AI Системный промт</label>
+              <textarea v-model="client.prompt" class="w-full border p-2 rounded h-32 font-mono text-sm"></textarea>
+            </div>
+            <div class="text-right mt-2">
+              <button @click="removeClient(idx)" class="text-red-500 text-sm hover:underline">Удалить клиента</button>
+            </div>
+          </div>
+        </div>
+
+
+        <script>
+          const { createApp } = Vue;
+
+          createApp({
+            data() {
+              return {
+                currentTab: 'dashboard',
+                tabs: [
+                  { id: 'dashboard', name: 'Дашборд' },
+                  { id: 'stats', name: 'Аналитика' },
+                  { id: 'settings', name: 'Настройки' },
+                  { id: 'profiles', name: 'Профили' },
+                  { id: 'clients', name: 'AI Клиенты' }
+                ],
+                config: {
+                  cronSchedule: '',
+                  daysToGenerate: 1, // Default for safety
+                  yandexFolders: [],
+                  limits: { instagram: 0, tiktok: 0, youtube: 0 },
+                  profiles: [],
+                  clients: []
+                },
+                stats: {
+                  totalVideos: 0,
+                  publishedCount: 0,
+                  byCategory: {},
+                  byAuthor: {},
+                  profilesByCategory: {}
+                },
+                statsSummary: null,
+                loading: true,
+                statsLoading: false,
+                statsViewMode: 'category', // 'category' or 'author'
+                foldersInput: '',
+                newThemeKey: '',
+                showActiveProfiles: true,    // Collapsible - active by default
+                showDisabledProfiles: false,  // Collapsible - collapsed by default
+                expandedGroups: {}, // For accordion view
+                selectedProfiles: [], // List of selected usernames for bulk actions
+                lastSelected: null, // For Shift+Click
+                bulkThemeKey: '', // Model for bulk edit input
+              }
+            },
+            async mounted() {
+              await this.loadConfig();
+              this.loadStats();
+              this.fetchStatsSummary();
+            },
+            computed: {
+              currentStatsList() {
+                const source = this.statsViewMode === 'author' ? (this.stats.byAuthor || {}) : (this.stats.byCategory || {});
+                return Object.entries(source)
+                  .map(([name, count]) => ({ name, count }))
+                  .sort((a, b) => a.name.localeCompare(b.name));
+              },
+              statsHeader() {
+                return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
+              },
+              activeProfiles() {
+                if (!this.config.profiles) return [];
+                return this.config.profiles.filter(p => p.enabled !== false);
+              },
+              disabledProfiles() {
+                if (!this.config.profiles) return [];
+                return this.config.profiles.filter(p => p.enabled === false);
+              },
+              groupedActiveProfiles() {
+                const groups = {};
+                this.activeProfiles.forEach(p => {
+                  // Create a consistent key
+                  const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+                  // Capitalize for display
+                  const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+
+                  if (!groups[displayKey]) groups[displayKey] = [];
+                  groups[displayKey].push(p);
+                });
+
+                // Sort keys alphabetically
+                return Object.keys(groups).sort().reduce((acc, key) => {
+                  acc[key] = groups[key];
+                  return acc;
+                }, {});
+              },
+              availableThemes() {
+                // Source strictly from config.themeAliases (which is auto-populated from Yandex Stats)
+                if (this.config && this.config.themeAliases) {
+                  return Object.keys(this.config.themeAliases).sort();
                 }
+                return [];
+              }
+            },
+            methods: {
+              getProfilesForCategory(categoryName) {
+                // keys in profilesByCategory are always lowercase/trimmed
+                const key = categoryName.toLowerCase().trim();
+                return this.stats.profilesByCategory[key] || [];
               },
-              async mounted() {
-                await this.loadConfig();
-                this.loadStats();
-                this.fetchStatsSummary();
-              },
-              computed: {
-                currentStatsList() {
-                  const source = this.statsViewMode === 'author' ? (this.stats.byAuthor || {}) : (this.stats.byCategory || {});
-                  return Object.entries(source)
-                    .map(([name, count]) => ({ name, count }))
-                    .sort((a, b) => a.name.localeCompare(b.name));
-                },
-                statsHeader() {
-                  return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
-                },
-                activeProfiles() {
-                  if (!this.config.profiles) return [];
-                  return this.config.profiles.filter(p => p.enabled !== false);
-                },
-                disabledProfiles() {
-                  if (!this.config.profiles) return [];
-                  return this.config.profiles.filter(p => p.enabled === false);
-                },
-                groupedActiveProfiles() {
-                  const groups = {};
-                  this.activeProfiles.forEach(p => {
-                    // Create a consistent key
-                    const key = (p.theme_key || 'Без темы').toLowerCase().trim();
-                    // Capitalize for display
-                    const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+              async loadStats() {
+                this.statsLoading = true;
+                try {
+                  const res = await fetch('/api/stats');
+                  if (res.ok) {
+                    this.stats = await res.json();
 
-                    if (!groups[displayKey]) groups[displayKey] = [];
-                    groups[displayKey].push(p);
-                  });
+                    // Auto-persist found folders as themes
+                    let changed = false;
+                    if (!this.config.themeAliases) this.config.themeAliases = {};
 
-                  // Sort keys alphabetically
-                  return Object.keys(groups).sort().reduce((acc, key) => {
-                    acc[key] = groups[key];
-                    return acc;
-                  }, {});
-                },
-                availableThemes() {
-                  // Source strictly from config.themeAliases (which is auto-populated from Yandex Stats)
-                  if (this.config && this.config.themeAliases) {
-                    return Object.keys(this.config.themeAliases).sort();
-                  }
-                  return [];
-                }
-              },
-              methods: {
-                getProfilesForCategory(categoryName) {
-                  // keys in profilesByCategory are always lowercase/trimmed
-                  const key = categoryName.toLowerCase().trim();
-                  return this.stats.profilesByCategory[key] || [];
-                },
-                async loadStats() {
-                  this.statsLoading = true;
-                  try {
-                    const res = await fetch('/api/stats');
-                    if (res.ok) {
-                      this.stats = await res.json();
-
-                      // Auto-persist found folders as themes
-                      let changed = false;
-                      if (!this.config.themeAliases) this.config.themeAliases = {};
-
-                      const foundFolders = Object.keys(this.stats.byCategory || {});
-                      foundFolders.forEach(folder => {
-                        // Use exact folder name as key
-                        // If not exists, add it.
-                        // We don't delete old ones automatically to preserve history? 
-                        // User said "upsert or add new". Cleaning old ones isn't explicitly requested but safe to keep.
-                        if (!this.config.themeAliases[folder]) {
-                          this.config.themeAliases[folder] = [folder]; // Default alias is itself
-                          changed = true;
-                        }
-                      });
-
-                      if (changed) {
-                        this.saveConfig();
-                        // No alert needed, just silent save
+                    const foundFolders = Object.keys(this.stats.byCategory || {});
+                    foundFolders.forEach(folder => {
+                      // Use exact folder name as key
+                      // If not exists, add it.
+                      // We don't delete old ones automatically to preserve history? 
+                      // User said "upsert or add new". Cleaning old ones isn't explicitly requested but safe to keep.
+                      if (!this.config.themeAliases[folder]) {
+                        this.config.themeAliases[folder] = [folder]; // Default alias is itself
+                        changed = true;
                       }
-                    }
-                  } catch (e) {
-                    console.error('Failed to load stats', e);
-                  } finally {
-                    this.statsLoading = false;
-                  }
-                },
-                async fetchStatsSummary() {
-                  try {
-                    const res = await fetch('/api/stats/summary');
-                    const data = await res.json();
-                    if (data.success) {
-                      this.statsSummary = data.stats;
-                    }
-                  } catch (error) {
-                    console.error('Failed to fetch stats summary:', error);
-                  }
-                },
-                async loadConfig() {
-                  this.loading = true;
-                  try {
-                    const res = await fetch('/api/config');
-                    if (!res.ok) {
-                      throw new Error(`Server returned ${res.status}`);
-                    }
-                    const data = await res.json();
-                    // Ensure structure and merge with defaults
-                    this.config = {
-                      profiles: [],
-                      clients: [],
-                      limits: { instagram: 10, tiktok: 10, youtube: 2 },
-                      yandexFolders: [],
-                      ...this.config, // Keep existing if any? No, we want server data.
-                      ...data // Overwrite with server data
-                    };
-
-                    // Explicitly ensure deep objects if missing from server data
-                    if (!this.config.profiles) this.config.profiles = [];
-                    if (!this.config.clients) this.config.clients = [];
-                    if (!this.config.limits) this.config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
-
-                    this.foldersInput = (this.config.yandexFolders || []).join(', ');
-                  } catch (e) {
-                    console.error('[UI] Failed to load config:', e);
-                    // alert('Failed to load config (using defaults)');
-                    // Keep default config structure
-                  } finally {
-                    this.loading = false;
-                  }
-                },
-                async saveConfig() {
-                  try {
-                    await fetch('/api/config', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(this.config)
                     });
-                    alert('Сохранено успешно!');
-                  } catch (e) {
-                    alert('Ошибка сохранения');
-                  }
-                },
-                async triggerRun(testMode = false) {
-                  // Ensure current state is saved before running
-                  await this.saveConfig();
 
-                  if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
-                  try {
-                    await fetch('/api/run', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ testMode })
-                    });
-                    alert('Автоматизация запущена в фоне. Проверьте логи сервера.');
-                  } catch (e) {
-                    alert('Не удалось запустить процесс');
-                  }
-                },
-                async syncProfiles() {
-                  console.log('[UI] Sync button clicked');
-                  try {
-                    const res = await fetch('/api/profiles/sync');
-                    const data = await res.json();
-                    console.log('[UI] Sync response:', data);
-
-                    if (data.success && data.profiles) {
-                      let addedCount = 0;
-
-                      data.profiles.forEach(apiProfile => {
-                        // Find existing profile by username
-                        const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
-
-                        // Get platforms from API (keys of social_accounts where value is not empty)
-                        const platforms = Object.entries(apiProfile.social_accounts || {})
-                          .filter(([_, value]) => !!value) // Filter out empty strings/nulls
-                          .map(([key]) => key);
-
-                        if (platforms.length === 0) platforms.push('instagram'); // Default fallback
-
-                        if (existingProfile) {
-                          // Update existing profile's platforms if needed (merge or overwrite)
-                          // We overwrite to ensure it reflects current state
-                          existingProfile.platforms = platforms;
-                        } else {
-                          // Add new profile
-                          this.config.profiles.push({
-                            username: apiProfile.username,
-                            theme_key: '',
-                            platforms: platforms,
-                            enabled: true
-                          });
-                          addedCount++;
-                        }
-                      });
-
-                      alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
+                    if (changed) {
                       this.saveConfig();
-                    } else {
-                      console.error('[UI] Sync failed:', data.error);
-                      alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
+                      // No alert needed, just silent save
                     }
-                  } catch (e) {
-                    console.error('[UI] Fetch error:', e);
-                    alert('Не удалось синхронизировать профили (см. консоль)');
                   }
-                },
-                async fullResync() {
-                  if (!confirm("ВНИМАНИЕ! \nЭто удалит все текущие настройки категорий (Smart, Toplash и др.) для профилей.\nСписок профилей будет загружен начисто из UploadPost.\n\nВы уверены?")) return;
-
-                  this.config.profiles = []; // Clear all local profiles
-                  await this.syncProfiles(); // Fetch fresh
-                  this.saveConfig(); // Save the new clean state
-                },
-                updateFolders() {
-                  this.config.yandexFolders = this.foldersInput.split(',').map(s => s.trim()).filter(Boolean);
-                },
-                addProfile() {
-                  this.config.profiles.push({
-                    username: '',
-                    theme_key: '',
-                    platforms: [] // Start with empty array, user will check boxes
-                  });
-                },
-                toggleProfileEnabled(profile) {
-                  // Toggle between enabled=true and enabled=false
-                  profile.enabled = profile.enabled === false ? true : false;
-                  this.saveConfig();
-                },
-                removeProfile(idx) {
-                  this.config.profiles.splice(idx, 1);
-                },
-                toggleBulkEnabled(enable) {
-                  this.selectedProfiles.forEach(username => {
-                    const profile = this.config.profiles.find(p => p.username === username);
-                    if (profile) {
-                      profile.enabled = enable;
-                    }
-                  });
-                  this.saveConfig();
-                  this.selectedProfiles = [];
-                  // No alert, just UI update
-                },
-                addClient() {
-                  this.config.clients.push({ name: 'New Client', regex: '', prompt: '' });
-                },
-                removeClient(idx) {
-                  this.config.clients.splice(idx, 1);
-                },
-                updateAliases(key, value) {
-                  const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
-                  this.config.themeAliases[key] = arr;
-                },
-                addThemeKey() {
-                  if (!this.newThemeKey) return;
-                  const key = this.newThemeKey.toLowerCase().trim();
-                  if (this.config.themeAliases[key]) {
-                    alert('Группа уже существует!');
-                    return;
+                } catch (e) {
+                  console.error('Failed to load stats', e);
+                } finally {
+                  this.statsLoading = false;
+                }
+              },
+              async fetchStatsSummary() {
+                try {
+                  const res = await fetch('/api/stats/summary');
+                  const data = await res.json();
+                  if (data.success) {
+                    this.statsSummary = data.stats;
                   }
-                  this.config.themeAliases[key] = [key];
-                  this.newThemeKey = '';
-                },
-                deleteThemeKey(key) {
-                  if (confirm(`Удалить группу '${key}'?`)) {
-                    delete this.config.themeAliases[key];
+                } catch (error) {
+                  console.error('Failed to fetch stats summary:', error);
+                }
+              },
+              async loadConfig() {
+                this.loading = true;
+                try {
+                  const res = await fetch('/api/config');
+                  if (!res.ok) {
+                    throw new Error(`Server returned ${res.status}`);
                   }
-                },
-                deleteTheme(key) {
-                  // Alias for deleteThemeKey for backward compatibility if template calls it
-                  this.deleteThemeKey(key);
-                },
-                toggleGroup(key) {
-                  this.expandedGroups[key] = !this.expandedGroups[key];
-                },
-                expandAllGroups(expand) {
-                  const keys = Object.keys(this.groupedActiveProfiles);
-                  keys.forEach(key => {
-                    this.expandedGroups[key] = expand;
+                  const data = await res.json();
+                  // Ensure structure and merge with defaults
+                  this.config = {
+                    profiles: [],
+                    clients: [],
+                    limits: { instagram: 10, tiktok: 10, youtube: 2 },
+                    yandexFolders: [],
+                    ...this.config, // Keep existing if any? No, we want server data.
+                    ...data // Overwrite with server data
+                  };
+
+                  // Explicitly ensure deep objects if missing from server data
+                  if (!this.config.profiles) this.config.profiles = [];
+                  if (!this.config.clients) this.config.clients = [];
+                  if (!this.config.limits) this.config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
+
+                  this.foldersInput = (this.config.yandexFolders || []).join(', ');
+                } catch (e) {
+                  console.error('[UI] Failed to load config:', e);
+                  // alert('Failed to load config (using defaults)');
+                  // Keep default config structure
+                } finally {
+                  this.loading = false;
+                }
+              },
+              async saveConfig() {
+                try {
+                  await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.config)
                   });
-                },
-                handleProfileSelect(event, profile, groupProfiles) {
-                  const username = profile.username;
-                  const isSelected = this.selectedProfiles.includes(username);
-                  // Standard checkbox behavior toggles value. 
-                  // But since we use @click, we need to know what the NEW state will be.
-                  // If it was selected, it will become unselected.
-                  // Note: browser checkbox toggles visually on click immediately.
-                  // We just need to sync our array.
+                  alert('Сохранено успешно!');
+                } catch (e) {
+                  alert('Ошибка сохранения');
+                }
+              },
+              async triggerRun(testMode = false) {
+                // Ensure current state is saved before running
+                await this.saveConfig();
 
-                  let targetState = !isSelected;
+                if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
+                try {
+                  await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ testMode })
+                  });
+                  alert('Автоматизация запущена в фоне. Проверьте логи сервера.');
+                } catch (e) {
+                  alert('Не удалось запустить процесс');
+                }
+              },
+              async syncProfiles() {
+                console.log('[UI] Sync button clicked');
+                try {
+                  const res = await fetch('/api/profiles/sync');
+                  const data = await res.json();
+                  console.log('[UI] Sync response:', data);
 
-                  // Use event.shiftKey to detect range selection
-                  if (event.shiftKey && this.lastSelected) {
-                    const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelected);
-                    const currIdx = groupProfiles.findIndex(p => p.username === username);
+                  if (data.success && data.profiles) {
+                    let addedCount = 0;
 
-                    if (lastIdx !== -1 && currIdx !== -1) {
-                      const start = Math.min(lastIdx, currIdx);
-                      const end = Math.max(lastIdx, currIdx);
+                    data.profiles.forEach(apiProfile => {
+                      // Find existing profile by username
+                      const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
 
-                      const range = groupProfiles.slice(start, end + 1);
+                      // Get platforms from API (keys of social_accounts where value is not empty)
+                      const platforms = Object.entries(apiProfile.social_accounts || {})
+                        .filter(([_, value]) => !!value) // Filter out empty strings/nulls
+                        .map(([key]) => key);
 
-                      range.forEach(p => {
-                        const idx = this.selectedProfiles.indexOf(p.username);
-                        if (targetState && idx === -1) {
-                          this.selectedProfiles.push(p.username);
-                        } else if (!targetState && idx !== -1) {
-                          this.selectedProfiles.splice(idx, 1);
-                        }
-                      });
-                    } else {
-                      this.toggleSelectionSingle(username, targetState);
-                    }
+                      if (platforms.length === 0) platforms.push('instagram'); // Default fallback
+
+                      if (existingProfile) {
+                        // Update existing profile's platforms if needed (merge or overwrite)
+                        // We overwrite to ensure it reflects current state
+                        existingProfile.platforms = platforms;
+                      } else {
+                        // Add new profile
+                        this.config.profiles.push({
+                          username: apiProfile.username,
+                          theme_key: '',
+                          platforms: platforms,
+                          enabled: true
+                        });
+                        addedCount++;
+                      }
+                    });
+
+                    alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
+                    this.saveConfig();
+                  } else {
+                    console.error('[UI] Sync failed:', data.error);
+                    alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
+                  }
+                } catch (e) {
+                  console.error('[UI] Fetch error:', e);
+                  alert('Не удалось синхронизировать профили (см. консоль)');
+                }
+              },
+              async fullResync() {
+                if (!confirm("ВНИМАНИЕ! \nЭто удалит все текущие настройки категорий (Smart, Toplash и др.) для профилей.\nСписок профилей будет загружен начисто из UploadPost.\n\nВы уверены?")) return;
+
+                this.config.profiles = []; // Clear all local profiles
+                await this.syncProfiles(); // Fetch fresh
+                this.saveConfig(); // Save the new clean state
+              },
+              updateFolders() {
+                this.config.yandexFolders = this.foldersInput.split(',').map(s => s.trim()).filter(Boolean);
+              },
+              addProfile() {
+                this.config.profiles.push({
+                  username: '',
+                  theme_key: '',
+                  platforms: [] // Start with empty array, user will check boxes
+                });
+              },
+              toggleProfileEnabled(profile) {
+                // Toggle between enabled=true and enabled=false
+                profile.enabled = profile.enabled === false ? true : false;
+                this.saveConfig();
+              },
+              removeProfile(idx) {
+                this.config.profiles.splice(idx, 1);
+              },
+              toggleBulkEnabled(enable) {
+                this.selectedProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.enabled = enable;
+                  }
+                });
+                this.saveConfig();
+                this.selectedProfiles = [];
+                // No alert, just UI update
+              },
+              addClient() {
+                this.config.clients.push({ name: 'New Client', regex: '', prompt: '' });
+              },
+              removeClient(idx) {
+                this.config.clients.splice(idx, 1);
+              },
+              updateAliases(key, value) {
+                const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                this.config.themeAliases[key] = arr;
+              },
+              addThemeKey() {
+                if (!this.newThemeKey) return;
+                const key = this.newThemeKey.toLowerCase().trim();
+                if (this.config.themeAliases[key]) {
+                  alert('Группа уже существует!');
+                  return;
+                }
+                this.config.themeAliases[key] = [key];
+                this.newThemeKey = '';
+              },
+              deleteThemeKey(key) {
+                if (confirm(`Удалить группу '${key}'?`)) {
+                  delete this.config.themeAliases[key];
+                }
+              },
+              deleteTheme(key) {
+                // Alias for deleteThemeKey for backward compatibility if template calls it
+                this.deleteThemeKey(key);
+              },
+              toggleGroup(key) {
+                this.expandedGroups[key] = !this.expandedGroups[key];
+              },
+              expandAllGroups(expand) {
+                const keys = Object.keys(this.groupedActiveProfiles);
+                keys.forEach(key => {
+                  this.expandedGroups[key] = expand;
+                });
+              },
+              handleProfileSelect(event, profile, groupProfiles) {
+                const username = profile.username;
+                const isSelected = this.selectedProfiles.includes(username);
+                // Standard checkbox behavior toggles value. 
+                // But since we use @click, we need to know what the NEW state will be.
+                // If it was selected, it will become unselected.
+                // Note: browser checkbox toggles visually on click immediately.
+                // We just need to sync our array.
+
+                let targetState = !isSelected;
+
+                // Use event.shiftKey to detect range selection
+                if (event.shiftKey && this.lastSelected) {
+                  const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelected);
+                  const currIdx = groupProfiles.findIndex(p => p.username === username);
+
+                  if (lastIdx !== -1 && currIdx !== -1) {
+                    const start = Math.min(lastIdx, currIdx);
+                    const end = Math.max(lastIdx, currIdx);
+
+                    const range = groupProfiles.slice(start, end + 1);
+
+                    range.forEach(p => {
+                      const idx = this.selectedProfiles.indexOf(p.username);
+                      if (targetState && idx === -1) {
+                        this.selectedProfiles.push(p.username);
+                      } else if (!targetState && idx !== -1) {
+                        this.selectedProfiles.splice(idx, 1);
+                      }
+                    });
                   } else {
                     this.toggleSelectionSingle(username, targetState);
                   }
+                } else {
+                  this.toggleSelectionSingle(username, targetState);
+                }
 
-                  this.lastSelected = username;
-                },
-                toggleSelectionSingle(username, state) {
-                  const idx = this.selectedProfiles.indexOf(username);
-                  if (state && idx === -1) {
-                    this.selectedProfiles.push(username);
-                  } else if (!state && idx !== -1) {
-                    this.selectedProfiles.splice(idx, 1);
-                  }
-                },
-                toggleGroupSelection(profiles, checked) {
-                  if (checked) {
-                    // Add all profiles in group to selection
-                    profiles.forEach(p => {
-                      if (!this.selectedProfiles.includes(p.username)) {
-                        this.selectedProfiles.push(p.username);
-                      }
-                    });
-                  } else {
-                    // Remove all profiles in group from selection
-                    profiles.forEach(p => {
-                      const idx = this.selectedProfiles.indexOf(p.username);
-                      if (idx > -1) this.selectedProfiles.splice(idx, 1);
-                    });
-                  }
-                },
-                applyBulkCategory() {
-                  if (!this.bulkThemeKey) return alert('Введите название категории!');
-                  if (this.selectedProfiles.length === 0) return alert('Выберите профили!');
-
-                  const category = this.bulkThemeKey.toLowerCase().trim();
-
-                  let count = 0;
-                  this.config.profiles.forEach(p => {
-                    if (this.selectedProfiles.includes(p.username)) {
-                      p.theme_key = category;
-                      count++;
+                this.lastSelected = username;
+              },
+              toggleSelectionSingle(username, state) {
+                const idx = this.selectedProfiles.indexOf(username);
+                if (state && idx === -1) {
+                  this.selectedProfiles.push(username);
+                } else if (!state && idx !== -1) {
+                  this.selectedProfiles.splice(idx, 1);
+                }
+              },
+              toggleGroupSelection(profiles, checked) {
+                if (checked) {
+                  // Add all profiles in group to selection
+                  profiles.forEach(p => {
+                    if (!this.selectedProfiles.includes(p.username)) {
+                      this.selectedProfiles.push(p.username);
                     }
                   });
-
-                  this.saveConfig();
-                  this.selectedProfiles = []; // Clear selection
-                  this.bulkThemeKey = '';
-                  alert(`Успешно обновлено профилей: ${count}`);
+                } else {
+                  // Remove all profiles in group from selection
+                  profiles.forEach(p => {
+                    const idx = this.selectedProfiles.indexOf(p.username);
+                    if (idx > -1) this.selectedProfiles.splice(idx, 1);
+                  });
                 }
+              },
+              applyBulkCategory() {
+                if (!this.bulkThemeKey) return alert('Введите название категории!');
+                if (this.selectedProfiles.length === 0) return alert('Выберите профили!');
+
+                const category = this.bulkThemeKey.toLowerCase().trim();
+
+                let count = 0;
+                this.config.profiles.forEach(p => {
+                  if (this.selectedProfiles.includes(p.username)) {
+                    p.theme_key = category;
+                    count++;
+                  }
+                });
+
+                this.saveConfig();
+                this.selectedProfiles = []; // Clear selection
+                this.bulkThemeKey = '';
+                alert(`Успешно обновлено профилей: ${count}`);
               }
-            }).mount('#app');
-          </script>
+            }
+          }).mount('#app');
+        </script>
 </body>
 
 </html>
