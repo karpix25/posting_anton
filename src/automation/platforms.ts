@@ -52,12 +52,28 @@ export class UploadPostClient {
             const response = await axios.get('https://api.upload-post.com/api/uploadposts/schedule', {
                 headers: { 'Authorization': `Apikey ${this.apiKey}` }
             });
-            // According to docs, success response isn't explicitly detailed for list,
-            // Assuming standard { success: true, schedule: [...] } or just array?
-            // User only provided DELETE docs. Assuming likely list format.
-            // Let's assume response.data.schedule or response.data directly if array.
-            // Common pattern for this API seems to be { success: true, ...data }
-            return response.data.schedule || response.data || [];
+
+            // Debug: Log the actual response structure
+            console.log('[UploadPost] GET /schedule response:', JSON.stringify(response.data, null, 2));
+
+            // Try different possible response formats
+            if (Array.isArray(response.data)) {
+                console.log(`[UploadPost] Response is array with ${response.data.length} items`);
+                return response.data;
+            }
+
+            if (response.data.scheduled_posts) {
+                console.log(`[UploadPost] Found scheduled_posts array with ${response.data.scheduled_posts.length} items`);
+                return response.data.scheduled_posts;
+            }
+
+            if (response.data.schedule) {
+                console.log(`[UploadPost] Found schedule array with ${response.data.schedule.length} items`);
+                return response.data.schedule;
+            }
+
+            console.warn('[UploadPost] Unknown response format, returning empty array');
+            return [];
         } catch (error: any) {
             console.error(`[UploadPost] Error fetching schedule:`, error.response?.data || error.message);
             return [];
