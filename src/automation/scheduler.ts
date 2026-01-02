@@ -92,7 +92,11 @@ export class ContentScheduler {
                     // Check if we need posts for any of this profile's platforms
                     let needsPost = false;
                     for (const platform of profile.platforms) {
-                        if (currentCounts[platform] < this.config.limits[platform]) {
+                        const limitForPl = (profile.limit !== undefined && profile.limit !== null)
+                            ? profile.limit
+                            : (this.config.limits[platform] || 1);
+
+                        if (currentCounts[platform] < limitForPl) {
                             needsPost = true;
                             break;
                         }
@@ -140,7 +144,10 @@ export class ContentScheduler {
                     // We need to check if ANY platform still needs posts.
                     let activeParams = false;
                     for (const pl of profile.platforms) {
-                        const limitForPl = profile.limit || this.config.limits[pl] || 1;
+                        const limitForPl = (profile.limit !== undefined && profile.limit !== null)
+                            ? profile.limit
+                            : (this.config.limits[pl] || 1);
+
                         if (currentCounts[pl] < limitForPl) {
                             activeParams = true;
                             break;
