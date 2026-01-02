@@ -45,6 +45,15 @@ async function main() {
         config.daysToGenerate = 7; // Default
     }
 
+    // Debug: Log custom limits
+    const profilesWithLimits = config.profiles.filter(p => p.limit !== undefined && p.limit !== null);
+    if (profilesWithLimits.length > 0) {
+        console.log(`[Main] Found ${profilesWithLimits.length} profiles with custom limits:`);
+        profilesWithLimits.forEach(p => console.log(`  - ${p.username}: ${p.limit}`));
+    } else {
+        console.log('[Main] No profiles have custom limits set (using global defaults).');
+    }
+
     const usedHashesPath = path.join(DATA_DIR, 'used_hashes.json');
     let usedHashes: string[] = [];
     if (fs.existsSync(usedHashesPath)) {

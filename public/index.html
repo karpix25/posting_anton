@@ -644,6 +644,9 @@
                   }
                 },
                 async triggerRun(testMode = false) {
+                  // Ensure current state is saved before running
+                  await this.saveConfig();
+
                   if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
                   try {
                     await fetch('/api/run', {
