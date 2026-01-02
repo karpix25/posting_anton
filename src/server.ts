@@ -4,6 +4,7 @@ import cors from 'cors';
 import { YandexDiskClient } from './automation/yandex'; // Import Yandex client
 import { PlatformManager } from './automation/platforms';
 import { StatsManager } from './automation/stats';
+import { DatabaseService } from './automation/db';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -24,6 +25,11 @@ if (!fs.existsSync(DATA_DIR)) {
 
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const USED_HASHES_PATH = path.join(DATA_DIR, 'used_hashes.json');
+
+// Initialize database service
+const dbConnectionString = process.env.DATABASE_URL || '';
+const db = new DatabaseService(dbConnectionString);
+db.init().catch(err => console.error('[Server] Failed to initialize database:', err));
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -533,6 +539,48 @@ app.post('/api/cleanup', (req, res) => {
     });
 
     res.json({ success: true, message: 'Cleanup process started in background' });
+});
+
+// Get brand statistics for current month
+app.get('/api/brands/stats', async (req, res) => {
+    try {
+        const month = (req.query.month as string) || new Date().toISOString().substring(0, 7);
+        const stats = await db.getBrandStats(month);
+        res.json({ success: true, stats, month });
+    } catch (error: any) {
+        console.error('[API] Failed to get brand stats:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update brand quota
+app.post('/api/brands/quotas', async (req, res) => {
+    try {
+        const { category, brand, quota } = req.body;
+
+        if (!category || !brand || quota === undefined) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields: category, brand, quota'
+            });
+        }
+
+        const month = new Date().toISOString().substring(0, 7);
+        await db.updateBrandQuota(category, brand, month, quota);
+
+        // Also update config.json
+        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        if (!config.brandQuotas) config.brandQuotas = {};
+        if (!config.brandQuotas[category]) config.brandQuotas[category] = {};
+        config.brandQuotas[category][brand] = quota;
+
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+
+        res.json({ success: true, message: `Updated quota for ${category}:${brand} to ${quota}` });
+    } catch (error: any) {
+        console.error('[API] Failed to update brand quota:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // Sync Profiles from Upload Post API
