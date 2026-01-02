@@ -867,6 +867,25 @@
                   });
                 }
               },
+              triggerCleanup() {
+                console.log('[Frontend] Cleanup button clicked');
+                if (!confirm('Вы уверены? Это удалит ВСЕ запланированные, но еще не опубликованные посты. Нажмите ОК для очистки.')) {
+                  console.log('[Frontend] Cleanup cancelled by user');
+                  return;
+                }
+
+                console.log('[Frontend] Sending cleanup request to POST /api/cleanup...');
+                fetch('/api/cleanup', { method: 'POST' })
+                  .then(response => response.json())
+                  .then(data => {
+                    console.log('[Frontend] Cleanup response:', data);
+                    alert(data.message || 'Очистка запущена!');
+                  })
+                  .catch(e => {
+                    console.error('[Frontend] Cleanup error:', e);
+                    alert('Ошибка запуска очистки');
+                  });
+              },
               applyBulkCategory() {
                 if (!this.bulkThemeKey) return alert('Введите название категории!');
                 if (this.selectedProfiles.length === 0) return alert('Выберите профили!');
