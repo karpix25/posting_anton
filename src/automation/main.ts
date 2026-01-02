@@ -207,10 +207,26 @@ async function main() {
 
     // Use profiles from config
     const schedule = scheduler.generateSchedule(allVideos, config.profiles, occupiedSlots);
-    console.log(`Scheduled ${schedule.length} posts.`);
+    console.log(`Scheduled ${schedule.length} posts total (across ${config.daysToGenerate || 7} days).`);
+
+    // Filter for posts due "now" or "today"
+    // Since this script is a "Runner", it should probably only run tasks for the current execution window.
+    // If the user manually runs it, they might expect to fill "Today".
+    const now = new Date();
+    const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const immediatePosts = schedule.filter(p => {
+        // Include if time is in the past (missed) or within next 24h
+        // Actually, if we just want "today's allocation", checking < now + 24h is safe.
+        // But scheduler sets times for future days (Day 1, Day 2...).
+        const scheduledTime = new Date(p.publish_at);
+        const diff = scheduledTime.getTime() - now.getTime();
+        return diff < CACHE_WINDOW_MS;
+    });
+
+    console.log(`Processing ${immediatePosts.length} posts scheduled for the immediate window (Today).`);
 
     if (process.argv.includes('--dry-run')) {
-        console.log('Dry run completed. Schedule sample:', JSON.stringify(schedule.slice(0, 3), null, 2));
+        console.log('Dry run completed. Schedule sample:', JSON.stringify(immediatePosts.slice(0, 3), null, 2));
         return;
     }
 
@@ -218,7 +234,7 @@ async function main() {
 
     // Group posts by video path
     const postsByVideo = new Map<string, ScheduledPost[]>();
-    for (const post of schedule) {
+    for (const post of immediatePosts) {
         const key = post.video.path;
         if (!postsByVideo.has(key)) postsByVideo.set(key, []);
         postsByVideo.get(key)!.push(post);
