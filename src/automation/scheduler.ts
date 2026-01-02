@@ -106,10 +106,12 @@ export class ContentScheduler {
                         continue;
                     }
 
-                    // Find matching videos for this profile's theme
-                    const themeVideos = videosByTheme[profile.theme_key] || [];
+                    // Normalize profile theme key to match canonical video groups
+                    const canonicalProfileTheme = this.normalizeTheme(profile.theme_key);
+                    const themeVideos = videosByTheme[canonicalProfileTheme] || [];
+
                     if (themeVideos.length === 0) {
-                        if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (profile: ${profile.username})`);
+                        if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (canonical: '${canonicalProfileTheme}') (profile: ${profile.username})`);
                         continue;
                     }
 
@@ -288,15 +290,18 @@ export class ContentScheduler {
 
     private normalizeTheme(str: string): string {
         const raw = this.normalize(str);
-        // Aliases from legacy system
-        const THEME_ALIASES: Record<string, string[]> = {
+        // Use config aliases first
+        const aliasesMap = this.config.themeAliases || {
             smart: ["smart"],
             toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
             wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
         };
 
-        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
-            if (aliases.includes(raw)) return canonical;
+        for (const [canonical, aliases] of Object.entries(aliasesMap)) {
+            // Check if raw matches any alias (normalized)
+            if (aliases.some(a => this.normalize(a) === raw)) return canonical;
+            // Also check if raw is the key itself
+            if (this.normalize(canonical) === raw) return canonical;
         }
         return raw;
     }
