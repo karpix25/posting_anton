@@ -248,8 +248,9 @@
                       {{ theme }}
                     </option>
                   </select>
-                  class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
-                  Применить
+                  <button @click="applyBulkCategory"
+                    class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                    Применить
                   </button>
 
                   <div class="border-l border-blue-400 pl-4 ml-2 flex gap-2">
@@ -343,10 +344,13 @@
                             </div>
                           </td>
                           <td class="p-2 text-center">
-                            <button @click="toggleProfileEnabled(profile)"
-                              class="px-3 py-1 text-xs rounded border hover:bg-gray-100 text-gray-600">
-                              ⏸️ Откл
-                            </button>
+                            <label class="inline-flex items-center cursor-pointer">
+                              <input type="checkbox" :checked="profile.enabled !== false"
+                                @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                              <div
+                                class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                              </div>
+                            </label>
                           </td>
                         </tr>
                       </tbody>
@@ -390,10 +394,13 @@
                       </div>
                     </td>
                     <td class="p-2 text-center">
-                      <button @click="toggleProfileEnabled(profile)"
-                        class="px-3 py-1 text-sm rounded bg-green-100 hover:bg-green-200 text-green-700">
-                        ▶️ Восстановить
-                      </button>
+                      <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" :checked="profile.enabled !== false"
+                          @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                        <div
+                          class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                        </div>
+                      </label>
                     </td>
                   </tr>
                 </tbody>
