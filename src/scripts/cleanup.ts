@@ -6,6 +6,7 @@ import * as path from 'path';
 // Load environment variables manually since we are outside main
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
+
 async function clearSchedule() {
     console.log('[Cleanup] Starting cleaning process...');
 
@@ -14,12 +15,17 @@ async function clearSchedule() {
         process.exit(1);
     }
 
+    console.log('[Cleanup] API Key found:', process.env.UPLOAD_POST_API_KEY.substring(0, 10) + '...');
+
     const platformManager = new PlatformManager();
 
     console.log('[Cleanup] Fetching scheduled posts...');
     const posts = await platformManager.getScheduledPosts();
 
-    if (!posts || posts.length === 0) {
+    console.log('[Cleanup] Raw response type:', typeof posts);
+    console.log('[Cleanup] Raw response:', JSON.stringify(posts, null, 2));
+
+    if (!posts || !Array.isArray(posts) || posts.length === 0) {
         console.log('[Cleanup] No scheduled posts found. Exiting.');
         return;
     }
