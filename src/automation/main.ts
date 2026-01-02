@@ -170,19 +170,19 @@ async function main() {
     }
 
 
-    console.log(`1. Listing videos from: ${config.yandexFolders.join(', ')}...`);
-    // Flatten multiple folders if needed, or just take the first one for now as per scheduler logic
-    // The original n8n code took specific paths. We'll iterate.
-    let allVideos: any[] = [];
-    for (const folder of config.yandexFolders) {
+    console.log(`1. Listing videos from concurrently: ${config.yandexFolders.join(', ')}...`);
+    // Parallelize folder scanning
+    const folderPromises = config.yandexFolders.map(async (folder) => {
         try {
-            const videos = await yandex.listFiles(folder);
-            allVideos = allVideos.concat(videos);
+            return await yandex.listFiles(folder);
         } catch (e) {
             console.error(`Failed to list folder ${folder}:`, e);
-            // Don't crash entire process if one folder fails
+            return [];
         }
-    }
+    });
+
+    const videosResults = await Promise.all(folderPromises);
+    const allVideos = videosResults.flat();
     console.log(`Found ${allVideos.length} videos.`);
 
     console.log('2. Generating schedule...');
@@ -194,9 +194,6 @@ async function main() {
         history.forEach((item: any) => {
             if (item.upload_timestamp && item.profile_username) {
                 const date = new Date(item.upload_timestamp);
-                // Only care about future or recent collisions? 
-                // If we schedule for today/tomorrow, we care about those days.
-                // Let's just add all valid dates, scheduler handles window checking.
                 if (!occupiedSlots[item.profile_username]) {
                     occupiedSlots[item.profile_username] = [];
                 }
@@ -219,7 +216,7 @@ async function main() {
 
     console.log('3. Processing posts...');
 
-    // Group posts by video path to handle "1 video -> multiple platforms -> delete" logic
+    // Group posts by video path
     const postsByVideo = new Map<string, ScheduledPost[]>();
     for (const post of schedule) {
         const key = post.video.path;
@@ -229,109 +226,122 @@ async function main() {
 
     console.log(`Processing ${postsByVideo.size} unique videos across platforms...`);
 
-    for (const [videoPath, posts] of postsByVideo) {
-        let allSuccess = true;
-        const videoName = posts[0].video.name;
-        console.log(`\n--- Processing Video: ${videoName} ---`);
+    // Helper to extract author from path (folder after 'ВИДЕО')
+    function getAuthorFromPath(path: string): string {
+        const normalized = path.replace(/\\/g, '/');
+        const parts = normalized.split('/');
+        const idx = parts.findIndex(p => p.toLowerCase() === 'видео' || p.toLowerCase() === 'video');
+        if (idx !== -1 && idx + 1 < parts.length) {
+            return parts[idx + 1];
+        }
+        return '';
+    }
 
-        // Generate caption once per video (optimization) or per platform?
-        // User prompts might be platform specific? 
-        // Current content_generator takes platform argument. 
-        // But usually the prompt is the same "text for Reels". 
-        // Let's keep it per-post to be safe with existing logic, or optimize if needed.
-        // Actually, prompts in config are per "Client" (Folder), not Platform. 
-        // The prompt text usually says "generate text". 
-        // Let's generate once and reuse? 
-        // The prompt says "Output only 1 text". 
-        // If we reuse, it's consistent. If we regenerate, it might vary slightly.
-        // Let's regenerate for now to match n8n logic which likely ran parallel branches or sequential nodes.
+    // Process videos concurrently (limit concurrency to avoid overload)
+    const MAX_CONCURRENT_VIDEOS = 2; // Process 2 videos at a time
+    const videoEntries = Array.from(postsByVideo.entries());
 
-        for (const post of posts) {
-            // Helper to extract author from path (folder after 'ВИДЕО')
-            function getAuthorFromPath(path: string): string {
-                const normalized = path.replace(/\\/g, '/');
-                const parts = normalized.split('/');
-                const idx = parts.findIndex(p => p.toLowerCase() === 'видео' || p.toLowerCase() === 'video');
-                if (idx !== -1 && idx + 1 < parts.length) {
-                    return parts[idx + 1];
+    // Chunk array helper
+    const chunks = [];
+    for (let i = 0; i < videoEntries.length; i += MAX_CONCURRENT_VIDEOS) {
+        chunks.push(videoEntries.slice(i, i + MAX_CONCURRENT_VIDEOS));
+    }
+
+    for (const chunk of chunks) {
+        await Promise.all(chunk.map(async ([videoPath, posts]) => {
+            let allSuccess = true;
+            const videoName = posts[0].video.name;
+            const authorName = getAuthorFromPath(videoPath);
+
+            console.log(`\n--- Processing Video: ${videoName} (Author: ${authorName || 'Unknown'}) ---`);
+
+            // 1. Generate Caption (Once per video)
+            let baseCaption = '';
+            let baseTitle = '';
+
+            if (config.clients && config.clients.length > 0) {
+                try {
+                    console.log(`[Main] Generating caption for ${videoName}...`);
+                    // We use the first post's platform for generation context, but use generic logic usually
+                    const rawText = await generator.generateCaption(videoPath, posts[0].platform, authorName);
+
+                    // Parse if needed (assumes YouTube format logic applies globally or handled per platform below)
+                    // Actually, let's keep it simple: 
+                    baseCaption = rawText.trim();
+                } catch (e) {
+                    console.error(`[Main] Failed to generate caption for ${videoName}:`, e);
+                    baseCaption = `${videoName} #shorts #video`;
                 }
-                return '';
+            } else {
+                baseCaption = `${videoName} #shorts #video`;
+                baseTitle = videoName;
             }
 
-            try {
-                console.log(`[${post.profile.username}] Publishing to ${post.platform}...`);
+            // 2. Publish to all platforms in parallel
+            const publishPromises = posts.map(async (post) => {
+                try {
+                    console.log(`[${post.profile.username}] Publishing to ${post.platform}...`);
 
-                if (config.clients && config.clients.length > 0) {
-                    const authorName = getAuthorFromPath(post.video.path);
-                    console.log(`[Main] Generating caption for ${post.video.name} (Author: ${authorName || 'Unknown'})...`);
-                    const rawText = await generator.generateCaption(post.video.path, post.platform, authorName);
-
+                    // Apply caption logic specific to platform
                     if (post.platform === 'youtube') {
-                        // Parse Title $$$ Caption format
-                        const parts = rawText.split('$$$');
+                        const parts = baseCaption.split('$$$');
                         if (parts.length > 1) {
                             post.title = parts[0].trim();
                             post.caption = parts[1].trim();
                         } else {
-                            post.caption = rawText.trim();
-                            post.title = post.caption.substring(0, 50) + '...';
+                            post.caption = baseCaption;
+                            post.title = baseCaption.substring(0, 50) + '...';
                         }
                     } else {
-                        // Instagram / TikTok: Raw text is the caption
-                        post.caption = rawText.trim();
-                        post.title = ''; // No separate title needed
+                        post.caption = baseCaption;
+                        post.title = '';
                     }
-                } else {
-                    post.caption = `${post.video.name} #shorts #video`;
-                    post.title = post.video.name;
-                }
 
-                try {
-                    const result = await platformManager.publishPost(post);
-                    // Log success
+                    await platformManager.publishPost(post);
+                    console.log(`✅ Published to ${post.platform}`);
+
+                    // Log success and stats
                     await db.logPost(post, 'success');
-                    // process response
+                    statsManager.incrementPublished(post.platform);
+                    return true;
                 } catch (error: any) {
-                    // If 400 (Bad Request), it might be "No TikTok account", etc.
-                    // We should just log and continue, not crash.
                     const msg = error.response?.data?.message || error.message;
                     console.error(`[Main] Failed to publish to ${post.platform} for ${post.profile.username}: ${msg}`);
                     await db.logPost(post, 'failed', msg);
-                    continue; // Skip this post
+                    return false;
                 }
-                console.log(`✅ Published to ${post.platform}`);
+            });
 
-                // Increment statistics
-                statsManager.incrementPublished(post.platform);
+            const results = await Promise.all(publishPromises);
+            allSuccess = results.every(res => res === true);
 
-            } catch (error) {
-                console.error(`❌ Failed to process ${post.platform}:`, error);
-                allSuccess = false;
+            // 3. Cleanup logic
+            if (allSuccess) {
+                console.log(`[Cleanup] All platforms published successfully. Deleting ${videoName} from source...`);
+                try {
+                    await yandex.deleteFile(videoPath);
+                    const hash = posts[0].video.md5 || posts[0].video.path;
+                    usedHashes.push(hash);
+                    // Append synchronously to be safe or use lock? 
+                    // Main loop is sequential on chunks, so usedHashes access is safe-ish if we don't write file concurrency
+                    // But we are in a Promise.all chunk.
+                    // Let's just write file at the very end or use sync read/write.
+                    // For safety in concurrency, we might want to write immediately but strictly.
+                    // Or just push to memory and write once? 
+                    // Better to write immediately if process crashes.
+                    // Ensure usedHashes update is atomic-ish.
+
+                    // Note: fs.writeFileSync is synchronous blocking, so it's safe.
+                    fs.writeFileSync(usedHashesPath, JSON.stringify(usedHashes));
+                    console.log(`🗑️ Deleted and hash saved.`);
+                    statsManager.incrementDeleted();
+                } catch (e) {
+                    console.error(`[Cleanup] Failed to delete file:`, e);
+                }
+            } else {
+                console.warn(`[Cleanup] Skipping deletion for ${videoName} because some posts failed.`);
             }
-        }
-
-        if (allSuccess) {
-            console.log(`[Cleanup] All platforms published successfully. Deleting ${videoName} from source...`);
-            try {
-                await yandex.deleteFile(videoPath);
-
-                // Mark as used (redundant if deleted? but good for history)
-                // Actually if deleted, we can't accidentally pick it again from Yandex.
-                // But keeping hash ensures if it's re-uploaded, we know?
-                // Logic:
-                const hash = posts[0].video.md5 || posts[0].video.path;
-                usedHashes.push(hash);
-                fs.writeFileSync(usedHashesPath, JSON.stringify(usedHashes));
-                console.log(`🗑️ Deleted and hash saved.`);
-
-                // Increment deletion statistics
-                statsManager.incrementDeleted();
-            } catch (e) {
-                console.error(`[Cleanup] Failed to delete file:`, e);
-            }
-        } else {
-            console.warn(`[Cleanup] Skipping deletion for ${videoName} because some posts failed.`);
-        }
+        }));
     }
     // At end of script
     await db.close();
