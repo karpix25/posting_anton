@@ -180,159 +180,157 @@ export class ContentScheduler {
                         // CRITICAL FIX: Update occupied slots so subsequent posts in same run respect this one
                         if (!profileSlots[profile.username]) profileSlots[profile.username] = [];
                         profileSlots[profile.username].push(candidateTime);
+                    } else {
+                        this.usedVideoMd5s.delete(videoId); // Revert
                     }
-                    profileSlots[profile.username].push(candidateTime);
-                } else {
-                    this.usedVideoMd5s.delete(videoId); // Revert
                 }
             }
         }
-    }
 
         return schedule;
     }
 
-    private groupVideosByTheme(videos: VideoFile[]): Record < string, VideoFile[] > {
-    const groups: Record<string, VideoFile[]> = { };
-for (const v of videos) {
-    // Logic to extract theme from path (as per n8n helpers)
-    const theme = this.extractTheme(v.path);
-    if (!groups[theme]) groups[theme] = [];
-    groups[theme].push(v);
-}
-return groups;
+    private groupVideosByTheme(videos: VideoFile[]): Record<string, VideoFile[]> {
+        const groups: Record<string, VideoFile[]> = {};
+        for (const v of videos) {
+            // Logic to extract theme from path (as per n8n helpers)
+            const theme = this.extractTheme(v.path);
+            if (!groups[theme]) groups[theme] = [];
+            groups[theme].push(v);
+        }
+        return groups;
     }
 
     private extractTheme(path: string): string {
-    // More robust extraction: scan the whole path for known keywords
-    const normalizedPath = this.normalize(path);
+        // More robust extraction: scan the whole path for known keywords
+        const normalizedPath = this.normalize(path);
 
-    const aliasesMap = this.config.themeAliases || {
-        smart: ["smart"],
-        toplash: ["toplash"],
-        wb: ["wb"],
-        pokypki: ["pokypki"],
-        synergetic: ["synergetic"]
-    };
+        const aliasesMap = this.config.themeAliases || {
+            smart: ["smart"],
+            toplash: ["toplash"],
+            wb: ["wb"],
+            pokypki: ["pokypki"],
+            synergetic: ["synergetic"]
+        };
 
-    // Debug log for the first few checks to realize what's happening
-    // (Use a simple counter or random check to avoid spam, or just log once)
-    if (Math.random() < 0.005) {
-        console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
-    }
-
-
-
-    // We must check aliases in a specific order to avoid partial matches
-    // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
-    // We should sort keys such that specific ones come first? 
-    // Or simply ensure "pokypki" is checked before "wb".
-    // Let's sort entries by alias length (descending) to ensure "pokypki-wb" (len 10) is checked before "wb" (len 2)
-
-    let allEntries: { key: string, alias: string }[] = [];
-    for (const [key, list] of Object.entries(aliasesMap)) {
-        for (const alias of list) {
-            allEntries.push({ key, alias });
+        // Debug log for the first few checks to realize what's happening
+        // (Use a simple counter or random check to avoid spam, or just log once)
+        if (Math.random() < 0.005) {
+            console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
         }
-    }
 
-    // Sort by length of alias descending
-    allEntries.sort((a, b) => b.alias.length - a.alias.length);
 
-    // Structural extraction: .../VIDEO/Name/Category/...
-    // We look for "video" or "видео" segment.
-    const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
 
-    let categoryCandidate = '';
+        // We must check aliases in a specific order to avoid partial matches
+        // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
+        // We should sort keys such that specific ones come first? 
+        // Or simply ensure "pokypki" is checked before "wb".
+        // Let's sort entries by alias length (descending) to ensure "pokypki-wb" (len 10) is checked before "wb" (len 2)
 
-    const videoIndex = parts.findIndex(p => {
-        const lower = p.toLowerCase();
-        return lower === 'video' || lower === 'видео';
-    });
-
-    if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
-        // Found VIDEO, skip Name, take Category
-        categoryCandidate = parts[videoIndex + 2];
-    } else if (parts.length >= 2) {
-        // Fallback: Parent folder
-        categoryCandidate = parts[parts.length - 2];
-    }
-
-    if (categoryCandidate) {
-        const normCandidate = this.normalize(categoryCandidate);
-        // Check aliases
+        let allEntries: { key: string, alias: string }[] = [];
         for (const [key, list] of Object.entries(aliasesMap)) {
-            // Normalize list items too
             for (const alias of list) {
-                if (normCandidate.includes(this.normalize(alias))) {
-                    return key;
-                }
+                allEntries.push({ key, alias });
             }
         }
-        // If no alias, return the candidate itself (so it appears in dashboard)
-        return normCandidate;
-    }
 
-    return 'unknown';
-}
+        // Sort by length of alias descending
+        allEntries.sort((a, b) => b.alias.length - a.alias.length);
+
+        // Structural extraction: .../VIDEO/Name/Category/...
+        // We look for "video" or "видео" segment.
+        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
+
+        let categoryCandidate = '';
+
+        const videoIndex = parts.findIndex(p => {
+            const lower = p.toLowerCase();
+            return lower === 'video' || lower === 'видео';
+        });
+
+        if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
+            // Found VIDEO, skip Name, take Category
+            categoryCandidate = parts[videoIndex + 2];
+        } else if (parts.length >= 2) {
+            // Fallback: Parent folder
+            categoryCandidate = parts[parts.length - 2];
+        }
+
+        if (categoryCandidate) {
+            const normCandidate = this.normalize(categoryCandidate);
+            // Check aliases
+            for (const [key, list] of Object.entries(aliasesMap)) {
+                // Normalize list items too
+                for (const alias of list) {
+                    if (normCandidate.includes(this.normalize(alias))) {
+                        return key;
+                    }
+                }
+            }
+            // If no alias, return the candidate itself (so it appears in dashboard)
+            return normCandidate;
+        }
+
+        return 'unknown';
+    }
 
     private normalizeTheme(str: string): string {
-    const raw = this.normalize(str);
-    // Aliases from legacy system
-    const THEME_ALIASES: Record<string, string[]> = {
-        smart: ["smart"],
-        toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
-        wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
-    };
+        const raw = this.normalize(str);
+        // Aliases from legacy system
+        const THEME_ALIASES: Record<string, string[]> = {
+            smart: ["smart"],
+            toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
+            wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
+        };
 
-    for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
-        if (aliases.includes(raw)) return canonical;
+        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
+            if (aliases.includes(raw)) return canonical;
+        }
+        return raw;
     }
-    return raw;
-}
 
     private normalize(str: string): string {
-    return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
-}
+        return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+    }
 
     private shuffle<T>(array: T[]): T[] {
-    for (let i = array.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [array[i], array[j]] = [array[j], array[i]];
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
     }
-    return array;
-}
 
     private randomInt(min: number, max: number): number {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
 
     private getRandomTimeInWindow(start: Date, end: Date): Date {
-    const t = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
-    return t;
-}
+        const t = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+        return t;
+    }
 
     private findSafeSlot(slots: Date[], desired: Date, dayStart: Date, dayEnd: Date): Date | null {
-    // Simplified collision avoidance
-    let t = new Date(desired);
-    let attempts = 0;
+        // Simplified collision avoidance
+        let t = new Date(desired);
+        let attempts = 0;
 
-    // If day window is too small (e.g. < 10 mins), just fail
-    if (dayEnd.getTime() - dayStart.getTime() < 10 * 60000) return null;
+        // If day window is too small (e.g. < 10 mins), just fail
+        if (dayEnd.getTime() - dayStart.getTime() < 10 * 60000) return null;
 
-    while (attempts < 15) {
-        // Check conflict with 45 min gap
-        const conflict = slots && slots.some(s => Math.abs(s.getTime() - t.getTime()) < 45 * 60000);
-        if (!conflict) return t;
+        while (attempts < 15) {
+            // Check conflict with 45 min gap
+            const conflict = slots && slots.some(s => Math.abs(s.getTime() - t.getTime()) < 45 * 60000);
+            if (!conflict) return t;
 
-        // Try different offsets
-        t = new Date(t.getTime() + (45 + Math.random() * 60) * 60000); // Add 45-105 mins
-        if (t > dayEnd) {
-            // Wrap around to start + random offset
-            t = new Date(dayStart.getTime() + Math.random() * (dayEnd.getTime() - dayStart.getTime()));
+            // Try different offsets
+            t = new Date(t.getTime() + (45 + Math.random() * 60) * 60000); // Add 45-105 mins
+            if (t > dayEnd) {
+                // Wrap around to start + random offset
+                t = new Date(dayStart.getTime() + Math.random() * (dayEnd.getTime() - dayStart.getTime()));
+            }
+            attempts++;
         }
-        attempts++;
+        return null; // Failed to find slot
     }
-    return null; // Failed to find slot
-}
 }
