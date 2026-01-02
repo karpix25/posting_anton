@@ -1,10 +1,11 @@
 
+
 import { PlatformManager } from '../automation/platforms';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
-// Load environment variables manually since we are outside main
-dotenv.config({ path: path.join(__dirname, '../.env') });
+// Load environment variables from project root
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
 
 async function clearSchedule() {
