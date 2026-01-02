@@ -83,6 +83,9 @@ export class ContentScheduler {
 
             const maxPassesPerDay = maxLimit;
 
+            // Track last brand used for each theme (for round-robin selection)
+            const lastBrandUsed: Record<string, string> = {};
+
             for (let pass = 0; pass < maxPassesPerDay; pass++) {
                 for (const profile of dailyProfiles) {
                     // Check if ANY platform needs posts
@@ -107,22 +110,45 @@ export class ContentScheduler {
 
                     // Normalize profile theme key to match canonical video groups
                     const canonicalProfileTheme = this.normalizeTheme(profile.theme_key);
-                    const themeVideos = videosByTheme[canonicalProfileTheme] || [];
+                    const themeBrands = videosByTheme[canonicalProfileTheme];
 
-
-                    if (themeVideos.length === 0) {
+                    if (!themeBrands || Object.keys(themeBrands).length === 0) {
                         if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (canonical: '${canonicalProfileTheme}') (profile: ${profile.username}). Available themes: ${Object.keys(videosByTheme).join(', ')}`);
                         continue;
                     }
 
-                    this.shuffle(themeVideos);
+                    // Get available brands (that still have videos)
+                    const availableBrands = Object.keys(themeBrands).filter(
+                        brand => themeBrands[brand] && themeBrands[brand].length > 0
+                    );
 
-                    // Find an unused video
+                    if (availableBrands.length === 0) {
+                        continue;
+                    }
+
+                    // Round-robin brand selection
+                    const lastBrand = lastBrandUsed[canonicalProfileTheme];
+                    let brandIndex = 0;
+
+                    if (lastBrand) {
+                        const lastIndex = availableBrands.indexOf(lastBrand);
+                        if (lastIndex !== -1) {
+                            brandIndex = (lastIndex + 1) % availableBrands.length;
+                        }
+                    }
+
+                    const selectedBrand = availableBrands[brandIndex];
+                    const brandVideos = themeBrands[selectedBrand];
+
+                    // Find an unused video from this brand
                     let videoForSlot: VideoFile | null = null;
-                    for (const v of themeVideos) {
+                    for (let i = 0; i < brandVideos.length; i++) {
+                        const v = brandVideos[i];
                         const videoId = v.md5 || v.path;
                         if (!this.usedVideoMd5s.has(videoId)) {
                             videoForSlot = v;
+                            // Remove from brand queue
+                            brandVideos.splice(i, 1);
                             break;
                         }
                     }
@@ -130,6 +156,9 @@ export class ContentScheduler {
                     if (!videoForSlot) {
                         continue;
                     }
+
+                    // Update last brand used for this theme
+                    lastBrandUsed[canonicalProfileTheme] = selectedBrand;
 
                     // Determine effective limit for this profile
                     const pLimit = profile.limit !== undefined && profile.limit !== null && profile.limit >= 0
@@ -171,22 +200,32 @@ export class ContentScheduler {
 
                     this.usedVideoMd5s.add(videoId);
                     let posted = false;
-                    const scheduledTimeStr = candidateTime.toISOString();
 
                     // Publish the SAME video to ALL platforms this profile is active on
-                    for (const platform of profile.platforms) {
+                    // WITH DELAYS between platforms (2-5 minutes)
+                    for (let platformIndex = 0; platformIndex < profile.platforms.length; platformIndex++) {
+                        const platform = profile.platforms[platformIndex];
                         const limitForPl = profile.limit || this.config.limits[platform] || 1;
 
                         if (currentCounts[platform] < limitForPl) {
+                            // Calculate publish time with delay for non-first platforms
+                            let publishTime = new Date(candidateTime);
+
+                            if (platformIndex > 0) {
+                                // Add 2-5 minute delay for subsequent platforms
+                                const delayMinutes = Math.floor(Math.random() * 4) + 2; // 2-5 minutes
+                                publishTime = new Date(publishTime.getTime() + delayMinutes * 60000);
+                            }
+
                             schedule.push({
                                 video: videoForSlot,
                                 profile,
                                 platform,
-                                publish_at: scheduledTimeStr
+                                publish_at: publishTime.toISOString()
                             });
                             currentCounts[platform]++;
                             posted = true;
-                            console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} on ${platform} at ${scheduledTimeStr}`);
+                            console.log(`[Scheduler] Scheduled ${videoForSlot.name} (brand: ${selectedBrand}) for ${profile.username} on ${platform} at ${publishTime.toISOString()}`);
                         }
                     }
 
@@ -204,14 +243,26 @@ export class ContentScheduler {
         return schedule;
     }
 
-    private groupVideosByTheme(videos: VideoFile[]): Record<string, VideoFile[]> {
-        const groups: Record<string, VideoFile[]> = {};
+    private groupVideosByTheme(videos: VideoFile[]): Record<string, Record<string, VideoFile[]>> {
+        const groups: Record<string, Record<string, VideoFile[]>> = {};
+
         for (const v of videos) {
-            // Logic to extract theme from path (as per n8n helpers)
             const theme = this.extractTheme(v.path);
-            if (!groups[theme]) groups[theme] = [];
-            groups[theme].push(v);
+            const brand = this.extractBrand(v.path);
+
+            // Initialize theme if needed
+            if (!groups[theme]) {
+                groups[theme] = {};
+            }
+
+            // Initialize brand within theme if needed
+            if (!groups[theme][brand]) {
+                groups[theme][brand] = [];
+            }
+
+            groups[theme][brand].push(v);
         }
+
         return groups;
     }
 
@@ -308,6 +359,32 @@ export class ContentScheduler {
 
     private normalize(str: string): string {
         return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+    }
+
+    /**
+     * Extract brand from video path
+     * Structure: /ВИДЕО/Author/Category/Brand/file.mp4
+     *                0      1      2       3      4
+     */
+    private extractBrand(path: string): string {
+        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
+
+        const videoIndex = parts.findIndex(p => {
+            const lower = p.toLowerCase();
+            return lower === 'video' || lower === 'видео';
+        });
+
+        if (videoIndex !== -1 && videoIndex + 3 < parts.length) {
+            // Found VIDEO, skip Author, skip Category, take Brand
+            const brandFolder = parts[videoIndex + 3];
+            // Remove asterisk and parentheses: "GQbox*" → "gqbox", "Brand (test)" → "brand"
+            const cleaned = brandFolder.split('*')[0]
+                .replace(/\(.*?\)/g, ' ')
+                .trim();
+            return this.normalize(cleaned);
+        }
+
+        return 'unknown';
     }
 
     private shuffle<T>(array: T[]): T[] {
