@@ -27,8 +27,8 @@ export class ContentScheduler {
         const profileSlots: Record<string, Date[]> = { ...occupiedSlots }; // Start with occupied slots
 
         // Initialize counts and slots
+        // Initialize slots (counts will be reset daily)
         activeProfiles.forEach(p => {
-            profilePublishCounts[p.username] = { instagram: 0, tiktok: 0, youtube: 0 };
             if (!profileSlots[p.username]) profileSlots[p.username] = [];
         });
 
@@ -40,6 +40,11 @@ export class ContentScheduler {
         // Iterate over days
         const days = this.config.daysToGenerate || 7;
         for (let dayIndex = 0; dayIndex < days; dayIndex++) {
+            // Reset counts for the new day so limits apply PER DAY
+            activeProfiles.forEach(p => {
+                profilePublishCounts[p.username] = { instagram: 0, tiktok: 0, youtube: 0 };
+            });
+
             const currentDayStart = new Date(startDate);
             currentDayStart.setDate(startDate.getDate() + dayIndex);
 
