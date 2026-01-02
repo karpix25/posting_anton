@@ -50,7 +50,8 @@ async function main() {
         };
         config.daysToGenerate = 1; // Only generate for today
     } else {
-        config.daysToGenerate = 7; // Default
+        // Default
+        config.daysToGenerate = config.daysToGenerate || 1; // Default to 1 day if not set
     }
 
     // Debug: Log custom limits
@@ -207,23 +208,36 @@ async function main() {
 
     // Use profiles from config
     const schedule = scheduler.generateSchedule(allVideos, config.profiles, occupiedSlots);
-    console.log(`Scheduled ${schedule.length} posts total (across ${config.daysToGenerate || 7} days).`);
+    console.log(`Scheduled ${schedule.length} posts total (across ${config.daysToGenerate} days).`);
 
     // Filter for posts due "now" or "today"
     // Since this script is a "Runner", it should probably only run tasks for the current execution window.
-    // If the user manually runs it, they might expect to fill "Today".
+    // If the user manually runs it, then we likely want to catch up on anything scheduled for "today".
+    // "Today" means the calendar day of execution? 
+    // Yes. If it's 23:59, we run posts for 23:59. If 00:01, we run posts for the NEW day.
+
+    // We only process posts that are SCHEDULED for SAME CALENDAR DAY as `now`.
     const now = new Date();
-    const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
     const immediatePosts = schedule.filter(p => {
-        // Include if time is in the past (missed) or within next 24h
-        // Actually, if we just want "today's allocation", checking < now + 24h is safe.
-        // But scheduler sets times for future days (Day 1, Day 2...).
         const scheduledTime = new Date(p.publish_at);
-        const diff = scheduledTime.getTime() - now.getTime();
-        return diff < CACHE_WINDOW_MS;
+
+        // Strict Calendar Day check
+        const isSameDay = scheduledTime.getDate() === now.getDate() &&
+            scheduledTime.getMonth() === now.getMonth() &&
+            scheduledTime.getFullYear() === now.getFullYear();
+
+        // Also allow missed past posts if they are recent (e.g. earlier today)
+        // But NOT future days.
+        // Wait, if scheduledTime is yesterday and we missed it? 
+        // Logic: if diff < 24h AND time < now? 
+        // Let's stick to "Is Same Day" to avoid confusion. Better to skip old posts than spam.
+        // Or if the script runs daily, it should cover today.
+
+        return isSameDay;
     });
 
-    console.log(`Processing ${immediatePosts.length} posts scheduled for the immediate window (Today).`);
+    console.log(`Processing ${immediatePosts.length} posts scheduled for TODAY (${now.toLocaleDateString()}).`);
 
     if (process.argv.includes('--dry-run')) {
         console.log('Dry run completed. Schedule sample:', JSON.stringify(immediatePosts.slice(0, 3), null, 2));

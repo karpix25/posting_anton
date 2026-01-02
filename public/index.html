@@ -197,6 +197,13 @@
               <input v-model="foldersInput" @input="updateFolders" class="w-full border p-2 rounded">
             </div>
 
+            <div class="mb-4">
+              <label class="block mb-2 font-semibold">На сколько дней планировать вперед?</label>
+              <input type="number" min="1" max="30" v-model.number="config.daysToGenerate"
+                class="w-full border p-2 rounded" placeholder="1">
+              <p class="text-xs text-gray-500 mt-1">1 = только сегодня. 7 = неделя.</p>
+            </div>
+
             <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (постов в день на профиль)</h3>
             <div class="grid grid-cols-3 gap-4">
               <div>
@@ -484,6 +491,7 @@
                   ],
                   config: {
                     cronSchedule: '',
+                    daysToGenerate: 1, // Default for safety
                     yandexFolders: [],
                     limits: { instagram: 0, tiktok: 0, youtube: 0 },
                     profiles: [],
