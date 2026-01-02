@@ -47,6 +47,39 @@ export class UploadPostClient {
         }
     }
 
+    async getScheduledPosts(): Promise<any[]> {
+        try {
+            const response = await axios.get('https://api.upload-post.com/api/uploadposts/schedule', {
+                headers: { 'Authorization': `Apikey ${this.apiKey}` }
+            });
+            // According to docs, success response isn't explicitly detailed for list,
+            // Assuming standard { success: true, schedule: [...] } or just array?
+            // User only provided DELETE docs. Assuming likely list format.
+            // Let's assume response.data.schedule or response.data directly if array.
+            // Common pattern for this API seems to be { success: true, ...data }
+            return response.data.schedule || response.data || [];
+        } catch (error: any) {
+            console.error(`[UploadPost] Error fetching schedule:`, error.response?.data || error.message);
+            return [];
+        }
+    }
+
+    async cancelPost(jobId: string): Promise<boolean> {
+        try {
+            const response = await axios.delete(`https://api.upload-post.com/api/uploadposts/schedule/${jobId}`, {
+                headers: { 'Authorization': `Apikey ${this.apiKey}` }
+            });
+            if (response.data.success) {
+                console.log(`[UploadPost] Cancelled job ${jobId}`);
+                return true;
+            }
+            return false;
+        } catch (error: any) {
+            console.error(`[UploadPost] Failed to cancel job ${jobId}:`, error.response?.data || error.message);
+            return false;
+        }
+    }
+
     async publish(post: ScheduledPost): Promise<string> {
         const form = new FormData();
 
@@ -141,5 +174,13 @@ export class PlatformManager {
 
     async getProfiles(): Promise<any[]> {
         return this.client.getProfiles();
+    }
+
+    async getScheduledPosts(): Promise<any[]> {
+        return this.client.getScheduledPosts();
+    }
+
+    async cancelPost(jobId: string): Promise<boolean> {
+        return this.client.cancelPost(jobId);
     }
 }
