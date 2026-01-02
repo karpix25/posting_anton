@@ -17,9 +17,8 @@ export class ContentScheduler {
         profiles: SocialProfile[],
         occupiedSlots: Record<string, Date[]> = {} // Map of username -> Date[] of occupied slots
     ): ScheduledPost[] {
-        // Filter out disabled profiles
         const activeProfiles = profiles.filter(p => p.enabled !== false);
-        console.log(`[Scheduler] Active profiles: ${activeProfiles.length}/${profiles.length}`);
+        console.log(`[Scheduler] Active profiles details: ${activeProfiles.map(p => `${p.username} (${p.theme_key})`).join(', ')}`);
 
         const schedule: ScheduledPost[] = [];
         const videosByTheme = this.groupVideosByTheme(videos);
@@ -110,8 +109,9 @@ export class ContentScheduler {
                     const canonicalProfileTheme = this.normalizeTheme(profile.theme_key);
                     const themeVideos = videosByTheme[canonicalProfileTheme] || [];
 
+
                     if (themeVideos.length === 0) {
-                        if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (canonical: '${canonicalProfileTheme}') (profile: ${profile.username})`);
+                        if (pass === 0) console.log(`[Scheduler] No videos for theme '${profile.theme_key}' (canonical: '${canonicalProfileTheme}') (profile: ${profile.username}). Available themes: ${Object.keys(videosByTheme).join(', ')}`);
                         continue;
                     }
 
