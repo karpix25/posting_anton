@@ -43,8 +43,22 @@ export class ContentScheduler {
             const currentDayStart = new Date(startDate);
             currentDayStart.setDate(startDate.getDate() + dayIndex);
 
+            // FIX: If scheduling for today, ensure we don't pick a time in the past
+            const now = new Date();
+            if (dayIndex === 0 && currentDayStart < now) {
+                // If 8 AM is already past, start scheduling from now + 10 mins
+                currentDayStart.setTime(now.getTime() + 10 * 60000);
+                console.log(`[Scheduler] Adjusted start time for today to ${currentDayStart.toLocaleTimeString()}`);
+            }
+
             const currentDayEnd = new Date(currentDayStart);
-            currentDayEnd.setHours(23, 0, 0, 0);
+            currentDayEnd.setHours(23, 0, 0, 0); // Keep end at 11 PM
+
+            // Safety: if now is > 23:00, skip today
+            if (currentDayStart >= currentDayEnd) {
+                console.log(`[Scheduler] Skipping day ${dayIndex} (today) as it's too late.`);
+                continue;
+            }
 
             // Shuffle profiles to ensure fairness each day
             const dailyProfiles = this.shuffle([...activeProfiles]);

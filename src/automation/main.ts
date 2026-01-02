@@ -91,7 +91,9 @@ async function main() {
                             }
                         }
 
-                        const detectedPlatforms = Object.keys(apiProfile.social_accounts || {}) as ('instagram' | 'tiktok' | 'youtube')[];
+                        const detectedPlatforms = Object.entries(apiProfile.social_accounts || {})
+                            .filter(([_, val]) => !!val) // Filter out empty credentials
+                            .map(([key]) => key as 'instagram' | 'tiktok' | 'youtube');
 
                         config.profiles.push({
                             username: apiProfile.username,
@@ -103,7 +105,9 @@ async function main() {
                         addedCount++;
                     } else {
                         // UPDATE existing profile: update platforms, preserve user edits
-                        const detectedPlatforms = Object.keys(apiProfile.social_accounts || {}) as ('instagram' | 'tiktok' | 'youtube')[];
+                        const detectedPlatforms = Object.entries(apiProfile.social_accounts || {})
+                            .filter(([_, val]) => !!val) // Filter out empty credentials
+                            .map(([key]) => key as 'instagram' | 'tiktok' | 'youtube');
 
                         if (JSON.stringify(exists.platforms) !== JSON.stringify(detectedPlatforms)) {
                             exists.platforms = detectedPlatforms;

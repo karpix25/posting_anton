@@ -634,8 +634,11 @@
                         // Find existing profile by username
                         const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
 
-                        // Get platforms from API (keys of social_accounts)
-                        const platforms = Object.keys(apiProfile.social_accounts || {});
+                        // Get platforms from API (keys of social_accounts where value is not empty)
+                        const platforms = Object.entries(apiProfile.social_accounts || {})
+                          .filter(([_, value]) => !!value) // Filter out empty strings/nulls
+                          .map(([key]) => key);
+
                         if (platforms.length === 0) platforms.push('instagram'); // Default fallback
 
                         if (existingProfile) {
