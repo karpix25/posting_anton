@@ -458,14 +458,20 @@
           </div>
 
           <div v-for="(client, idx) in config.clients" :key="idx" class="border p-4 rounded mb-4 bg-gray-50">
-            <div class="grid grid-cols-2 gap-4 mb-2">
+            <div class="grid grid-cols-3 gap-4 mb-2">
               <div>
-                <label class="text-sm text-gray-500 block">Имя клиента</label>
+                <label class="text-sm text-gray-500 block">Имя клиента (бренд)</label>
                 <input v-model="client.name" class="w-full border p-2 rounded">
               </div>
               <div>
                 <label class="text-sm text-gray-500 block">Regex папки</label>
                 <input v-model="client.regex" class="w-full border p-2 rounded font-mono">
+              </div>
+              <div>
+                <label class="text-sm text-gray-500 block">Квота (видео/месяц)</label>
+                <input v-model.number="client.quota" type="number" min="0" class="w-full border p-2 rounded"
+                  placeholder="30">
+                <div class="text-xs text-gray-400 mt-1">Сколько видео публиковать в месяц</div>
               </div>
             </div>
             <div>

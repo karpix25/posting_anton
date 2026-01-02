@@ -466,18 +466,45 @@ app.get('/api/config', (req, res) => {
 });
 
 // Update Config
-app.post('/api/config', (req, res) => {
+app.post('/api/config', async (req, res) => {
     try {
         const newConfig = req.body;
+
+        // Sync client quotas to brandQuotas structure
+        if (newConfig.clients && Array.isArray(newConfig.clients)) {
+            if (!newConfig.brandQuotas) newConfig.brandQuotas = {};
+
+            const currentMonth = new Date().toISOString().substring(0, 7);
+
+            for (const client of newConfig.clients) {
+                if (client.name && client.quota !== undefined) {
+                    // Extract category from regex (e.g., "Smart" from regex pattern)
+                    // Assume regex like "Smart" or "/Smart/" - extract the category name
+                    const categoryMatch = client.regex.match(/([a-zA-Zа-яА-Я0-9]+)/);
+                    const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown';
+                    const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '');
+
+                    // Update brandQuotas
+                    if (!newConfig.brandQuotas[category]) newConfig.brandQuotas[category] = {};
+                    newConfig.brandQuotas[category][brandName] = client.quota;
+
+                    // Update database
+                    await db.updateBrandQuota(category, brandName, currentMonth, client.quota);
+                }
+            }
+        }
+
         // Basic validation
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
 
         // Clear stats cache so it recalculates with new config
         statsCache = null;
         console.log('[Config] Saved. Stats cache cleared (Files cache preserved).');
+        console.log('[Config] Synced client quotas to brandQuotas');
 
         res.json({ success: true, message: 'Config saved' });
     } catch (error) {
+        console.error('[Config] Save error:', error);
         res.status(500).json({ error: 'Failed to save config' });
     }
 });

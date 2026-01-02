@@ -30,6 +30,7 @@ export interface ClientConfig {
   name: string;
   regex: string;
   prompt: string;
+  quota?: number; // Monthly video quota for this brand/client
 }
 
 export interface AutomationConfig {
