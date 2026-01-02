@@ -511,6 +511,30 @@ app.post('/api/run', (req, res) => {
     res.json({ success: true, message: 'Automation process started in background' });
 });
 
+// Manual Cleanup Trigger
+app.post('/api/cleanup', (req, res) => {
+    console.log('Starting cleanup process...');
+
+    // Run compiled JS
+    const scriptPath = path.join(__dirname, 'scripts/cleanup.js');
+    const { spawn } = require('child_process');
+
+    const child = spawn('node', [scriptPath], {
+        stdio: 'inherit',
+        env: process.env
+    });
+
+    child.on('error', (err: any) => {
+        console.error('Failed to start cleanup subprocess:', err);
+    });
+
+    child.on('close', (code: number) => {
+        console.log(`Cleanup process exited with code ${code}`);
+    });
+
+    res.json({ success: true, message: 'Cleanup process started in background' });
+});
+
 // Sync Profiles from Upload Post API
 app.get('/api/profiles/sync', async (req, res) => {
     console.log('[API] /api/profiles/sync requested');
