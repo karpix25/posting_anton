@@ -1,22 +1,25 @@
 import { VideoFile, SocialProfile, ScheduledPost, AutomationConfig } from './types';
+import { DatabaseService } from './db';
 
 export class ContentScheduler {
     private config: AutomationConfig;
     private usedVideoMd5s: Set<string>;
+    private db?: DatabaseService;
 
-    constructor(config: AutomationConfig, previouslyUsedMd5s: string[]) {
+    constructor(config: AutomationConfig, previouslyUsedMd5s: string[], db?: DatabaseService) {
         this.config = config;
         this.usedVideoMd5s = new Set(previouslyUsedMd5s);
+        this.db = db;
     }
 
     /**
      * Main scheduling function
      */
-    public generateSchedule(
+    public async generateSchedule(
         videos: VideoFile[],
         profiles: SocialProfile[],
         occupiedSlots: Record<string, Date[]> = {} // Map of username -> Date[] of occupied slots
-    ): ScheduledPost[] {
+    ): Promise<ScheduledPost[]> {
         const activeProfiles = profiles.filter(p => p.enabled !== false);
         console.log(`[Scheduler] Active profiles details: ${activeProfiles.map(p => `${p.username} (${p.theme_key})`).join(', ')}`);
 
@@ -126,18 +129,13 @@ export class ContentScheduler {
                         continue;
                     }
 
-                    // Round-robin brand selection
+                    // Weighted brand selection based on quotas
                     const lastBrand = lastBrandUsed[canonicalProfileTheme];
-                    let brandIndex = 0;
-
-                    if (lastBrand) {
-                        const lastIndex = availableBrands.indexOf(lastBrand);
-                        if (lastIndex !== -1) {
-                            brandIndex = (lastIndex + 1) % availableBrands.length;
-                        }
-                    }
-
-                    const selectedBrand = availableBrands[brandIndex];
+                    const selectedBrand = await this.selectBrandByQuota(
+                        canonicalProfileTheme,
+                        availableBrands,
+                        lastBrand
+                    );
                     const brandVideos = themeBrands[selectedBrand];
 
                     // Find an unused video from this brand
@@ -359,6 +357,64 @@ export class ContentScheduler {
 
     private normalize(str: string): string {
         return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+    }
+
+    /**
+     * Select brand based on quota weights
+     * Brands with more remaining quota get priority
+     * Falls back to round-robin if quotas not configured or all met
+     */
+    private async selectBrandByQuota(
+        category: string,
+        availableBrands: string[],
+        lastBrand: string | null
+    ): Promise<string> {
+        // If no DB or no quotas configured, use round-robin
+        if (!this.db || !this.config.brandQuotas || !this.config.brandQuotas[category]) {
+            return this.roundRobinBrand(availableBrands, lastBrand);
+        }
+
+        const currentMonth = new Date().toISOString().substring(0, 7); // 'YYYY-MM'
+        const stats = await this.db.getBrandStats(currentMonth);
+        const quotas = this.config.brandQuotas[category];
+
+        // Calculate weights for each brand
+        const weights: Record<string, number> = {};
+        for (const brand of availableBrands) {
+            const quota = quotas[brand] || 0;
+            const published = stats[`${category}:${brand}`]?.published_count || 0;
+            // Weight = remaining quota (how many more videos needed)
+            weights[brand] = Math.max(0, quota - published);
+        }
+
+        // Sort brands by weight (descending)
+        const sorted = availableBrands.slice().sort((a, b) => weights[b] - weights[a]);
+
+        // If top brand has weight > 0, use it
+        if (weights[sorted[0]] > 0) {
+            console.log(`[Scheduler] Selected brand ${sorted[0]} (quota: ${quotas[sorted[0]]}, published: ${stats[`${category}:${sorted[0]}`]?.published_count || 0}, remaining: ${weights[sorted[0]]})`);
+            return sorted[0];
+        }
+
+        // All quotas met or no quotas set -> fallback to round-robin
+        console.log(`[Scheduler] All quotas met for ${category}, using round-robin`);
+        return this.roundRobinBrand(availableBrands, lastBrand);
+    }
+
+    /**
+     * Simple round-robin brand selection
+     */
+    private roundRobinBrand(availableBrands: string[], lastBrand: string | null): string {
+        if (!lastBrand || availableBrands.length === 1) {
+            return availableBrands[0];
+        }
+
+        const lastIndex = availableBrands.indexOf(lastBrand);
+        if (lastIndex === -1) {
+            return availableBrands[0];
+        }
+
+        return availableBrands[(lastIndex + 1) % availableBrands.length];
     }
 
     /**

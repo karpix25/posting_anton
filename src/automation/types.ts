@@ -38,6 +38,7 @@ export interface AutomationConfig {
   yandexFolders: string[];
   daysToGenerate?: number; // Optional in JSON, default in code
   themeAliases?: Record<string, string[]>; // Canonical -> aliases map
+  brandQuotas?: Record<string, Record<string, number>>; // category -> brand -> quota
   limits: {
     instagram: number;
     tiktok: number;

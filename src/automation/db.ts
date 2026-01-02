@@ -48,7 +48,27 @@ export class DatabaseService {
             // Create index on date
             await client.query(`CREATE INDEX IF NOT EXISTS idx_posting_history_date ON posting_history(posted_at);`);
 
-            console.log('[DB] Schema initialized (posting_history table ready).');
+            // Create table for brand quota tracking
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS brand_stats (
+                    id SERIAL PRIMARY KEY,
+                    category VARCHAR(100) NOT NULL,
+                    brand VARCHAR(100) NOT NULL,
+                    month VARCHAR(7) NOT NULL,
+                    published_count INT DEFAULT 0,
+                    quota INT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    updated_at TIMESTAMP DEFAULT NOW(),
+                    UNIQUE(category, brand, month)
+                );
+            `);
+
+            // Create indexes for brand_stats
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_brand_stats_month ON brand_stats(month);`);
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_brand_stats_category_brand ON brand_stats(category, brand);`);
+            await client.query(`CREATE INDEX IF NOT EXISTS idx_brand_stats_lookup ON brand_stats(category, brand, month);`);
+
+            console.log('[DB] Schema initialized (posting_history and brand_stats tables ready).');
             this.initialized = true;
         } catch (error) {
             console.error('[DB] Failed to initialize database:', error);
@@ -101,6 +121,96 @@ export class DatabaseService {
             return parts[idx + 1];
         }
         return 'unknown';
+    }
+
+    /**
+     * Get brand statistics for a specific month
+     * @param month Format: 'YYYY-MM' (e.g., '2026-01')
+     * @returns Map of "category:brand" to { published_count, quota }
+     */
+    public async getBrandStats(month: string): Promise<Record<string, { published_count: number; quota: number }>> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping getBrandStats because DB is not initialized.');
+            return {};
+        }
+
+        try {
+            const result = await this.pool.query(
+                'SELECT category, brand, published_count, quota FROM brand_stats WHERE month = $1',
+                [month]
+            );
+
+            const stats: Record<string, { published_count: number; quota: number }> = {};
+            for (const row of result.rows) {
+                const key = `${row.category}:${row.brand}`;
+                stats[key] = {
+                    published_count: row.published_count,
+                    quota: row.quota
+                };
+            }
+
+            return stats;
+        } catch (error) {
+            console.error('[DB] Failed to get brand stats:', error);
+            return {};
+        }
+    }
+
+    /**
+     * Increment published count for a brand
+     * @param category Category name (e.g., 'smart')
+     * @param brand Brand name (e.g., 'gqbox')
+     * @param month Format: 'YYYY-MM'
+     */
+    public async incrementBrandCount(category: string, brand: string, month: string): Promise<void> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping incrementBrandCount because DB is not initialized.');
+            return;
+        }
+
+        try {
+            await this.pool.query(`
+                INSERT INTO brand_stats (category, brand, month, published_count, quota)
+                VALUES ($1, $2, $3, 1, 0)
+                ON CONFLICT (category, brand, month)
+                DO UPDATE SET 
+                    published_count = brand_stats.published_count + 1,
+                    updated_at = NOW()
+            `, [category, brand, month]);
+
+            console.log(`[DB] Incremented count for ${category}:${brand} in ${month}`);
+        } catch (error) {
+            console.error('[DB] Failed to increment brand count:', error);
+        }
+    }
+
+    /**
+     * Update quota for a brand
+     * @param category Category name
+     * @param brand Brand name
+     * @param month Format: 'YYYY-MM'
+     * @param quota New quota value
+     */
+    public async updateBrandQuota(category: string, brand: string, month: string, quota: number): Promise<void> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping updateBrandQuota because DB is not initialized.');
+            return;
+        }
+
+        try {
+            await this.pool.query(`
+                INSERT INTO brand_stats (category, brand, month, quota, published_count)
+                VALUES ($1, $2, $3, $4, 0)
+                ON CONFLICT (category, brand, month)
+                DO UPDATE SET 
+                    quota = $4,
+                    updated_at = NOW()
+            `, [category, brand, month, quota]);
+
+            console.log(`[DB] Updated quota for ${category}:${brand} to ${quota}`);
+        } catch (error) {
+            console.error('[DB] Failed to update brand quota:', error);
+        }
     }
 
     public async close(): Promise<void> {

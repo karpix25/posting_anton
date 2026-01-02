@@ -69,7 +69,7 @@ async function main() {
         usedHashes = JSON.parse(fs.readFileSync(usedHashesPath, 'utf-8'));
     }
 
-    const scheduler = new ContentScheduler(config, usedHashes);
+    const scheduler = new ContentScheduler(config, usedHashes, db);
     // Pass config to generator for dynamic prompts
     const generator = new ContentGenerator(process.env.OPENAI_API_KEY || '', config);
     const yandex = new YandexDiskClient(config.yandexToken);
@@ -207,7 +207,7 @@ async function main() {
     }
 
     // Use profiles from config
-    const schedule = scheduler.generateSchedule(allVideos, config.profiles, occupiedSlots);
+    const schedule = await scheduler.generateSchedule(allVideos, config.profiles, occupiedSlots);
     console.log(`Scheduled ${schedule.length} posts total (across ${config.daysToGenerate} days).`);
 
     // Filter for posts due "now" or "today"
@@ -265,6 +265,28 @@ async function main() {
             return parts[idx + 1];
         }
         return '';
+    }
+
+    function extractBrandFromPath(path: string): string {
+        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
+        const videoIndex = parts.findIndex(p => p.toLowerCase() === 'video' || p.toLowerCase() === 'видео');
+        if (videoIndex !== -1 && videoIndex + 3 < parts.length) {
+            const brandFolder = parts[videoIndex + 3];
+            const cleaned = brandFolder.split('*')[0].replace(/\(.*?\)/g, ' ').trim();
+            return cleaned.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+        }
+        return 'unknown';
+    }
+
+    function extractThemeFromPath(path: string): string {
+        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
+        const videoIndex = parts.findIndex(p => p.toLowerCase() === 'video' || p.toLowerCase() === 'видео');
+        if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
+            const categoryFolder = parts[videoIndex + 2];
+            const cleaned = categoryFolder.replace(/\(.*?\)/g, ' ').trim().split(/\s+/)[0];
+            return cleaned.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+        }
+        return 'unknown';
     }
 
     // Process videos concurrently (limit concurrency to avoid overload)
@@ -333,6 +355,13 @@ async function main() {
                     // Log success and stats
                     await db.logPost(post, 'success');
                     statsManager.incrementPublished(post.platform);
+
+                    // Track brand quota (increment published count)
+                    const brand = extractBrandFromPath(post.video.path);
+                    const category = extractThemeFromPath(post.video.path);
+                    const currentMonth = new Date().toISOString().substring(0, 7);
+                    await db.incrementBrandCount(category, brand, currentMonth);
+
                     return true;
                 } catch (error: any) {
                     const msg = error.response?.data?.message || error.message;
