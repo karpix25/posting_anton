@@ -22,7 +22,8 @@ export class ContentGenerator {
         let systemPrompt = client ? client.prompt : "Ты — эксперт по SMM."; // Default fallback
 
         if (authorName) {
-            systemPrompt += `\n\nЕсли автор найден (${authorName}), добавь #by${authorName} в конец.`;
+            const hashtagAuthor = authorName.replace(/\s+/g, '');
+            systemPrompt += `\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by${hashtagAuthor} (для указания авторства).`;
         }
 
         let userPrompt = `Путь к файлу: ${videoPath}. Платформа: ${platform}.`;

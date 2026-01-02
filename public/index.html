@@ -306,6 +306,7 @@
                           <th class="text-left p-3">Профиль</th>
                           <th class="text-left p-3">Категория</th>
                           <th class="text-left p-3">Платформы</th>
+                          <th class="text-left p-3 w-20">Лимит</th>
                           <th class="text-center p-3 w-32">Действия</th>
                         </tr>
                       </thead>
@@ -345,7 +346,17 @@
                                 class="text-gray-400 text-xs italic">
                                 Нет платформ
                               </span>
+                              <span v-if="!profile.platforms || profile.platforms.length === 0"
+                                class="text-gray-400 text-xs italic">
+                                Нет платформ
+                              </span>
                             </div>
+                          </td>
+                          <td class="p-2">
+                            <input type="number" min="0" max="50" v-model.number="profile.limit" placeholder="-"
+                              @change="saveConfig"
+                              class="w-16 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center"
+                              title="Лимит постов/день (пусто = глобальный)">
                           </td>
                           <td class="p-2 text-center">
                             <label class="inline-flex items-center cursor-pointer">
@@ -381,6 +392,7 @@
                       <span class="text-xs font-normal text-gray-500">(название папки или группы)</span>
                     </th>
                     <th class="text-left p-3 border-b">Подключенные Платформы</th>
+                    <th class="text-left p-3 border-b">Лимит</th>
                     <th class="text-center p-3 border-b w-32">Действия</th>
                   </tr>
                 </thead>
@@ -396,6 +408,9 @@
                           {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
                         </span>
                       </div>
+                    </td>
+                    <td class="p-2 text-gray-400 text-center">
+                      {{ profile.limit || '-' }}
                     </td>
                     <td class="p-2 text-center">
                       <label class="inline-flex items-center cursor-pointer">

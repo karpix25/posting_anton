@@ -230,12 +230,24 @@ async function main() {
         // Let's regenerate for now to match n8n logic which likely ran parallel branches or sequential nodes.
 
         for (const post of posts) {
+            // Helper to extract author from path (folder after 'ВИДЕО')
+            function getAuthorFromPath(path: string): string {
+                const normalized = path.replace(/\\/g, '/');
+                const parts = normalized.split('/');
+                const idx = parts.findIndex(p => p.toLowerCase() === 'видео' || p.toLowerCase() === 'video');
+                if (idx !== -1 && idx + 1 < parts.length) {
+                    return parts[idx + 1];
+                }
+                return '';
+            }
+
             try {
                 console.log(`[${post.profile.username}] Publishing to ${post.platform}...`);
 
                 if (config.clients && config.clients.length > 0) {
-                    console.log(`[Main] Generating caption for ${post.video.name} (Profile: ${post.profile.username})...`);
-                    const rawText = await generator.generateCaption(post.video.path, post.platform, post.profile.username);
+                    const authorName = getAuthorFromPath(post.video.path);
+                    console.log(`[Main] Generating caption for ${post.video.name} (Author: ${authorName || 'Unknown'})...`);
+                    const rawText = await generator.generateCaption(post.video.path, post.platform, authorName);
 
                     if (post.platform === 'youtube') {
                         // Parse Title $$$ Caption format

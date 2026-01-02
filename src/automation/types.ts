@@ -12,6 +12,7 @@ export interface SocialProfile {
   theme_key: string;
   platforms: ('instagram' | 'tiktok' | 'youtube')[];
   enabled?: boolean; // For soft delete - default true
+  limit?: number; // Override global limit
   last_posted?: Record<string, string>;
 }
 

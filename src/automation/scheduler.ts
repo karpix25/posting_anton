@@ -65,12 +65,19 @@ export class ContentScheduler {
 
             // Try to fill slots for each profile
             // We iterate enough times to satisfy the highest limit
-            const maxPassesPerDay = Math.max(
+            // We iterate enough times to satisfy the highest limit
+            let maxLimit = Math.max(
                 this.config.limits.instagram,
                 this.config.limits.tiktok,
                 this.config.limits.youtube,
-                1 // minimum 1 pass
+                1
             );
+            // Check properly if any profile has a higher override
+            activeProfiles.forEach(p => {
+                if (p.limit && p.limit > maxLimit) maxLimit = p.limit;
+            });
+
+            const maxPassesPerDay = maxLimit;
 
             for (let pass = 0; pass < maxPassesPerDay; pass++) {
                 for (const profile of dailyProfiles) {
@@ -113,173 +120,219 @@ export class ContentScheduler {
                         continue;
                     }
 
+                    // Determine effective limit for this profile
+                    const pLimit = profile.limit !== undefined && profile.limit !== null && profile.limit >= 0
+                        ? profile.limit
+                        : Math.max(...Object.values(this.config.limits)); // Fallback to max global limit?
+                    // Actually, if we use per-platform global limits:
+                    // We need to check per platform.
+                    // But if profile.limit is set, it overrides ALL platform limits for that profile (e.g. 5 posts total? or per platform?)
+                    // User asked "number of videos", which usually implies "Post X videos" (regardless of platform count).
+                    // Current logic counts per platform.
+                    // Let's assume profile.limit means "Limit per platform" to be consistent.
+
+                    // Update loop to respect per-profile limit
+                    // We need to check if ANY platform still needs posts.
+                    let activeParams = false;
+                    for (const pl of profile.platforms) {
+                        const limitForPl = profile.limit || this.config.limits[pl] || 1;
+                        if (currentCounts[pl] < limitForPl) {
+                            activeParams = true;
+                            break;
+                        }
+                    }
+                    if (!activeParams && pass > 0) continue; // Skip if full (but pass 0 might run once)
+
                     const videoId = videoForSlot.md5 || videoForSlot.path;
 
                     // Calculate publish time
                     const baseTime = this.getRandomTimeInWindow(currentDayStart, currentDayEnd);
                     const candidateTime = this.findSafeSlot(profileSlots[profile.username], baseTime, currentDayStart, currentDayEnd);
 
+                    if (!candidateTime) {
+                        // Could not find safe slot (e.g. day full)
+                        console.log(`[Scheduler] Could not find safe slot for ${profile.username} on day ${dayIndex}. Skipping.`);
+                        break; // Stop trying for this profile on this day
+                    }
+
                     this.usedVideoMd5s.add(videoId);
                     let posted = false;
+                    const scheduledTimeStr = candidateTime.toISOString();
 
                     // Publish the SAME video to ALL platforms this profile is active on
                     for (const platform of profile.platforms) {
-                        if (currentCounts[platform] < this.config.limits[platform]) {
+                        const limitForPl = profile.limit || this.config.limits[platform] || 1;
+
+                        if (currentCounts[platform] < limitForPl) {
                             schedule.push({
                                 video: videoForSlot,
                                 profile,
                                 platform,
-                                publish_at: candidateTime.toISOString()
+                                publish_at: scheduledTimeStr
                             });
                             currentCounts[platform]++;
                             posted = true;
-                            console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} on ${platform}`);
+                            console.log(`[Scheduler] Scheduled ${videoForSlot.name} for ${profile.username} on ${platform} at ${scheduledTimeStr}`);
                         }
                     }
 
                     if (posted) {
+                        // CRITICAL FIX: Update occupied slots so subsequent posts in same run respect this one
+                        if (!profileSlots[profile.username]) profileSlots[profile.username] = [];
                         profileSlots[profile.username].push(candidateTime);
-                    } else {
-                        this.usedVideoMd5s.delete(videoId); // Revert
                     }
+                    profileSlots[profile.username].push(candidateTime);
+                } else {
+                    this.usedVideoMd5s.delete(videoId); // Revert
                 }
             }
         }
+    }
 
         return schedule;
     }
 
-    private groupVideosByTheme(videos: VideoFile[]): Record<string, VideoFile[]> {
-        const groups: Record<string, VideoFile[]> = {};
-        for (const v of videos) {
-            // Logic to extract theme from path (as per n8n helpers)
-            const theme = this.extractTheme(v.path);
-            if (!groups[theme]) groups[theme] = [];
-            groups[theme].push(v);
-        }
-        return groups;
+    private groupVideosByTheme(videos: VideoFile[]): Record < string, VideoFile[] > {
+    const groups: Record<string, VideoFile[]> = { };
+for (const v of videos) {
+    // Logic to extract theme from path (as per n8n helpers)
+    const theme = this.extractTheme(v.path);
+    if (!groups[theme]) groups[theme] = [];
+    groups[theme].push(v);
+}
+return groups;
     }
 
     private extractTheme(path: string): string {
-        // More robust extraction: scan the whole path for known keywords
-        const normalizedPath = this.normalize(path);
+    // More robust extraction: scan the whole path for known keywords
+    const normalizedPath = this.normalize(path);
 
-        const aliasesMap = this.config.themeAliases || {
-            smart: ["smart"],
-            toplash: ["toplash"],
-            wb: ["wb"],
-            pokypki: ["pokypki"],
-            synergetic: ["synergetic"]
-        };
+    const aliasesMap = this.config.themeAliases || {
+        smart: ["smart"],
+        toplash: ["toplash"],
+        wb: ["wb"],
+        pokypki: ["pokypki"],
+        synergetic: ["synergetic"]
+    };
 
-        // Debug log for the first few checks to realize what's happening
-        // (Use a simple counter or random check to avoid spam, or just log once)
-        if (Math.random() < 0.005) {
-            console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
+    // Debug log for the first few checks to realize what's happening
+    // (Use a simple counter or random check to avoid spam, or just log once)
+    if (Math.random() < 0.005) {
+        console.log(`[Scheduler] Debug Match: Path='${path}' Norm='${normalizedPath}' AliasesKeys=${Object.keys(aliasesMap).join(',')}`);
+    }
+
+
+
+    // We must check aliases in a specific order to avoid partial matches
+    // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
+    // We should sort keys such that specific ones come first? 
+    // Or simply ensure "pokypki" is checked before "wb".
+    // Let's sort entries by alias length (descending) to ensure "pokypki-wb" (len 10) is checked before "wb" (len 2)
+
+    let allEntries: { key: string, alias: string }[] = [];
+    for (const [key, list] of Object.entries(aliasesMap)) {
+        for (const alias of list) {
+            allEntries.push({ key, alias });
         }
+    }
 
+    // Sort by length of alias descending
+    allEntries.sort((a, b) => b.alias.length - a.alias.length);
 
+    // Structural extraction: .../VIDEO/Name/Category/...
+    // We look for "video" or "видео" segment.
+    const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
 
-        // We must check aliases in a specific order to avoid partial matches
-        // e.g. "pokypki-wb" contains "wb", so if we check "wb" first, it matches wrong.
-        // We should sort keys such that specific ones come first? 
-        // Or simply ensure "pokypki" is checked before "wb".
-        // Let's sort entries by alias length (descending) to ensure "pokypki-wb" (len 10) is checked before "wb" (len 2)
+    let categoryCandidate = '';
 
-        let allEntries: { key: string, alias: string }[] = [];
+    const videoIndex = parts.findIndex(p => {
+        const lower = p.toLowerCase();
+        return lower === 'video' || lower === 'видео';
+    });
+
+    if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
+        // Found VIDEO, skip Name, take Category
+        categoryCandidate = parts[videoIndex + 2];
+    } else if (parts.length >= 2) {
+        // Fallback: Parent folder
+        categoryCandidate = parts[parts.length - 2];
+    }
+
+    if (categoryCandidate) {
+        const normCandidate = this.normalize(categoryCandidate);
+        // Check aliases
         for (const [key, list] of Object.entries(aliasesMap)) {
+            // Normalize list items too
             for (const alias of list) {
-                allEntries.push({ key, alias });
-            }
-        }
-
-        // Sort by length of alias descending
-        allEntries.sort((a, b) => b.alias.length - a.alias.length);
-
-        // Structural extraction: .../VIDEO/Name/Category/...
-        // We look for "video" or "видео" segment.
-        const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
-
-        let categoryCandidate = '';
-
-        const videoIndex = parts.findIndex(p => {
-            const lower = p.toLowerCase();
-            return lower === 'video' || lower === 'видео';
-        });
-
-        if (videoIndex !== -1 && videoIndex + 2 < parts.length) {
-            // Found VIDEO, skip Name, take Category
-            categoryCandidate = parts[videoIndex + 2];
-        } else if (parts.length >= 2) {
-            // Fallback: Parent folder
-            categoryCandidate = parts[parts.length - 2];
-        }
-
-        if (categoryCandidate) {
-            const normCandidate = this.normalize(categoryCandidate);
-            // Check aliases
-            for (const [key, list] of Object.entries(aliasesMap)) {
-                // Normalize list items too
-                for (const alias of list) {
-                    if (normCandidate.includes(this.normalize(alias))) {
-                        return key;
-                    }
+                if (normCandidate.includes(this.normalize(alias))) {
+                    return key;
                 }
             }
-            // If no alias, return the candidate itself (so it appears in dashboard)
-            return normCandidate;
         }
-
-        return 'unknown';
+        // If no alias, return the candidate itself (so it appears in dashboard)
+        return normCandidate;
     }
+
+    return 'unknown';
+}
 
     private normalizeTheme(str: string): string {
-        const raw = this.normalize(str);
-        // Aliases from legacy system
-        const THEME_ALIASES: Record<string, string[]> = {
-            smart: ["smart"],
-            toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
-            wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
-        };
+    const raw = this.normalize(str);
+    // Aliases from legacy system
+    const THEME_ALIASES: Record<string, string[]> = {
+        smart: ["smart"],
+        toplash: ["toplash", "toplashбьюти", "toplashbeauty", "toplashбюти"],
+        wb: ["покупкивб", "wb", "wildberries", "pokypkiwb", "pokypki", "покупки", "pokypki-wb"]
+    };
 
-        for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
-            if (aliases.includes(raw)) return canonical;
-        }
-        return raw;
+    for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {
+        if (aliases.includes(raw)) return canonical;
     }
+    return raw;
+}
 
     private normalize(str: string): string {
-        return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
-    }
+    return str.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
+}
 
     private shuffle<T>(array: T[]): T[] {
-        for (let i = array.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [array[i], array[j]] = [array[j], array[i]];
-        }
-        return array;
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
     }
+    return array;
+}
 
     private randomInt(min: number, max: number): number {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
     private getRandomTimeInWindow(start: Date, end: Date): Date {
-        const t = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
-        return t;
-    }
+    const t = new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+    return t;
+}
 
-    private findSafeSlot(slots: Date[], desired: Date, dayStart: Date, dayEnd: Date): Date {
-        // Simplified collision avoidance
-        let t = new Date(desired);
-        let attempts = 0;
-        while (attempts < 10) {
-            const conflict = slots.some(s => Math.abs(s.getTime() - t.getTime()) < 45 * 60000); // 45 min gap
-            if (!conflict) return t;
-            t = new Date(t.getTime() + 60 * 60000); // Add hour
-            if (t > dayEnd) t = dayStart; // Wrap around
-            attempts++;
+    private findSafeSlot(slots: Date[], desired: Date, dayStart: Date, dayEnd: Date): Date | null {
+    // Simplified collision avoidance
+    let t = new Date(desired);
+    let attempts = 0;
+
+    // If day window is too small (e.g. < 10 mins), just fail
+    if (dayEnd.getTime() - dayStart.getTime() < 10 * 60000) return null;
+
+    while (attempts < 15) {
+        // Check conflict with 45 min gap
+        const conflict = slots && slots.some(s => Math.abs(s.getTime() - t.getTime()) < 45 * 60000);
+        if (!conflict) return t;
+
+        // Try different offsets
+        t = new Date(t.getTime() + (45 + Math.random() * 60) * 60000); // Add 45-105 mins
+        if (t > dayEnd) {
+            // Wrap around to start + random offset
+            t = new Date(dayStart.getTime() + Math.random() * (dayEnd.getTime() - dayStart.getTime()));
         }
-        return t;
+        attempts++;
     }
+    return null; // Failed to find slot
+}
 }
