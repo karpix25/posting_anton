@@ -1,4 +1,6 @@
+
 import { YandexDiskClient } from './yandex';
+import { DatabaseService } from './db';
 import { ContentScheduler } from './scheduler';
 import { ContentGenerator } from './content_generator';
 import { PlatformManager } from './platforms';
@@ -27,6 +29,12 @@ async function main() {
         process.exit(1);
     }
     const config: AutomationConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+    // DB Init
+    const fullDbUrl = 'postgres://admin:admin@tools_postgres:5432/postgres?sslmode=disable';
+    const dbUrl = process.env.DATABASE_URL || fullDbUrl;
+    const db = new DatabaseService(dbUrl);
+    await db.init();
 
     // Inject Env Vars
     config.yandexToken = process.env.YANDEX_TOKEN || '';
@@ -280,12 +288,15 @@ async function main() {
 
                 try {
                     const result = await platformManager.publishPost(post);
+                    // Log success
+                    await db.logPost(post, 'success');
                     // process response
                 } catch (error: any) {
                     // If 400 (Bad Request), it might be "No TikTok account", etc.
                     // We should just log and continue, not crash.
                     const msg = error.response?.data?.message || error.message;
                     console.error(`[Main] Failed to publish to ${post.platform} for ${post.profile.username}: ${msg}`);
+                    await db.logPost(post, 'failed', msg);
                     continue; // Skip this post
                 }
                 console.log(`✅ Published to ${post.platform}`);
@@ -322,6 +333,8 @@ async function main() {
             console.warn(`[Cleanup] Skipping deletion for ${videoName} because some posts failed.`);
         }
     }
+    // At end of script
+    await db.close();
 }
 
 if (require.main === module) {
