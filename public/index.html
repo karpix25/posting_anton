@@ -248,10 +248,20 @@
                       {{ theme }}
                     </option>
                   </select>
-                  <button @click="applyBulkCategory"
-                    class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
-                    Применить
+                  class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                  Применить
                   </button>
+
+                  <div class="border-l border-blue-400 pl-4 ml-2 flex gap-2">
+                    <button @click="toggleBulkEnabled(false)"
+                      class="bg-gray-600 text-white font-bold px-3 py-1 rounded hover:bg-gray-700 border border-white">
+                      ⏸️ Откл ({{ selectedProfiles.length }})
+                    </button>
+                    <button @click="toggleBulkEnabled(true)"
+                      class="bg-green-600 text-white font-bold px-3 py-1 rounded hover:bg-green-700 border border-white">
+                      ▶️ Вкл
+                    </button>
+                  </div>
                   <button @click="selectedProfiles = []" class="ml-4 text-sm text-blue-200 hover:text-white underline">
                     Сбросить выделение
                   </button>
@@ -692,6 +702,17 @@
                 },
                 removeProfile(idx) {
                   this.config.profiles.splice(idx, 1);
+                },
+                toggleBulkEnabled(enable) {
+                  this.selectedProfiles.forEach(username => {
+                    const profile = this.config.profiles.find(p => p.username === username);
+                    if (profile) {
+                      profile.enabled = enable;
+                    }
+                  });
+                  this.saveConfig();
+                  this.selectedProfiles = [];
+                  // No alert, just UI update
                 },
                 addClient() {
                   this.config.clients.push({ name: 'New Client', regex: '', prompt: '' });
