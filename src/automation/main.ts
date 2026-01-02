@@ -175,7 +175,7 @@ async function main() {
     // Parallelize folder scanning
     const folderPromises = config.yandexFolders.map(async (folder) => {
         try {
-            return await yandex.listFiles(folder);
+            return await yandex.listFiles(folder, 100000);
         } catch (e) {
             console.error(`Failed to list folder ${folder}:`, e);
             return [];
