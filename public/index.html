@@ -407,6 +407,11 @@
             <table v-if="showDisabledProfiles" class="w-full border-collapse opacity-60">
               <thead class="bg-gray-100">
                 <tr>
+                  <th class="text-left p-3 border-b w-12">
+                    <input type="checkbox" @change="toggleSelectAllDisabled"
+                      :checked="selectedDisabledProfiles.length === disabledProfiles.length && disabledProfiles.length > 0"
+                      class="w-4 h-4 cursor-pointer">
+                  </th>
                   <th class="text-left p-3 border-b w-12">Статус</th>
                   <th class="text-left p-3 border-b">Профиль</th>
                   <th class="text-left p-3 border-b">
@@ -420,6 +425,10 @@
               </thead>
               <tbody>
                 <tr v-for="profile in disabledProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                  <td class="p-2 text-center">
+                    <input type="checkbox" :value="profile.username" v-model="selectedDisabledProfiles"
+                      class="w-4 h-4 cursor-pointer">
+                  </td>
                   <td class="p-2 text-center text-2xl" :title="'Деактивирован'">⚫</td>
                   <td class="p-2 text-gray-500">{{ profile.username }}</td>
                   <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
@@ -446,6 +455,15 @@
                 </tr>
               </tbody>
             </table>
+            <div v-if="showDisabledProfiles && selectedDisabledProfiles.length > 0" class="mt-3 flex gap-2">
+              <button @click="bulkEnableProfiles" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                ✓ Активировать выбранные ({{ selectedDisabledProfiles.length }})
+              </button>
+              <button @click="selectedDisabledProfiles = []"
+                class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                Отменить выбор
+              </button>
+            </div>
           </div>
         </div>
 
@@ -536,6 +554,7 @@
                 showDisabledProfiles: false,  // Collapsible - collapsed by default
                 expandedGroups: {}, // For accordion view
                 selectedProfiles: [], // List of selected usernames for bulk actions
+                selectedDisabledProfiles: [], // List of selected disabled profiles for bulk actions
                 lastSelected: null, // For Shift+Click
                 bulkThemeKey: '', // Model for bulk edit input
               }
@@ -820,6 +839,27 @@
                 if (quota === 0) return 0;
                 const published = this.getClientPublished(client);
                 return Math.min(100, Math.round((published / quota) * 100));
+              },
+              toggleSelectAllDisabled(event) {
+                if (event.target.checked) {
+                  this.selectedDisabledProfiles = this.disabledProfiles.map(p => p.username);
+                } else {
+                  this.selectedDisabledProfiles = [];
+                }
+              },
+              async bulkEnableProfiles() {
+                if (this.selectedDisabledProfiles.length === 0) return;
+
+                for (const username of this.selectedDisabledProfiles) {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.enabled = true;
+                  }
+                }
+
+                await this.saveConfig();
+                this.selectedDisabledProfiles = [];
+                alert(`Активировано профилей: ${this.selectedDisabledProfiles.length}`);
               },
               updateAliases(key, value) {
                 const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
