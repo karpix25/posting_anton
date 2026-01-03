@@ -42,8 +42,11 @@ export class ContentGenerator {
         userPrompt += `ЗАПРЕЩЕНО писать технические инструкции (типа "Нажмите кнопку", "Опубликуйте", "Вот шаги"). Пиши ТОЛЬКО креативный текст для самого поста от имени автора.`;
 
         // Debug
-        // console.log('[Generator] System Prompt:', systemPrompt);
-        // console.log('[Generator] User Prompt:', userPrompt);
+        // Debug - Show full prompts
+        console.log('[Generator] ========== FULL PROMPT ==========');
+        console.log('[Generator] System Prompt:', systemPrompt);
+        console.log('[Generator] User Prompt:', userPrompt);
+        console.log('[Generator] =====================================');
 
         const response = await this.openai.chat.completions.create({
             model: 'gpt-4o',

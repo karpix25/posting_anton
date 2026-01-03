@@ -350,6 +350,12 @@ async function main() {
             // 2. Publish to all platforms in parallel
             const publishPromises = posts.map(async (post) => {
                 try {
+                    // Safety check: Skip disabled profiles
+                    if (post.profile.enabled === false) {
+                        console.warn(`[${post.profile.username}] ⚠️ SKIPPING: Profile is disabled!`);
+                        return;
+                    }
+
                     console.log(`[${post.profile.username}] Publishing to ${post.platform}...`);
 
                     // Apply caption logic specific to platform
