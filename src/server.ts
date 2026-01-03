@@ -118,7 +118,7 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
 // Cache for stats (avoid re-scanning Yandex on every page load)
 let statsCache: any = null;
 let statsCacheTime: number = 0;
-const STATS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const STATS_CACHE_TTL = 1 * 60 * 1000; // 1 minute - allow frequent manual refreshes
 
 // Files cache (raw Yandex data, separate from stats)
 let filesCache: any[] = [];
