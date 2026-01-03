@@ -471,7 +471,17 @@
                 <label class="text-sm text-gray-500 block">Квота (видео/месяц)</label>
                 <input v-model.number="client.quota" type="number" min="0" class="w-full border p-2 rounded"
                   placeholder="30">
-                <div class="text-xs text-gray-400 mt-1">Сколько видео публиковать в месяц</div>
+                <div v-if="client.quota" class="mt-2">
+                  <div class="text-xs text-gray-600 mb-1">
+                    <span class="font-semibold">{{ getClientPublished(client) }}</span> / {{ client.quota }}
+                    опубликовано
+                    <span class="text-green-600 ml-2">(осталось: {{ getClientRemaining(client) }})</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div class="bg-blue-500 h-full transition-all" :style="{ width: getClientProgress(client) + '%' }">
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div>
@@ -514,6 +524,8 @@
                   byAuthor: {},
                   profilesByCategory: {}
                 },
+                brandStats: {},
+                currentMonth: new Date().toISOString().substring(0, 7),
                 statsSummary: null,
                 loading: true,
                 statsLoading: false,
@@ -532,6 +544,7 @@
               await this.loadConfig();
               this.loadStats();
               this.fetchStatsSummary();
+              this.loadBrandStats();
             },
             computed: {
               currentStatsList() {
@@ -777,6 +790,36 @@
               },
               removeClient(idx) {
                 this.config.clients.splice(idx, 1);
+              },
+              async loadBrandStats() {
+                try {
+                  const res = await fetch(`/api/brands/stats?month=${this.currentMonth}`);
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.brandStats = data.stats || {};
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to load brand stats:', e);
+                }
+              },
+              getClientPublished(client) {
+                if (!client.name || !client.regex) return 0;
+                const categoryMatch = client.regex.match(/([a-zA-Zа-яА-Я0-9]+)/);
+                const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown';
+                const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '');
+                const key = `${category}:${brandName}`;
+                return this.brandStats[key]?.published_count || 0;
+              },
+              getClientRemaining(client) {
+                const quota = client.quota || 0;
+                const published = this.getClientPublished(client);
+                return Math.max(0, quota - published);
+              },
+              getClientProgress(client) {
+                const quota = client.quota || 0;
+                if (quota === 0) return 0;
+                const published = this.getClientPublished(client);
+                return Math.min(100, Math.round((published / quota) * 100));
               },
               updateAliases(key, value) {
                 const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
