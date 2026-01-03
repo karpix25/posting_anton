@@ -191,9 +191,50 @@
         <div v-if="currentTab === 'settings'">
           <h2 class="text-2xl font-bold mb-4">Общие настройки</h2>
 
-          <div class="mb-4">
-            <label class="block mb-2 font-semibold">Расписание (Cron)</label>
-            <input v-model="config.cronSchedule" class="w-full border p-2 rounded" placeholder="0 8 * * *">
+          <!-- Schedule Settings -->
+          <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded">
+            <h3 class="text-lg font-bold mb-3">⏰ Расписание автоматизации</h3>
+
+            <div class="mb-4">
+              <label class="flex items-center cursor-pointer">
+                <input type="checkbox" v-model="schedule.enabled" class="mr-2 w-5 h-5">
+                <span class="font-semibold">Включить автоматический запуск</span>
+              </label>
+              <p class="text-xs text-gray-600 mt-1 ml-7">Автоматизация будет запускаться каждый день в указанное время
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block mb-2 font-semibold">Время запуска</label>
+                <input type="time" v-model="schedule.dailyRunTime" class="w-full border p-2 rounded"
+                  :disabled="!schedule.enabled">
+                <p class="text-xs text-gray-500 mt-1">Формат: HH:MM (24-часовой)</p>
+              </div>
+
+              <div>
+                <label class="block mb-2 font-semibold">Часовой пояс</label>
+                <select v-model="schedule.timezone" class="w-full border p-2 rounded" :disabled="!schedule.enabled">
+                  <option value="Europe/Moscow">Москва (МСК, UTC+3)</option>
+                  <option value="Europe/Kiev">Киев (UTC+2)</option>
+                  <option value="Asia/Yekaterinburg">Екатеринбург (UTC+5)</option>
+                  <option value="Asia/Novosibirsk">Новосибирск (UTC+7)</option>
+                  <option value="UTC">UTC (UTC+0)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-4 flex justify-between items-center">
+              <div class="text-sm text-gray-600">
+                <span v-if="schedule.enabled" class="text-green-600 font-semibold">✓ Активно</span>
+                <span v-else class="text-gray-400">○ Отключено</span>
+                <span v-if="schedule.enabled"> • Запуск: {{ schedule.dailyRunTime }} ({{ schedule.timezone }})</span>
+              </div>
+              <button @click="saveSchedule"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold">
+                💾 Сохранить расписание
+              </button>
+            </div>
           </div>
 
           <div class="mb-4">
@@ -617,10 +658,16 @@
                 lastSelectedDisabled: null, // For Shift+Click in disabled profiles
                 bulkThemeKey: '', // Model for bulk edit input
                 bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
+                schedule: {
+                  enabled: false,
+                  timezone: 'Europe/Moscow',
+                  dailyRunTime: '00:01'
+                }
               }
             },
             async mounted() {
               await this.loadConfig();
+              this.loadSchedule();
               this.loadStats();
               this.fetchStatsSummary();
               this.loadBrandStats();
@@ -775,6 +822,40 @@
                   alert('Сохранено успешно!');
                 } catch (e) {
                   alert('Ошибка сохранения');
+                }
+              },
+              async loadSchedule() {
+                try {
+                  const res = await fetch('/api/schedule');
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.schedule = {
+                      enabled: data.enabled || false,
+                      timezone: data.timezone || 'Europe/Moscow',
+                      dailyRunTime: data.dailyRunTime || '00:01'
+                    };
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to load schedule:', e);
+                }
+              },
+              async saveSchedule() {
+                try {
+                  const res = await fetch('/api/schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.schedule)
+                  });
+
+                  if (res.ok) {
+                    alert('✅ Расписание сохранено успешно!');
+                  } else {
+                    const error = await res.json();
+                    alert(`❌ Ошибка: ${error.error || 'Не удалось сохранить'}`);
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to save schedule:', e);
+                  alert('❌ Ошибка сохранения расписания');
                 }
               },
               async triggerRun(testMode = false) {

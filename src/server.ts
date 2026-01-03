@@ -641,6 +641,72 @@ app.get('/api/profiles/sync', async (req, res) => {
     }
 });
 
+// Get Schedule Configuration
+app.get('/api/schedule', (req, res) => {
+    try {
+        if (!fs.existsSync(CONFIG_PATH)) {
+            return res.status(404).json({ error: 'Config file not found' });
+        }
+
+        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        const schedule = config.schedule || {
+            enabled: false,
+            timezone: 'Europe/Moscow',
+            dailyRunTime: '00:01'
+        };
+
+        res.json(schedule);
+    } catch (error: any) {
+        console.error('[API] Failed to get schedule:', error);
+        res.status(500).json({ error: 'Failed to read schedule configuration' });
+    }
+});
+
+// Save Schedule Configuration
+app.post('/api/schedule', (req, res) => {
+    try {
+        const { enabled, timezone, dailyRunTime } = req.body;
+
+        // Validation
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled must be a boolean' });
+        }
+
+        if (!timezone || typeof timezone !== 'string') {
+            return res.status(400).json({ error: 'timezone is required and must be a string' });
+        }
+
+        // Validate time format (HH:MM)
+        const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+        if (!dailyRunTime || !timeRegex.test(dailyRunTime)) {
+            return res.status(400).json({ error: 'dailyRunTime must be in HH:MM format (00:00 - 23:59)' });
+        }
+
+        // Read config
+        if (!fs.existsSync(CONFIG_PATH)) {
+            return res.status(404).json({ error: 'Config file not found' });
+        }
+
+        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+
+        // Update schedule
+        config.schedule = {
+            enabled,
+            timezone,
+            dailyRunTime
+        };
+
+        // Save config
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+
+        console.log(`[API] Schedule updated: enabled=${enabled}, time=${dailyRunTime}, timezone=${timezone}`);
+        res.json({ success: true, schedule: config.schedule });
+    } catch (error: any) {
+        console.error('[API] Failed to save schedule:', error);
+        res.status(500).json({ error: 'Failed to save schedule configuration' });
+    }
+});
+
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
