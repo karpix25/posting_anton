@@ -332,8 +332,13 @@ async function main() {
             if (config.clients && config.clients.length > 0) {
                 try {
                     console.log(`[Main] Generating caption for ${videoName}...`);
-                    // We use the first post's platform for generation context, but use generic logic usually
-                    const rawText = await generator.generateCaption(videoPath, posts[0].platform, authorName);
+
+                    // Extract brand from path for AI client matching
+                    const brandName = extractBrandFromPath(videoPath);
+                    console.log(`[Main] Detected brand: ${brandName}`);
+
+                    // We use the first post's platform for generation context
+                    const rawText = await generator.generateCaption(videoPath, posts[0].platform, authorName, brandName);
 
                     // Parse if needed (assumes YouTube format logic applies globally or handled per platform below)
                     // Actually, let's keep it simple: 
