@@ -26,7 +26,10 @@ export class ContentGenerator {
             systemPrompt += `\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by${hashtagAuthor} (для указания авторства).`;
         }
 
-        let userPrompt = `Путь к файлу: ${videoPath}. Платформа: ${platform}.`;
+
+        // Decode path to ensure LLM gets human-readable text (e.g., "Юлия" instead of "%D0%AE%D0%BB%D0%B8%D1%8F")
+        const decodedPath = decodeURIComponent(videoPath);
+        let userPrompt = `Путь к файлу: ${decodedPath}. Платформа: ${platform}.`;
 
         if (platform === 'youtube') {
             userPrompt += `\n\nВАЖНО: Твой ответ должен состоять из двух частей, разделенных символами "$$$".\n`;
