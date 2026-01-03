@@ -404,65 +404,122 @@
               <span>⚫ Деактивированные ({{ disabledProfiles.length }})</span>
               <span class="text-2xl">{{ showDisabledProfiles ? '▼' : '▶' }}</span>
             </button>
-            <table v-if="showDisabledProfiles" class="w-full border-collapse opacity-60">
-              <thead class="bg-gray-100">
-                <tr>
-                  <th class="text-left p-3 border-b w-12">
-                    <input type="checkbox" @change="toggleSelectAllDisabled"
-                      :checked="selectedDisabledProfiles.length === disabledProfiles.length && disabledProfiles.length > 0"
-                      class="w-4 h-4 cursor-pointer">
-                  </th>
-                  <th class="text-left p-3 border-b w-12">Статус</th>
-                  <th class="text-left p-3 border-b">Профиль</th>
-                  <th class="text-left p-3 border-b">
-                    Категория/Тема
-                    <span class="text-xs font-normal text-gray-500">(название папки или группы)</span>
-                  </th>
-                  <th class="text-left p-3 border-b">Подключенные Платформы</th>
-                  <th class="text-left p-3 border-b">Лимит</th>
-                  <th class="text-center p-3 border-b w-32">Действия</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="profile in disabledProfiles" :key="profile.username" class="border-b hover:bg-gray-50">
-                  <td class="p-2 text-center">
-                    <input type="checkbox" :value="profile.username" v-model="selectedDisabledProfiles"
-                      class="w-4 h-4 cursor-pointer">
-                  </td>
-                  <td class="p-2 text-center text-2xl" :title="'Деактивирован'">⚫</td>
-                  <td class="p-2 text-gray-500">{{ profile.username }}</td>
-                  <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
-                  <td class="p-2">
-                    <div class="flex gap-2">
-                      <span v-for="platform in profile.platforms" :key="platform"
-                        class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
-                        {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube' }}
-                      </span>
+
+            <!-- BULK ACTIONS BAR for Disabled Profiles -->
+            <div v-if="selectedDisabledProfiles.length > 0 && showDisabledProfiles"
+              class="sticky top-0 z-10 bg-gray-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
+              <div class="font-bold">
+                Выбрано профилей: {{ selectedDisabledProfiles.length }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span>Применить категорию ко всем:</span>
+                <select v-model="bulkThemeKeyDisabled" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
+                  <option disabled value="">Выберите...</option>
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                    {{ theme }}
+                  </option>
+                </select>
+                <button @click="applyBulkCategoryDisabled"
+                  class="bg-white text-gray-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                  Применить
+                </button>
+
+                <div class="border-l border-gray-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Активность:</span>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                      :checked="selectedDisabledProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)"
+                      @change="toggleBulkEnabledDisabled($event.target.checked)" class="sr-only peer">
+                    <div
+                      class="relative w-11 h-6 bg-gray-800 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400">
                     </div>
-                  </td>
-                  <td class="p-2 text-gray-400 text-center">
-                    {{ profile.limit || '-' }}
-                  </td>
-                  <td class="p-2 text-center">
-                    <label class="inline-flex items-center cursor-pointer">
-                      <input type="checkbox" :checked="profile.enabled !== false"
-                        @change="toggleProfileEnabled(profile)" class="sr-only peer">
-                      <div
-                        class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
-                      </div>
-                    </label>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div v-if="showDisabledProfiles && selectedDisabledProfiles.length > 0" class="mt-3 flex gap-2">
-              <button @click="bulkEnableProfiles" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-                ✓ Активировать выбранные ({{ selectedDisabledProfiles.length }})
-              </button>
-              <button @click="selectedDisabledProfiles = []"
-                class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
-                Отменить выбор
-              </button>
+                    <span class="ml-2 text-sm font-medium text-gray-100"
+                      v-if="selectedDisabledProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)">ВКЛ</span>
+                    <span class="ml-2 text-sm font-medium text-gray-200" v-else>ВЫКЛ</span>
+                  </label>
+                </div>
+                <button @click="selectedDisabledProfiles = []"
+                  class="ml-4 text-sm text-gray-200 hover:text-white underline">
+                  Сбросить выделение
+                </button>
+              </div>
+            </div>
+
+            <div v-if="showDisabledProfiles" class="opacity-60">
+              <div v-for="(profiles, theme) in groupedDisabledProfiles" :key="theme"
+                class="mb-4 border rounded overflow-hidden">
+                <!-- Group Header -->
+                <div
+                  class="bg-gray-50 p-3 font-semibold flex justify-between items-center hover:bg-gray-100 transition-colors">
+                  <div class="flex items-center gap-3 flex-1">
+                    <input type="checkbox" :checked="profiles.every(p => selectedDisabledProfiles.includes(p.username))"
+                      @change="toggleGroupSelectionDisabled(profiles, $event.target.checked)"
+                      class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
+
+                    <div @click="toggleGroupDisabled(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
+                      <span>📁 {{ theme }}</span>
+                      <span class="bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                        }}</span>
+                    </div>
+                  </div>
+                  <span @click="toggleGroupDisabled(theme)" class="text-gray-500 cursor-pointer p-2">{{
+                    expandedGroupsDisabled[theme]
+                    ? '▼' : '▶' }}</span>
+                </div>
+
+                <!-- Group Content (Table) -->
+                <div v-show="expandedGroupsDisabled[theme]" class="border-t">
+                  <table class="w-full border-collapse">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th class="p-3 w-8"><input type="checkbox"
+                            @change="toggleGroupSelectionDisabled(profiles, $event.target.checked)"
+                            :checked="profiles.every(p => selectedDisabledProfiles.includes(p.username))"></th>
+                        <th class="text-left p-3 w-12"></th>
+                        <th class="text-left p-3">Профиль</th>
+                        <th class="text-left p-3">Категория</th>
+                        <th class="text-left p-3">Платформы</th>
+                        <th class="text-left p-3 w-20">Лимит</th>
+                        <th class="text-center p-3 w-32">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
+                        :class="{'bg-gray-100': selectedDisabledProfiles.includes(profile.username)}">
+                        <td class="p-3 text-center">
+                          <input type="checkbox" :checked="selectedDisabledProfiles.includes(profile.username)"
+                            @click="handleProfileSelectDisabled($event, profile, profiles)"
+                            class="w-4 h-4 cursor-pointer">
+                        </td>
+                        <td class="p-2 text-center text-xl" :title="'Деактивирован'">⚫</td>
+                        <td class="p-2 font-medium text-gray-500">{{ profile.username }}</td>
+                        <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
+                        <td class="p-2">
+                          <div class="flex gap-2">
+                            <span v-for="platform in profile.platforms" :key="platform"
+                              class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                              {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube'
+                              }}
+                            </span>
+                          </div>
+                        </td>
+                        <td class="p-2 text-gray-400 text-center">
+                          {{ profile.limit || '-' }}
+                        </td>
+                        <td class="p-2 text-center">
+                          <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" :checked="profile.enabled !== false"
+                              @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                            <div
+                              class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                            </div>
+                          </label>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -553,10 +610,13 @@
                 showActiveProfiles: true,    // Collapsible - active by default
                 showDisabledProfiles: false,  // Collapsible - collapsed by default
                 expandedGroups: {}, // For accordion view
+                expandedGroupsDisabled: {}, // For disabled profiles accordion
                 selectedProfiles: [], // List of selected usernames for bulk actions
                 selectedDisabledProfiles: [], // List of selected disabled profiles for bulk actions
                 lastSelected: null, // For Shift+Click
+                lastSelectedDisabled: null, // For Shift+Click in disabled profiles
                 bulkThemeKey: '', // Model for bulk edit input
+                bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
               }
             },
             async mounted() {
@@ -596,6 +656,19 @@
                 });
 
                 // Sort keys alphabetically
+                return Object.keys(groups).sort().reduce((acc, key) => {
+                  acc[key] = groups[key];
+                  return acc;
+                }, {});
+              },
+              groupedDisabledProfiles() {
+                const groups = {};
+                this.disabledProfiles.forEach(p => {
+                  const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+                  const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+                  if (!groups[displayKey]) groups[displayKey] = [];
+                  groups[displayKey].push(p);
+                });
                 return Object.keys(groups).sort().reduce((acc, key) => {
                   acc[key] = groups[key];
                   return acc;
@@ -840,26 +913,62 @@
                 const published = this.getClientPublished(client);
                 return Math.min(100, Math.round((published / quota) * 100));
               },
-              toggleSelectAllDisabled(event) {
-                if (event.target.checked) {
-                  this.selectedDisabledProfiles = this.disabledProfiles.map(p => p.username);
-                } else {
-                  this.selectedDisabledProfiles = [];
-                }
+              toggleGroupDisabled(theme) {
+                this.expandedGroupsDisabled[theme] = !this.expandedGroupsDisabled[theme];
               },
-              async bulkEnableProfiles() {
-                if (this.selectedDisabledProfiles.length === 0) return;
+              toggleGroupSelectionDisabled(profiles, checked) {
+                profiles.forEach(p => {
+                  const idx = this.selectedDisabledProfiles.indexOf(p.username);
+                  if (checked && idx === -1) {
+                    this.selectedDisabledProfiles.push(p.username);
+                  } else if (!checked && idx !== -1) {
+                    this.selectedDisabledProfiles.splice(idx, 1);
+                  }
+                });
+              },
+              handleProfileSelectDisabled(event, profile, groupProfiles) {
+                const username = profile.username;
+                const idx = this.selectedDisabledProfiles.indexOf(username);
 
-                for (const username of this.selectedDisabledProfiles) {
-                  const profile = this.config.profiles.find(p => p.username === username);
-                  if (profile) {
-                    profile.enabled = true;
+                if (event.shiftKey && this.lastSelectedDisabled) {
+                  const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelectedDisabled);
+                  const currentIdx = groupProfiles.findIndex(p => p.username === username);
+                  const [start, end] = lastIdx < currentIdx ? [lastIdx, currentIdx] : [currentIdx, lastIdx];
+
+                  for (let i = start; i <= end; i++) {
+                    const u = groupProfiles[i].username;
+                    if (!this.selectedDisabledProfiles.includes(u)) {
+                      this.selectedDisabledProfiles.push(u);
+                    }
+                  }
+                } else {
+                  if (idx === -1) {
+                    this.selectedDisabledProfiles.push(username);
+                  } else {
+                    this.selectedDisabledProfiles.splice(idx, 1);
                   }
                 }
-
+                this.lastSelectedDisabled = username;
+              },
+              async applyBulkCategoryDisabled() {
+                if (!this.bulkThemeKeyDisabled) return;
+                this.selectedDisabledProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.theme_key = this.bulkThemeKeyDisabled;
+                  }
+                });
                 await this.saveConfig();
-                this.selectedDisabledProfiles = [];
-                alert(`Активировано профилей: ${this.selectedDisabledProfiles.length}`);
+                this.bulkThemeKeyDisabled = '';
+              },
+              async toggleBulkEnabledDisabled(enabled) {
+                this.selectedDisabledProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.enabled = enabled;
+                  }
+                });
+                await this.saveConfig();
               },
               updateAliases(key, value) {
                 const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
