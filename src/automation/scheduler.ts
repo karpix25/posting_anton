@@ -321,16 +321,18 @@ export class ContentScheduler {
 
         if (categoryCandidate) {
             const normCandidate = this.normalize(categoryCandidate);
-            // Check aliases
+            // Check aliases with EXACT matching to avoid false positives
+            // e.g. "баннерыsmart" should NOT match "smart"
             for (const [key, list] of Object.entries(aliasesMap)) {
-                // Normalize list items too
                 for (const alias of list) {
-                    if (normCandidate.includes(this.normalize(alias))) {
+                    const normAlias = this.normalize(alias);
+                    // Exact match: normalized candidate equals normalized alias
+                    if (normCandidate === normAlias) {
                         return key;
                     }
                 }
             }
-            // If no alias, return the candidate itself (so it appears in dashboard)
+            // If no alias matched, return the candidate itself (so it appears in dashboard)
             return normCandidate;
         }
 
