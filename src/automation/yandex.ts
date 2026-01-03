@@ -31,35 +31,49 @@ export class YandexDiskClient {
         const limitsToTry = [limit, Math.min(5000, limit), Math.min(2000, limit)];
 
         for (let attempt = 0; attempt < maxRetries; attempt++) {
-            const currentLimit = limitsToTry[attempt] || 10000;
+            const currentLimit = limitsToTry[attempt] || 1000;
 
             try {
-                console.log(`[Yandex] Fetching files (limit: ${currentLimit}, attempt: ${attempt + 1}/${maxRetries})...`);
+                console.log(`[Yandex] Fetching files with pagination (limit per page: ${currentLimit}, attempt: ${attempt + 1}/${maxRetries})...`);
 
-                const response = await axios.get(`${this.baseUrl}/files`, {
-                    headers: this.headers,
-                    timeout: 120000, // 120 seconds for large datasets
-                    httpsAgent: this.httpsAgent,
-                    params: {
-                        path,
-                        limit: currentLimit,
-                        media_type: 'video',
-                        // Request only fields we actually need - dramatically reduces response size!
-                        // NOTE: API /files не возвращает прямые ссылки (file). Нужно делать отдельный запрос /download
-                        fields: 'items.name,items.path,items.md5,items.size,items.created,limit,offset'
-                    },
-                });
+                const allItems: any[] = [];
+                let offset = 0;
+                let hasMore = true;
 
-                // Transform response to our interface
-                console.log(`[Yandex] ✅ API Response Status: ${response.status}`);
-                console.log(`[Yandex] Items fetched: ${(response.data.items || []).length}`);
+                while (hasMore) {
+                    const response = await axios.get(`${this.baseUrl}/files`, {
+                        headers: this.headers,
+                        timeout: 120000, // 120 seconds for large datasets
+                        httpsAgent: this.httpsAgent,
+                        params: {
+                            path,
+                            limit: currentLimit,
+                            offset: offset,
+                            media_type: 'video',
+                            // Request only fields we actually need - dramatically reduces response size!
+                            fields: 'items.name,items.path,items.md5,items.size,items.created,limit,offset'
+                        },
+                    });
 
-                if (response.data.items && response.data.items.length > 0) {
-                    console.log(`[Yandex] First file: ${response.data.items[0].path}`);
+                    const items = response.data.items || [];
+                    allItems.push(...items);
+
+                    console.log(`[Yandex] ✅ Page fetched: ${items.length} files (total so far: ${allItems.length}, offset: ${offset})`);
+
+                    // Check if there are more files
+                    if (items.length < currentLimit) {
+                        hasMore = false;
+                    } else {
+                        offset += currentLimit;
+                    }
                 }
 
-                const items = response.data.items || [];
-                return items.map((item: any) => ({
+                console.log(`[Yandex] ✅ Total files fetched: ${allItems.length}`);
+                if (allItems.length > 0) {
+                    console.log(`[Yandex] First file: ${allItems[0].path}`);
+                }
+
+                return allItems.map((item: any) => ({
                     name: item.name,
                     path: item.path,
                     url: item.path, // Store path for API calls
