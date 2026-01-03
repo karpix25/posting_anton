@@ -268,6 +268,23 @@ async function main() {
     }
 
     function extractBrandFromPath(path: string): string {
+        const normalized = path.toLowerCase().replace(/ё/g, "е");
+
+        // Known brand keywords to search for
+        const brandKeywords = [
+            'gqbox', 'synergetic', 'toplash', 'плати по миру', 'платипомиру',
+            'wb', 'wildberries', 'покупки', 'pokypki',
+            'lifeprotein', 'грибnik', 'ladysmix', 'магний'
+        ];
+
+        // Search for brand keywords in path
+        for (const keyword of brandKeywords) {
+            if (normalized.includes(keyword)) {
+                return keyword.replace(/\s+/g, '').replace(/[^a-zа-я0-9]/g, '');
+            }
+        }
+
+        // Fallback: extract from folder structure (3rd level after ВИДЕО)
         const parts = path.split('/').filter(p => p.length > 0 && p !== 'disk:');
         const videoIndex = parts.findIndex(p => p.toLowerCase() === 'video' || p.toLowerCase() === 'видео');
         if (videoIndex !== -1 && videoIndex + 3 < parts.length) {
@@ -275,6 +292,7 @@ async function main() {
             const cleaned = brandFolder.split('*')[0].replace(/\(.*?\)/g, ' ').trim();
             return cleaned.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]/g, "");
         }
+
         return 'unknown';
     }
 
