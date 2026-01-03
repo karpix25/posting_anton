@@ -17,8 +17,8 @@ export class ContentGenerator {
         this.config = config;
     }
 
-    async generateCaption(videoPath: string, platform: string, authorName?: string): Promise<string> {
-        const client = this.findClientConfig(videoPath);
+    async generateCaption(videoPath: string, platform: string, authorName?: string, profileTheme?: string): Promise<string> {
+        const client = this.findClientConfig(profileTheme);
         let systemPrompt = client ? client.prompt : "Ты — эксперт по SMM."; // Default fallback
 
         if (authorName) {
@@ -62,15 +62,27 @@ export class ContentGenerator {
         return response.choices[0].message.content || '';
     }
 
-    private findClientConfig(path: string) {
-        if (!this.config.clients) return null;
+    private findClientConfig(profileTheme?: string) {
+        if (!this.config.clients || !profileTheme) return null;
+
+        // Match client by theme (case-insensitive)
+        const normalizedTheme = profileTheme.toLowerCase().trim();
         return this.config.clients.find(c => {
-            try {
-                return new RegExp(c.regex, 'i').test(path);
-            } catch (e) {
-                console.warn(`Invalid regex for client ${c.name}: ${c.regex}`);
-                return false;
+            // Match by client name or regex (for backwards compatibility)
+            const clientName = (c.name || '').toLowerCase().trim();
+            if (clientName === normalizedTheme) return true;
+
+            // Fallback to regex if provided
+            if (c.regex) {
+                try {
+                    return new RegExp(c.regex, 'i').test(profileTheme);
+                } catch (e) {
+                    console.warn(`Invalid regex for client ${c.name}: ${c.regex}`);
+                    return false;
+                }
             }
+
+            return false;
         });
     }
 }
