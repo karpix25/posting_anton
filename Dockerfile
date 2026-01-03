@@ -1,10 +1,7 @@
 # Build Stage
 FROM node:20-alpine AS builder
 
-# Support build args (optional, but good practice to accept them if passed)
-ARG YANDEX_TOKEN
-ARG OPENAI_API_KEY
-ARG UPLOAD_POST_API_KEY
+# Only accept GIT_SHA as build arg (not sensitive)
 ARG GIT_SHA
 
 WORKDIR /app
