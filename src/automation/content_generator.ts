@@ -17,9 +17,16 @@ export class ContentGenerator {
         this.config = config;
     }
 
-    async generateCaption(videoPath: string, platform: string, authorName?: string, brandName?: string): Promise<string> {
+    async generateCaption(videoPath: string, platform: string, authorName?: string, brandName?: string): Promise<string | null> {
         const client = this.findClientConfig(brandName);
-        let systemPrompt = client ? client.prompt : "Ты — эксперт по SMM."; // Default fallback
+
+        // If no AI client found for this brand, skip the video
+        if (!client) {
+            console.log(`⚠️  [Generator] No AI client found for brand "${brandName}". Skipping video.`);
+            return null;
+        }
+
+        let systemPrompt = client.prompt;
 
         if (authorName) {
             const hashtagAuthor = authorName.replace(/\s+/g, '');

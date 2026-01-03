@@ -333,12 +333,19 @@ async function main() {
                 try {
                     console.log(`[Main] Generating caption for ${videoName}...`);
 
+
                     // Extract brand from path for AI client matching
                     const brandName = extractBrandFromPath(videoPath);
                     console.log(`[Main] Detected brand: ${brandName}`);
 
                     // We use the first post's platform for generation context
                     const rawText = await generator.generateCaption(videoPath, posts[0].platform, authorName, brandName);
+
+                    // If no AI client found for this brand, skip the video
+                    if (rawText === null) {
+                        console.log(`⏭️  [Main] Skipping ${videoName} - no AI client for brand "${brandName}"`);
+                        return; // Skip this video (exit from async map function)
+                    }
 
                     // Parse if needed (assumes YouTube format logic applies globally or handled per platform below)
                     // Actually, let's keep it simple: 
