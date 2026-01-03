@@ -1,4 +1,4 @@
-{
+ыц{
   "yandexFolders": [
     "disk:/ВИДЕО"
   ],
@@ -32,6 +32,11 @@
     "youtube": 2
   },
   "daysToGenerate": 7,
+  "schedule": {
+    "enabled": true,
+    "timezone": "Europe/Moscow",
+    "dailyRunTime": "00:01"
+  },
   "clients": [
     {
       "name": "PayWorld",

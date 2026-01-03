@@ -6,7 +6,8 @@
     "start": "node dist/server.js",
     "cleanup": "node dist/scripts/cleanup.js",
     "build": "tsc",
-    "dev": "ts-node src/server.js"
+    "dev": "ts-node src/server.js",
+    "schedule": "node src/scheduler.js"
   },
   "dependencies": {
     "axios": "^1.7.0",
