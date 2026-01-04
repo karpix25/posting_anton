@@ -12,12 +12,12 @@ export class AutomationScheduler {
     }
 
     start() {
-        console.log('[AutoScheduler] 🕐 Starting built-in scheduler (checks every minute)...');
+        console.log('[AutoScheduler] 🕐 Starting built-in scheduler (checks every 10 seconds)...');
 
-        // Check every minute
+        // Check every 10 seconds to not miss the minute window
         this.intervalId = setInterval(() => {
             this.checkAndRun();
-        }, 60 * 1000); // 60 seconds
+        }, 10 * 1000);
 
         // Also check immediately on start (after 5s delay for server to fully start)
         setTimeout(() => this.checkAndRun(), 5000);
@@ -57,7 +57,8 @@ export class AutomationScheduler {
             const now = new Date();
             const currentMinute = now.toISOString().substring(0, 16); // YYYY-MM-DDTHH:MM
             if (this.lastRunMinute !== currentMinute) {
-                console.log('[AutoScheduler] ⏸️  Scheduling is disabled');
+                // Log strictly every 5-10 mins to reduce spam or just silence it
+                // console.log('[AutoScheduler] ⏸️  Scheduling is disabled'); 
                 this.lastRunMinute = currentMinute;
             }
             return false;
@@ -74,18 +75,28 @@ export class AutomationScheduler {
             minute: '2-digit'
         });
 
-        // Extract only HH:MM
-        const timePart = currentTimeStr.split(', ')[1];
+        // Fix: logic to handle both "HH:MM" and "MM/DD/YYYY, HH:MM" formats
+        // If there is a comma, take the part after comma. If no comma, take the whole string.
+        let timePart = currentTimeStr;
+        if (currentTimeStr.includes(',')) {
+            timePart = currentTimeStr.split(', ')[1];
+        }
+
+        // Trim just in case
+        timePart = (timePart || '').trim();
 
         // Create unique key for this minute to prevent duplicate runs
-        const currentMinute = now.toISOString().substring(0, 16); // YYYY-MM-DDTHH:MM
+        // We need date in target timezone to be perfectly accurate for duplicates,
+        // but simplified ISO string (UTC) minute check is usually enough to prevent double runs
+        // within the same execution context.
+        const currentMinute = now.toISOString().substring(0, 16);
 
         const matches = timePart === targetTime;
 
         if (matches) {
             // Check if we already ran this minute
             if (this.lastRunMinute === currentMinute) {
-                console.log('[AutoScheduler] ⏭️  Already ran this minute, skipping');
+                // Already ran, skip logging to avoid spamming every 10s
                 return false;
             }
 
