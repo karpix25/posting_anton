@@ -5,6 +5,7 @@ import { YandexDiskClient } from './automation/yandex'; // Import Yandex client
 import { PlatformManager } from './automation/platforms';
 import { StatsManager } from './automation/stats';
 import { DatabaseService } from './automation/db';
+import { AutomationScheduler } from './automation/auto_scheduler';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -712,14 +713,20 @@ app.get('/health', (req, res) => {
     res.status(200).send('OK');
 });
 
+
 // Start Server
 const server = app.listen(PORT, () => {
     console.log(`Dashboard running at http://localhost:${PORT}`);
 });
 
+// Initialize built-in automation scheduler
+const autoScheduler = new AutomationScheduler(CONFIG_PATH);
+autoScheduler.start();
+
 // Graceful Shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received. Closing HTTP server...');
+    autoScheduler.stop();
     server.close(() => {
         console.log('HTTP server closed.');
         process.exit(0);
@@ -728,6 +735,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
     console.log('SIGINT received. Shutting down...');
+    autoScheduler.stop();
     server.close(() => {
         console.log('HTTP server closed.');
         process.exit(0);
