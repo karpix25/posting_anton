@@ -23,15 +23,6 @@ function loadConfig() {
     return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
 }
 
-function getCurrentTime(timezone) {
-    return new Date().toLocaleString('en-US', {
-        timeZone: timezone,
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
 function shouldRun(config) {
     const schedule = config.schedule || {};
 
@@ -43,12 +34,24 @@ function shouldRun(config) {
 
     const timezone = schedule.timezone || 'Europe/Moscow';
     const targetTime = schedule.dailyRunTime || '00:01';
-    const currentTime = getCurrentTime(timezone);
 
-    log(`Current time (${timezone}): ${currentTime}`);
+    // Get current time in specified timezone
+    const now = new Date();
+    const currentTimeStr = now.toLocaleString('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+
+    // Extract only HH:MM from the full datetime string
+    // Format is "M/D/YYYY, HH:MM" or "MM/DD/YYYY, HH:MM"
+    const timePart = currentTimeStr.split(', ')[1]; // Get "HH:MM"
+
+    log(`Current time (${timezone}): ${currentTimeStr} (extracted: ${timePart})`);
     log(`Target time: ${targetTime}`);
 
-    return currentTime === targetTime;
+    return timePart === targetTime;
 }
 
 function runAutomation() {
