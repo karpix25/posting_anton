@@ -68,39 +68,37 @@ export class AutomationScheduler {
         const targetTime = schedule.dailyRunTime || '00:01';
 
         const now = new Date();
-        const currentTimeStr = now.toLocaleString('en-US', {
+        // Use reliable Intl formatter to get time in target timezone
+        const formatter = new Intl.DateTimeFormat('en-US', {
             timeZone: timezone,
-            hour12: false,
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            hour12: false
         });
 
-        // Fix: logic to handle both "HH:MM" and "MM/DD/YYYY, HH:MM" formats
-        // If there is a comma, take the part after comma. If no comma, take the whole string.
-        let timePart = currentTimeStr;
-        if (currentTimeStr.includes(',')) {
-            timePart = currentTimeStr.split(', ')[1];
-        }
+        const parts = formatter.formatToParts(now);
+        const hour = parts.find(p => p.type === 'hour')?.value || '00';
+        const minute = parts.find(p => p.type === 'minute')?.value || '00';
 
-        // Trim just in case
-        timePart = (timePart || '').trim();
+        // Construct HH:MM format
+        const currentTimeStr = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
 
         // Create unique key for this minute to prevent duplicate runs
-        // We need date in target timezone to be perfectly accurate for duplicates,
-        // but simplified ISO string (UTC) minute check is usually enough to prevent double runs
-        // within the same execution context.
+        // We use the *server* UTC minute for deduplication key, which is stable/unique per minute globally
         const currentMinute = now.toISOString().substring(0, 16);
 
-        const matches = timePart === targetTime;
+        // Debug logging (optional, maybe too spammy if every 10s? logic below filters spam)
+        // console.log(`[AutoScheduler] Checking: ${currentTimeStr} (Moscow) vs ${targetTime} (Target)`);
+
+        const matches = currentTimeStr === targetTime;
 
         if (matches) {
             // Check if we already ran this minute
             if (this.lastRunMinute === currentMinute) {
-                // Already ran, skip logging to avoid spamming every 10s
                 return false;
             }
 
-            console.log(`[AutoScheduler] ✅ Time matched! ${timePart} === ${targetTime} (${timezone})`);
+            console.log(`[AutoScheduler] ✅ Time matched! ${currentTimeStr} === ${targetTime} (${timezone})`);
             this.lastRunMinute = currentMinute;
             return true;
         }

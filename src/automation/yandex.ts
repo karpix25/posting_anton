@@ -59,6 +59,12 @@ export class YandexDiskClient {
                 }
 
                 const items = response.data.items || [];
+                
+                // Explicitly sort items by name (handles cases where API order is random)
+                items.sort((a: any, b: any) => {
+                    return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
                 return items.map((item: any) => ({
                     name: item.name,
                     path: item.path,

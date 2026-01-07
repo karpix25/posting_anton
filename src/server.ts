@@ -74,6 +74,17 @@ function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>
         categoryCandidate = parts[parts.length - 2];
     }
 
+    // Heuristic: If categoryCandidate looks like a file, reject it
+    if (categoryCandidate) {
+        const lower = categoryCandidate.toLowerCase();
+        // Check for common video extensions or specific "Copy_" prefix or just having an extension dot
+        if (lower.startsWith('copy_') || lower.includes('.')) {
+            // console.log(`[extractMetadata] Ignored file-like category: ${categoryCandidate}`);
+            categoryCandidate = '';
+        }
+    }
+
+
     // DEBUG: Log first 5 paths to see what's being parsed
     if (Math.random() < 0.001) { // Log ~0.1% of paths
         console.log('[extractMetadata] DEBUG:');
