@@ -91,11 +91,22 @@ class ContentScheduler:
                     brand_videos = theme_brands[selected_brand]
                     video_for_slot = None
                     
-                    for i, v in enumerate(brand_videos):
+                    # USER REQ: Randomize file selection within brand
+                    available_brand_videos = [v for v in brand_videos]
+                    random.shuffle(available_brand_videos)
+
+                    for i, v in enumerate(available_brand_videos):
                         vid_id = v.get("md5") or v.get("path")
                         if vid_id not in self.used_video_md5s:
                             video_for_slot = v
-                            brand_videos.pop(i) # Remove from available to avoid double picking in same run
+                            # Remove from the ORIGINAL list to avoid re-picking
+                            # We need to find index in original list or just remove by value logic
+                            # Since dicts are by ref, we can traverse original and remove
+                            
+                            # Simplest: remove from theme_brands[selected_brand] by reference
+                            if v in theme_brands[selected_brand]:
+                                theme_brands[selected_brand].remove(v)
+                                
                             self.used_video_md5s.add(vid_id)
                             break
                     
