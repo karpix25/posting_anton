@@ -109,7 +109,7 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
         config = await get_db_config(session)
         break
     
-    client_config = next((c for c in config.clients if normalize_client(c.name) == brand_name), None)
+    client_config = find_ai_client(config.clients, brand_name)
     
     if client_config:
         logger.info(f"   ✅ AI Client found: {client_config.name}")
@@ -281,5 +281,32 @@ async def check_cleanup(video_path: str):
                 logger.error(f"Cleanup Failed for {video_path}: {e}")
         break
 
-def normalize_client(name):
-    return name.lower().replace(" ", "")
+def normalize_client(name: str) -> str:
+    """Normalize client name for comparison (lowercase, no spaces)"""
+    return name.lower().replace(" ", "").replace("-", "")
+
+def find_ai_client(clients, brand_name: str):
+    """
+    Find AI client for brand using:
+    1. Exact name match (normalized)
+    2. Regex pattern match (if regex field is set)
+    """
+    import re
+    
+    normalized_brand = normalize_client(brand_name)
+    
+    for client in clients:
+        # Method 1: Exact name match (normalized)
+        if normalize_client(client.name) == normalized_brand:
+            return client
+        
+        # Method 2: Regex match
+        if client.regex:
+            try:
+                if re.search(client.regex, brand_name, re.IGNORECASE):
+                    return client
+            except re.error as e:
+                logger.warning(f"Invalid regex for client {client.name}: {client.regex} - {e}")
+    
+    return None
+
