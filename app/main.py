@@ -37,6 +37,17 @@ async def on_startup():
     logger.info("Application starting up...")
     await init_db()
     await migrate_file_to_db()
+    
+    # Log current schedule state
+    try:
+        from app.services.config_db import get_db_config
+        from app.database import async_session_maker
+        async with async_session_maker() as session:
+             cfg = await get_db_config(session)
+             logger.info(f"✅ System Ready. Current Schedule: {cfg.cronSchedule or 'Disabled'}")
+    except Exception as e:
+        logger.error(f"Failed to load initial config: {e}")
+
     dynamic_scheduler.start()
 
 @app.get("/health")

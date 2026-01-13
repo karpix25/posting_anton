@@ -19,7 +19,9 @@ if "?" in db_url:
     db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
     db_url = db_url.replace("?sslmode=prefer", "").replace("&sslmode=prefer", "")
 
-engine = create_async_engine(db_url, echo=True, future=True)
+    db_url = db_url.replace("?sslmode=prefer", "").replace("&sslmode=prefer", "")
+
+engine = create_async_engine(db_url, echo=False, future=True)
 
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
