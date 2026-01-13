@@ -59,10 +59,17 @@ async def on_startup():
                  cfg = await get_db_config(session)
 
              logger.info(f"✅ System Ready. Current Schedule: {cfg.cronSchedule or 'Disabled'}. Clients: {len(cfg.clients)}")
+             
+             # Start dynamic scheduler
+             dynamic_scheduler.start(cfg)
+             
+             # Start background publisher for queued posts
+             from app.background_publisher import background_publisher
+             asyncio.create_task(background_publisher())
+             logger.info("🚀 Started background post publisher")
+             
     except Exception as e:
-        logger.error(f"Failed to load initial config: {e}")
-
-    dynamic_scheduler.start()
+        logger.error(f"Startup failed: {e}")
 
 @app.get("/health")
 async def health_check():
