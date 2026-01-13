@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
-        # Disable internal retries (client-side) to rely on our own robust retry logic
-        self.client = yadisk.AsyncClient(token=self.token, n_retries=0, retry_interval=0)
+        # Using 600s timeout per request (set in get_files call below)
+        self.client = yadisk.AsyncClient(token=self.token)
 
     async def check_token(self) -> bool:
         async with self.client:
