@@ -46,6 +46,7 @@ class ContentScheduler:
 
         start_date = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
         days_to_generate = self.config.daysToGenerate or 7
+        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()}")
 
         for day_index in range(days_to_generate):
             current_day_start = start_date + timedelta(days=day_index)
@@ -67,13 +68,22 @@ class ContentScheduler:
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
 
             # Determine max iterations (max of all possible limits)
-            limits = [self.config.limits.instagram, self.config.limits.tiktok, self.config.limits.youtube]
-            max_limit = max(limits) if limits else 1
+            # Start with global limits
+            all_limits = [self.config.limits.instagram, self.config.limits.tiktok, self.config.limits.youtube]
+            
+            # Add all profile-specific limits (that are not None)
             for p in active_profiles:
-                 # Check all platform-specific limits
-                 for platform_limit in [p.instagramLimit, p.tiktokLimit, p.youtubeLimit, p.limit]:
-                     if platform_limit and platform_limit > max_limit:
-                         max_limit = platform_limit
+                if p.instagramLimit is not None:
+                    all_limits.append(p.instagramLimit)
+                if p.tiktokLimit is not None:
+                    all_limits.append(p.tiktokLimit)
+                if p.youtubeLimit is not None:
+                    all_limits.append(p.youtubeLimit)
+                if p.limit is not None:  # Deprecated but fallback
+                    all_limits.append(p.limit)
+            
+            max_limit = max(all_limits) if all_limits else 1
+            logger.info(f"[Scheduler] Max limit for iterations: {max_limit} (from limits: {all_limits})")
             
             last_brand_used_per_theme: Dict[str, str] = {}
             
