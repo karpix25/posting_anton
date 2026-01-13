@@ -173,14 +173,16 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     # Update status to processing
     await update_post_status(history_id, "processing")
     
-    # Parse scheduled time
+    # Parse scheduled time (remove timezone info for comparison)
     publish_dt = datetime.fromisoformat(publish_time_iso)
-    now_utc = datetime.now()
+    if publish_dt.tzinfo is not None:
+        publish_dt = publish_dt.replace(tzinfo=None)  # Make naive for comparison
+    now_local = datetime.now()  # Local time, naive
     
     # Only send scheduled_date if it's in the future
     # Upload Post API rejects past times
     schedule_param = None
-    if publish_dt > now_utc:
+    if publish_dt > now_local:
         schedule_param = publish_dt
         logger.info(f"   ⏰ Will schedule for: {publish_time_iso}")
     else:

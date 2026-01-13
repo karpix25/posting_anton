@@ -59,7 +59,8 @@ class ContentScheduler:
             current_day_end = current_day_start.replace(hour=23, minute=0, second=0, microsecond=0)
             
             if current_day_start >= current_day_end:
-                 continue
+                logger.info(f"[Scheduler] Skipping day {day_index} - already past end time (start={current_day_start}, end={current_day_end})")
+                continue
 
             daily_profiles = active_profiles.copy()
             random.shuffle(daily_profiles)
