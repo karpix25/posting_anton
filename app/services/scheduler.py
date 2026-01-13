@@ -67,23 +67,14 @@ class ContentScheduler:
             # Track profile publish counts per day
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
 
-            # Determine max iterations (max of all possible limits)
-            # Start with global limits
-            all_limits = [self.config.limits.instagram, self.config.limits.tiktok, self.config.limits.youtube]
-            
-            # Add all profile-specific limits (that are not None)
-            for p in active_profiles:
-                if p.instagramLimit is not None:
-                    all_limits.append(p.instagramLimit)
-                if p.tiktokLimit is not None:
-                    all_limits.append(p.tiktokLimit)
-                if p.youtubeLimit is not None:
-                    all_limits.append(p.youtubeLimit)
-                if p.limit is not None:  # Deprecated but fallback
-                    all_limits.append(p.limit)
-            
-            max_limit = max(all_limits) if all_limits else 1
-            logger.info(f"[Scheduler] Max limit for iterations: {max_limit} (from limits: {all_limits})")
+            # Determine max iterations = max of global limits
+            # Profile-specific limits are checked individually in the loop
+            max_limit = max(
+                self.config.limits.instagram, 
+                self.config.limits.tiktok, 
+                self.config.limits.youtube
+            )
+            logger.info(f"[Scheduler] Max iterations: {max_limit} (from global limits: IG={self.config.limits.instagram}, TT={self.config.limits.tiktok}, YT={self.config.limits.youtube})")
             
             last_brand_used_per_theme: Dict[str, str] = {}
             
