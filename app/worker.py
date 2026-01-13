@@ -56,16 +56,20 @@ async def generate_daily_schedule():
             publish_time_iso = post["publish_at"]
             publish_dt = datetime.fromisoformat(publish_time_iso)
             
+            # Extract brand for logging
+            brand_name = extract_brand(video["path"])
+            author_name = extract_author(video["path"])
+            
             # Create DB Record as QUEUED
             history = PostingHistory(
                 profile_username=profile.username,
                 platform=platform,
                 video_path=video["path"],
                 video_name=video["name"],
-                author=extract_author(video["path"]),
+                author=author_name,
                 status="queued",
                 posted_at=publish_dt,
-                meta={"planned": True}
+                meta={"planned": True, "brand": brand_name}
             )
             session.add(history)
             await session.flush()  # get ID
@@ -79,13 +83,13 @@ async def generate_daily_schedule():
                         profile.username, platform, publish_time_iso
                     )
                 )
-                logger.info(f"Scheduled post for {profile.username} on {platform} at {publish_time_iso} (ID: {history.id})")
+                logger.info(f"✅ Scheduled: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} | Time: {publish_time_iso} (ID: {history.id})")
             else:
                 # Past time - execute immediately
                 asyncio.create_task(
                     post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
                 )
-                logger.info(f"Executing immediate post for {profile.username} on {platform} (ID: {history.id})")
+                logger.info(f"▶️ Executing NOW: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} (ID: {history.id})")
         
         await session.commit()
 
@@ -98,7 +102,15 @@ async def schedule_post_with_delay(delay: float, history_id: int, video_path: st
 async def post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
                        publish_time_iso: str):
     """Execute single post publication."""
-    logger.info(f"Processing post ID {history_id}: {profile_username} on {platform}")
+    brand_name = extract_brand(video_path)
+    author_name = extract_author(video_path)
+    
+    logger.info(f"🚀 [Post #{history_id}] Starting publication:")
+    logger.info(f"   Profile: {profile_username}")
+    logger.info(f"   Platform: {platform}")
+    logger.info(f"   Brand: {brand_name}")
+    logger.info(f"   Author: {author_name}")
+    logger.info(f"   Video: {video_path}")
     
     # Load config from DATABASE
     async for session in get_session():
@@ -106,15 +118,18 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
         config = await get_db_config(session)
         break
     
-    brand_name = extract_brand(video_path)
     client_config = next((c for c in config.clients if normalize_client(c.name) == brand_name), None)
+    
+    if client_config:
+        logger.info(f"   ✅ AI Client found: {client_config.name}")
+    else:
+        logger.warning(f"   ⚠️ No AI client for brand '{brand_name}' - using default")
     
     caption = ""
     title = ""
     
     if client_config:
-        author = extract_author(video_path)
-        generated = await content_generator.generate_caption(video_path, platform, client_config, author)
+        generated = await content_generator.generate_caption(video_path, platform, client_config, author_name)
         if generated:
             if platform == 'youtube' and '$$$' in generated:
                 parts = generated.split('$$$')
@@ -122,24 +137,28 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
                 caption = parts[1].strip() if len(parts) > 1 else ""
             else:
                 caption = generated
+            logger.info(f"   📝 AI Generated caption: {caption[:100]}...")
     else:
-        caption = f"{extract_author(video_path)} video #shorts"
+        caption = f"{author_name} video #shorts"
+        logger.info(f"   📝 Using default caption")
     
     # Get download link
     try:
         download_link = await yandex_service.get_download_link(video_path)
+        logger.info(f"   ⬇️ Download link obtained")
     except Exception as e:
-        logger.error(f"Failed to get download link for {video_path}: {e}")
+        logger.error(f"   ❌ Failed to get download link: {e}")
         await update_post_status(history_id, "failed", str(e))
         return
     
     # Update status to processing
     await update_post_status(history_id, "processing")
     
-    # Publish
+    # Publish via Upload Post API
     success = False
     error_msg = None
     try:
+        logger.info(f"   📤 Calling Upload Post API...")
         resp = await platform_manager.publish_post(
             video_url=download_link,
             caption=caption,
@@ -149,23 +168,25 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
         )
         if resp and resp.get("success"):
             success = True
-            logger.info(f"Successfully published post ID {history_id}")
+            logger.info(f"   ✅ Successfully published to Upload Post!")
         else:
             error_msg = resp.get("error") or "Unknown error"
-            logger.error(f"Publish failed for post ID {history_id}: {error_msg}")
+            logger.error(f"   ❌ Upload Post API failed: {error_msg}")
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Exception during publish for post ID {history_id}: {e}")
+        logger.error(f"   ❌ Exception during publish: {e}")
     
     # Update final status
     if success:
         await update_post_status(history_id, "success")
+        logger.info(f"🎉 [Post #{history_id}] Publication SUCCESS!")
         # Update brand stats
         await increment_brand_stats(video_path)
         # Check cleanup
         asyncio.create_task(check_cleanup(video_path))
     else:
         await update_post_status(history_id, "failed", error_msg)
+        logger.error(f"💥 [Post #{history_id}] Publication FAILED: {error_msg}")
 
 async def update_post_status(history_id: int, status: str, error_msg: str = None):
     """Update posting history status in DB."""
