@@ -58,8 +58,21 @@ class Settings(BaseSettings):
         
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # Should we validate?
-            # self._legacy_config = LegacyConfig(**data)
+            
+            # Auto-repair: Ensure cronSchedule exists
+            changed = False
+            if "cronSchedule" not in data:
+                 data["cronSchedule"] = "1 0 * * *"
+                 changed = True
+                 
+            # Save back if repaired
+            if changed:
+                try:
+                    with open(path, "w", encoding="utf-8") as f_out:
+                         json.dump(data, f_out, indent=2, ensure_ascii=False)
+                except:
+                    pass
+
             return LegacyConfig(**data)
 
     class Config:
