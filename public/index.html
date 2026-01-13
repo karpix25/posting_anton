@@ -137,7 +137,8 @@
 
             <!-- Categories Breakdown -->
             <div class="flex justify-between items-center mb-4">
-              <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : 'Авторам' }}
+              <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : (statsViewMode
+                === 'brand' ? 'Брендам' : 'Авторам') }}
               </h3>
 
               <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
@@ -149,6 +150,10 @@
                   :class="['px-3 py-1 rounded-md transition', statsViewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
                   По Авторам
                 </button>
+                <button @click="statsViewMode = 'brand'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'brand' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Брендам
+                </button>
               </div>
             </div>
             <div class="bg-white border rounded-lg overflow-hidden">
@@ -157,7 +162,8 @@
                   <tr>
                     <th class="text-left p-3 border-b">{{ statsHeader }}</th>
                     <th class="text-left p-3 border-b">Профили</th>
-                    <th class="text-right p-3 border-b w-32">Количество</th>
+                    <th class="text-right p-3 border-b w-32">На Диске</th>
+                    <th class="text-right p-3 border-b w-32">Опубликовано</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -177,6 +183,7 @@
                       </div>
                     </td>
                     <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
+                    <td class="p-3 text-right font-bold text-green-600">{{ getPublishedCount(item.name) }}</td>
                   </tr>
                   <tr v-if="currentStatsList.length === 0">
                     <td colspan="3" class="p-4 text-center text-gray-400">Категории не найдены.</td>
@@ -674,13 +681,19 @@
             },
             computed: {
               currentStatsList() {
-                const source = this.statsViewMode === 'author' ? (this.stats.byAuthor || {}) : (this.stats.byCategory || {});
+                let source = {};
+                if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
+                else if (this.statsViewMode === 'brand') source = this.stats.byBrand || {};
+                else source = this.stats.byCategory || {};
+
                 return Object.entries(source)
                   .map(([name, count]) => ({ name, count }))
                   .sort((a, b) => a.name.localeCompare(b.name));
               },
               statsHeader() {
-                return this.statsViewMode === 'category' ? 'Категория / Папка' : 'Имя Автора / Папка';
+                if (this.statsViewMode === 'category') return 'Категория';
+                if (this.statsViewMode === 'brand') return 'Бренд';
+                return 'Автор';
               },
               activeProfiles() {
                 if (!this.config.profiles) return [];
@@ -734,6 +747,26 @@
                 // keys in profilesByCategory are always lowercase/trimmed
                 const key = categoryName.toLowerCase().trim();
                 return this.stats.profilesByCategory[key] || [];
+              },
+              getPublishedCount(name) {
+                // Try to find matching brand stat
+                // name is the Brand Name or Category Name from Yandex scan
+                const cleanName = name.toLowerCase().replace(" ", "");
+
+                // Search in this.brandStats (which is Keyed by "category:brand")
+                // If we are in 'brand' mode, we need to sum up all stats where brand == name
+                // If we are in 'category' mode, we sum up all stats where category == name
+
+                let total = 0;
+                Object.entries(this.brandStats).forEach(([key, val]) => {
+                  const [cat, br] = key.split(':');
+                  if (this.statsViewMode === 'brand') {
+                    if (br === cleanName) total += val.published_count || 0;
+                  } else if (this.statsViewMode === 'category') {
+                    if (cat === cleanName) total += val.published_count || 0;
+                  }
+                });
+                return total > 0 ? total : '-';
               },
               async loadStats() {
                 this.statsLoading = true;

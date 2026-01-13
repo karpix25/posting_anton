@@ -50,39 +50,39 @@ async def update_config(config_data: Dict[str, Any]):
     # Save to config.json
     path = settings.get_config_path()
     try:
-    # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
-    if "clients" in config_data:
-        if "brandQuotas" not in config_data:
-            config_data["brandQuotas"] = {}
-            
-        for client in config_data["clients"]:
-            name = client.get("name", "")
-            quota = client.get("quota", 0)
-            regex = client.get("regex", "")
-            
-            # Try to extract category from regex e.g. /Category/Brand
-            category = "unknown"
-            if regex:
-                parts = regex.replace("\\", "/").split("/")
-                # heuristic: find part that is not 'Brand'
-                # If regex is simple path: /Videos/Category/Brand
-                if len(parts) >= 3:
-                     # e.g. ['', 'Videos', 'Category', 'Brand']
-                     category = parts[-2]
-            
-            # Normalize
-            if category: 
-                 category = category.lower().strip()
-                 # Update map
-                 if category not in config_data["brandQuotas"]:
-                     config_data["brandQuotas"][category] = {}
-                 
-                 # Clean brand name
-                 brand_clean = name.lower().replace(" ", "")
-                 config_data["brandQuotas"][category][brand_clean] = quota
+        # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
+        if "clients" in config_data:
+            if "brandQuotas" not in config_data:
+                config_data["brandQuotas"] = {}
+                
+            for client in config_data["clients"]:
+                name = client.get("name", "")
+                quota = client.get("quota", 0)
+                regex = client.get("regex", "")
+                
+                # Try to extract category from regex e.g. /Category/Brand
+                category = "unknown"
+                if regex:
+                    parts = regex.replace("\\", "/").split("/")
+                    # heuristic: find part that is not 'Brand'
+                    # If regex is simple path: /Videos/Category/Brand
+                    if len(parts) >= 3:
+                         # e.g. ['', 'Videos', 'Category', 'Brand']
+                         category = parts[-2]
+                
+                # Normalize
+                if category: 
+                     category = category.lower().strip()
+                     # Update map
+                     if category not in config_data["brandQuotas"]:
+                         config_data["brandQuotas"][category] = {}
+                     
+                     # Clean brand name
+                     brand_clean = name.lower().replace(" ", "")
+                     config_data["brandQuotas"][category][brand_clean] = quota
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(config_data, f, indent=2, ensure_ascii=False)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2, ensure_ascii=False)
         # Reload internal state
         settings.load_legacy_config()
         return {"success": True, "message": "Config saved"}
@@ -114,6 +114,7 @@ async def get_stats(refresh: bool = False):
             "publishedCount": 0, # TODO: fetch from DB history count?
             "byCategory": {},
             "byAuthor": {},
+            "byBrand": {},
             "profilesByCategory": {}
         }
         
@@ -137,12 +138,16 @@ async def get_stats(refresh: bool = False):
             
             theme = extract_theme(path)
             author = extract_author(path)
+            brand = extract_brand(path)
             
             if theme != "unknown":
                 stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
             
             if author != "unknown":
                 stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
+                
+            if brand != "unknown":
+                stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
 
         # Profiles mapping
         for p in config.profiles:
