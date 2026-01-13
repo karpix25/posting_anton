@@ -18,7 +18,15 @@ class ContentScheduler:
     async def generate_schedule(self, videos: List[Dict[str, Any]], 
                                 profiles: List[SocialProfile], 
                                 occupied_slots: Dict[str, List[datetime]]) -> List[Dict[str, Any]]:
-        active_profiles = [p for p in profiles if p.enabled]
+        # Filter profiles: enabled AND has connected platforms
+        active_profiles = [p for p in profiles if p.enabled and p.platforms and len(p.platforms) > 0]
+        
+        if not active_profiles:
+            logger.warning("[Scheduler] No active profiles with connected platforms found!")
+            return []
+        
+        logger.info(f"[Scheduler] Active profiles with platforms: {len(active_profiles)}/{len(profiles)}")
+        
         schedule = []
         
         # Helper to extract metadata from path

@@ -147,19 +147,33 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     
     # Parse scheduled time
     publish_dt = datetime.fromisoformat(publish_time_iso)
+    now_utc = datetime.now()
     
-    # Publish via Upload Post API with scheduled time
+    # Only send scheduled_date if it's in the future
+    # Upload Post API rejects past times
+    schedule_param = None
+    if publish_dt > now_utc:
+        schedule_param = publish_dt
+        logger.info(f"   ⏰ Will schedule for: {publish_time_iso}")
+    else:
+        logger.info(f"   ▶️ Publishing immediately (scheduled time {publish_time_iso} already passed)")
+    
+    # Publish via Upload Post API with scheduled time (if future)
     success = False
     error_msg = None
     try:
-        logger.info(f"   📤 Calling Upload Post API with schedule: {publish_time_iso}")
+        if schedule_param:
+            logger.info(f"   📤 Calling Upload Post API with schedule: {publish_time_iso}")
+        else:
+            logger.info(f"   📤 Calling Upload Post API (immediate publish)")
+            
         resp = await platform_manager.publish_post(
             video_url=download_link,
             caption=caption,
             profile_username=profile_username,
             platform=platform,
             title=title if platform == 'youtube' else None,
-            publish_at=publish_dt  # ← SCHEDULED TIME
+            publish_at=schedule_param  # ← None if past, datetime if future
         )
         if resp and resp.get("success"):
             success = True
