@@ -1,8 +1,8 @@
 from celery import Celery
+from celery.schedules import crontab
 from app.config import settings
 from app.logging_conf import setup_logging
 
-# Setup logging for worker
 setup_logging()
 
 celery_app = Celery(
@@ -17,8 +17,15 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Europe/Moscow",
     enable_utc=True,
-    # Clean up results to save memory
-    result_expires=3600, 
+    result_expires=3600,
 )
+
+# Schedule
+celery_app.conf.beat_schedule = {
+    "generate-daily-schedule": {
+        "task": "app.worker.generate_daily_schedule",
+        "schedule": crontab(hour=7, minute=0), # Run at 7:00 AM MSK
+    },
+}
 
 celery_app.autodiscover_tasks(["app"])
