@@ -60,29 +60,29 @@ async def generate_daily_schedule():
             brand_name = extract_brand(video["path"])
             author_name = extract_author(video["path"])
             
-            # Create DB Record as PROCESSING (immediate execution)
+            # Create DB Record as QUEUED (Upload Post will schedule it)
             history = PostingHistory(
                 profile_username=profile.username,
                 platform=platform,
                 video_path=video["path"],
                 video_name=video["name"],
                 author=author_name,
-                status="processing",
-                posted_at=datetime.now(),
-                meta={"planned": True, "brand": brand_name, "scheduled_for": publish_time_iso}
+                status="queued",
+                posted_at=publish_dt,
+                meta={"planned": True, "brand": brand_name}
             )
             session.add(history)
             await session.flush()  # get ID
             
-            # Execute IMMEDIATELY - no scheduling!
-            logger.info(f"▶️ Publishing NOW: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} (ID: {history.id})")
+            # Send to Upload Post API with scheduled time
+            logger.info(f"📤 Sending to Upload Post: {profile.username} → {platform} | Brand: {brand_name} | Schedule: {publish_time_iso} (ID: {history.id})")
             
             asyncio.create_task(
                 post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
             )
         
         await session.commit()
-        logger.info(f"✅ Triggered {len(schedule)} publications to Upload Post API")
+        logger.info(f"✅ Sent {len(schedule)} posts to Upload Post API with scheduling")
 
 async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
                                    profile_username: str, platform: str, publish_time_iso: str):
@@ -145,17 +145,21 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     # Update status to processing
     await update_post_status(history_id, "processing")
     
-    # Publish via Upload Post API
+    # Parse scheduled time
+    publish_dt = datetime.fromisoformat(publish_time_iso)
+    
+    # Publish via Upload Post API with scheduled time
     success = False
     error_msg = None
     try:
-        logger.info(f"   📤 Calling Upload Post API...")
+        logger.info(f"   📤 Calling Upload Post API with schedule: {publish_time_iso}")
         resp = await platform_manager.publish_post(
             video_url=download_link,
             caption=caption,
             profile_username=profile_username,
             platform=platform,
-            title=title if platform == 'youtube' else None
+            title=title if platform == 'youtube' else None,
+            publish_at=publish_dt  # ← SCHEDULED TIME
         )
         if resp and resp.get("success"):
             success = True
