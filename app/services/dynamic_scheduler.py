@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
+import pytz
 from croniter import croniter
 from app.config import settings
 from app.worker import generate_daily_schedule
@@ -22,7 +23,12 @@ class DynamicScheduler:
     async def loop(self):
         while self._running:
             try:
-                now = datetime.now()
+                # Use Timezone-aware check
+                # Default to Moscow for this project as requested, or read from config if we want to be fancy.
+                # But to keep it robust:
+                tz = pytz.timezone('Europe/Moscow')
+                now = datetime.now(tz)
+                
                 # Check only once per minute
                 current_minute = now.strftime("%Y-%m-%d %H:%M")
                 

@@ -284,8 +284,13 @@ async def save_schedule(payload: Dict[str, Any] = Body(...)):
             try:
                 h, m = daily_time.split(":")
                 # Cron: m h * * *
+                # Note: We save literal user time (e.g. 05:30 -> 30 5 * * *)
+                # The DynamicScheduler now explicitly checks against Europe/Moscow time.
                 new_cron = f"{int(m)} {int(h)} * * *"
                 data["cronSchedule"] = new_cron
+                
+                # Also save timezone for UI state if we assume it
+                # data["timezone"] = "Europe/Moscow" 
             except Exception as e:
                 raise HTTPException(status_code=400, detail="Invalid time format")
         else:
