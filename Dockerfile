@@ -1,39 +1,18 @@
-# Build Stage
-FROM node:20-alpine AS builder
-
-# Only accept GIT_SHA as build arg (not sensitive)
-ARG GIT_SHA
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Install system dependencies (including ffmpeg later)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY tsconfig.json ./
-# Copy example config so it's available for build/runtime fallback
-COPY config.example.json ./config.example.json
-COPY src ./src
-COPY public ./public
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN npm run build
+COPY . .
 
-# Production Stage
-FROM node:20-alpine
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm install --production
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/config.example.json ./config.example.json
-
-# Environment variables for runtime
-ENV PORT=3001
-ENV DATA_DIR=/app/data
-
-# Expose default port
-EXPOSE 3001
-
-CMD ["npm", "start"]
+# Default command
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3001"]
