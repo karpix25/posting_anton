@@ -39,7 +39,7 @@ class YandexDiskService:
                 # However, the TypeScript code did NOT paginate manually, it just set a high limit (10000).
                 # yadisk `get_files` allows `limit` param.
                 
-                items_gen = await self.client.get_files(
+                items_gen = self.client.get_files(
                     limit=limit,
                     media_type='video',
                     fields='items.name,items.path,items.md5,items.size,items.created'
