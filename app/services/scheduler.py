@@ -162,7 +162,7 @@ class ContentScheduler:
 
                     # Create Schedule Items for each platform
                     for pl_idx, pl in enumerate(profile.platforms):
-                        limit = profile.limit if profile.limit is not None else getattr(self.config.limits, pl, 1)
+                        limit = get_profile_limit(profile, pl)  # Use new platform-specific limits
                         if profile_counts[profile.username].get(pl, 0) < limit:
                             publish_time = candidate_time
                             if pl_idx > 0:
