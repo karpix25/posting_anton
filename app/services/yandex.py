@@ -9,31 +9,30 @@ logger = logging.getLogger(__name__)
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
-        # Using 600s timeout per request (set in get_files call below)
-        self.client = yadisk.AsyncClient(token=self.token)
 
     async def check_token(self) -> bool:
-        async with self.client:
-            return await self.client.check_token()
+        async with yadisk.AsyncClient(token=self.token) as client:
+            return await client.check_token()
 
     async def list_files(self, limit: int = 100000) -> List[Dict[str, Any]]:
         """
         List video files with robust retry logic matching TypeScript implementation.
         Strategies:
-        1. High timeout (120s) via method kwarg
+        1. High timeout (600s) per request
         2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
         """
         limits_to_try = [limit, min(5000, limit), min(2000, limit)]
         # Deduplicate limits
         limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
 
-        async with self.client:
+        # Create fresh client for this request to avoid "client closed" errors
+        async with yadisk.AsyncClient(token=self.token) as client:
             for attempt, current_limit in enumerate(limits_to_try):
                 try:
                     logger.info(f"[Yandex] Fetching files (limit={current_limit}, attempt={attempt+1}/{len(limits_to_try)})...")
                     
                     # fetch generator with per-request timeout
-                    items_gen = self.client.get_files(
+                    items_gen = client.get_files(
                         limit=current_limit,
                         media_type='video',
                         fields='items.name,items.path,items.md5,items.size,items.created',
@@ -77,13 +76,13 @@ class YandexDiskService:
 
     async def get_download_link(self, path: str) -> str:
         """Get a temporary download link for a file."""
-        async with self.client:
-            return await self.client.get_download_link(path)
+        async with yadisk.AsyncClient(token=self.token) as client:
+            return await client.get_download_link(path)
 
     async def delete_file(self, path: str, permanently: bool = True):
         """Delete a file."""
-        async with self.client:
-            await self.client.remove(path, permanently=permanently)
+        async with yadisk.AsyncClient(token=self.token) as client:
+            await client.remove(path, permanently=permanently)
             print(f"[Yandex] Deleted file: {path}")
 
 # Singleton-like usage or dependency injection
