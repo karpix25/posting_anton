@@ -8,42 +8,64 @@ from app.models import SystemConfig
 from app.config import settings, LegacyConfig
 from app.database import async_session_maker
 
+from app.seed_data import CLIENTS_SEED
+
 logger = logging.getLogger(__name__)
 
 CONFIG_KEY = "main_config"
 
 async def migrate_file_to_db():
-    """
-    Checks if DB has config. If not, attempts to load from file and save to DB.
-    """
+    from app.database import async_session_maker
     async with async_session_maker() as session:
         # Check if exists
         stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
         result = await session.execute(stmt)
         existing = result.scalar_one_or_none()
         
-        if existing:
-            logger.info("Config found in DB. Skipping migration.")
-            return
-
-        # Not in DB, try file
         path = settings.get_config_path()
+        file_data = {}
+        
+        # 1. Try to load local config file
         if os.path.exists(path):
-            logger.info(f"Migrating config from file {path} to DB...")
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     file_data = json.load(f)
-                
-                # Create DB entry
-                new_config = SystemConfig(key=CONFIG_KEY, value=file_data)
-                session.add(new_config)
-                await session.commit()
-                logger.info("Migration successful.")
-                
-                # Optional: Rename file to avoid confusion?
-                # os.rename(path, path + ".migrated")
             except Exception as e:
-                logger.error(f"Failed to migrate config: {e}")
+                logger.error(f"Failed to read config file: {e}")
+
+        # 2. SEED INJECTION: If clients missing, use seed
+        if "clients" not in file_data or not file_data["clients"]:
+            if CLIENTS_SEED:
+                logger.info("Injecting Seed Clients into migration data...")
+                file_data["clients"] = CLIENTS_SEED
+                
+        if existing:
+            # Auto-heal existing DB if clients missing
+            db_val = existing.value
+            if not db_val.get("clients") and CLIENTS_SEED:
+                 logger.info("Auto-Healing: Injecting Seed Clients into existing DB config.")
+                 db_val["clients"] = CLIENTS_SEED
+                 existing.value = db_val
+                 existing.updated_at = datetime.utcnow()
+                 session.add(existing)
+                 await session.commit()
+            else:
+                logger.info("Config found in DB. Skipping migration.")
+            return
+
+        # 3. Create new DB entry
+        logger.info(f"Migrating config to DB...")
+        
+        # Ensure minimal fields
+        if "cronSchedule" not in file_data:
+            file_data["cronSchedule"] = "1 0 * * *"
+        # 1. Try to load local config file
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    file_data = json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to read config file: {e}")
         else:
             logger.warning("No config file found. Creating default in DB.")
             default_config = LegacyConfig(
