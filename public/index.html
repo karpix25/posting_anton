@@ -423,10 +423,20 @@
                             </span>
                           </div>
                         </td>
-                        <td class="p-2">
-                          <input type="number" min="0" max="50" v-model.number="profile.limit" placeholder="-"
-                            class="w-16 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center"
-                            title="Лимит постов/день (пусто = глобальный)">
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.instagramLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="Instagram лимит (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="TikTok лимит (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="YouTube лимит (пусто = глобальный)">
                         </td>
                         <td class="p-2 text-center">
                           <label class="inline-flex items-center cursor-pointer">

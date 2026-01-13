@@ -66,21 +66,44 @@ class ContentScheduler:
             # Track profile publish counts per day
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
 
-            # Determine max iterations
+            # Determine max iterations (max of all possible limits)
             limits = [self.config.limits.instagram, self.config.limits.tiktok, self.config.limits.youtube]
             max_limit = max(limits) if limits else 1
             for p in active_profiles:
-                 if p.limit and p.limit > max_limit:
-                     max_limit = p.limit
+                 # Check all platform-specific limits
+                 for platform_limit in [p.instagramLimit, p.tiktokLimit, p.youtubeLimit, p.limit]:
+                     if platform_limit and platform_limit > max_limit:
+                         max_limit = platform_limit
             
             last_brand_used_per_theme: Dict[str, str] = {}
+            
+            def get_profile_limit(profile: SocialProfile, platform: str) -> int:
+                """Get limit for profile+platform with fallback to global config"""
+                # Check platform-specific limit
+                platform_limit = None
+                if platform == 'instagram':
+                    platform_limit = profile.instagramLimit
+                elif platform == 'tiktok':
+                    platform_limit = profile.tiktokLimit
+                elif platform == 'youtube':
+                    platform_limit = profile.youtubeLimit
+                
+                # Fallback chain:
+                # 1. Platform-specific limit (if set)
+                # 2. Deprecated profile.limit (backwards compat)
+                # 3. Global config limit
+                if platform_limit is not None:
+                    return platform_limit
+                if profile.limit is not None:
+                    return profile.limit
+                return getattr(self.config.limits, platform, 1)
 
             for pass_idx in range(max_limit):
                 for profile in daily_profiles:
                     # Check needs
                     needs_post = False
                     for pl in profile.platforms:
-                        limit = profile.limit if profile.limit is not None else getattr(self.config.limits, pl, 1)
+                        limit = get_profile_limit(profile, pl)
                         if profile_counts[profile.username].get(pl, 0) < limit:
                             needs_post = True
                             break

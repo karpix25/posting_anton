@@ -9,6 +9,14 @@ class SocialProfile(BaseModel):
     theme_key: str
     platforms: List[str]
     enabled: bool = True
+    
+    # Per-platform limits (posts/day for each platform)
+    instagramLimit: Optional[int] = None
+    tiktokLimit: Optional[int] = None
+    youtubeLimit: Optional[int] = None
+    
+    # Deprecated: use platform-specific limits instead
+    # Kept for backwards compatibility
     limit: Optional[int] = None
     last_posted: Optional[Dict[str, str]] = {}
 
