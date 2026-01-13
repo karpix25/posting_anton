@@ -44,50 +44,45 @@ class UploadPostClient:
             'user': profile_username,
             'platform[]': platform,
             'video': video_url,
-            'title': caption # Default title mapping
+            'title': title or caption  # Fallback title
         }
 
+        # Add scheduled_date in ISO format
         if publish_at:
             data['scheduled_date'] = publish_at.isoformat()
 
-        # Platform specific logic
+        # Platform-specific parameters (matching TS version)
         if platform == 'instagram':
-            data['instagram_title'] = caption
+            data['instagram_title'] = title or caption
             data['media_type'] = 'REELS'
         elif platform == 'tiktok':
-            data['tiktok_title'] = caption
+            data['tiktok_title'] = title or caption
             data['post_mode'] = 'DIRECT_POST'
         elif platform == 'youtube':
-            data['youtube_title'] = title or caption[:50]
+            data['youtube_title'] = title or caption[:50]  # YouTube has title length limit
             data['youtube_description'] = caption
-            data['categoryId'] = '22'
+            data['categoryId'] = '22'  # People & Blogs
             data['privacyStatus'] = 'public'
         
         print(f"[UploadPost] Publishing for {profile_username} on {platform}...")
+        if publish_at:
+            print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Use data= for form-encoded (multipart not needed if sending string URL? TS used FormData which implies multipart)
-                # TS used `new FormData()`. So we should ideally use data=data which httpx sends as application/x-www-form-urlencoded
-                # OR files=... for multipart.
-                # However, sending URL is usually form-data fields.
-                # httpx `data` sends form-encoded. `files` sends multipart.
-                # If the API expects multipart, we might need to be careful.
-                # "form-data" library in node creates multipart.
-                # So let's force multipart-like behavior?
-                # Actually, standard is usually just data fields for text.
-                # Let's try standard data first. If it fails, Convert to multipart dict.
-                
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
                 
                 if res_data.get('success'):
-                    print(f"[UploadPost] Success! Request ID: {res_data.get('request_id', 'sync')}")
+                    request_id = res_data.get('request_id') or res_data.get('job_id') or 'sync'
+                    print(f"[UploadPost] ✅ Success! Request ID: {request_id}")
                     return res_data
                 else:
-                    raise Exception(res_data.get('message', 'Unknown error'))
+                    error = res_data.get('message', 'Unknown error')
+                    print(f"[UploadPost] ❌ Failed: {error}")
+                    raise Exception(error)
             except Exception as e:
-                print(f"[UploadPost] Error: {e}")
+                print(f"[UploadPost] ❌ Error: {e}")
                 raise e
 
 
@@ -96,40 +91,36 @@ class PlatformManager:
         self.api_key = settings.UPLOAD_POST_API_KEY
         self.client = UploadPostClient(self.api_key)
 
-    async def publish_post(self, profile_username: str, platform: str, video_path: str, 
-                           caption: str = "", title: str = "", publish_at: Optional[datetime] = None) -> bool:
+    async def publish_post(self, profile_username: str, platform: str, video_url: str = None, video_path: str = None,
+                           caption: str = "", title: str = "", publish_at: Optional[datetime] = None) -> Dict[str, Any]:
         
-        video_url = video_path
+        # Support both video_url and video_path for backwards compatibility
+        if not video_url:
+            video_url = video_path
         
-        # Resolve Yandex Disk path to download URL
-        # "disk:/..." or starts with "/" if we treat it as remote path (which we do if we are Yandex hosted)
-        # The scheduler passes `video.path` which is "disk:/Folder/..."
-        
-        if video_path.startswith("disk:") or video_path.startswith("/"):
-             # Normalize for yandex check?
-             # Yandex service handles paths.
-             print(f"[PlatformManager] Fetching download URL for {video_path}...")
+        # Resolve Yandex Disk path to download URL if needed
+        if video_url and (video_url.startswith("disk:") or video_url.startswith("/")):
+             print(f"[PlatformManager] Fetching download URL for {video_url}...")
              try:
-                 # Retry logic handled by yandex service or here?
-                 # Let's do simple retry here
+                 # Retry logic for Yandex
                  for attempt in range(3):
                      try:
-                         video_url = await yandex_service.get_download_link(video_path)
-                         print(f"[PlatformManager] Got URL: {video_url[:50]}...")
+                         video_url = await yandex_service.get_download_link(video_url)
+                         print(f"[PlatformManager] ✅ Got URL: {video_url[:50]}...")
                          break
                      except Exception as e:
                          if attempt == 2: raise e
                          await asyncio.sleep(2 ** attempt)
              except Exception as e:
-                 print(f"[PlatformManager] Failed to get download URL: {e}")
-                 return False
+                 print(f"[PlatformManager] ❌ Failed to get download URL: {e}")
+                 return {"success": False, "error": str(e)}
 
         try:
-            await self.client.publish(profile_username, platform, video_url, caption, title, publish_at)
-            return True
+            result = await self.client.publish(profile_username, platform, video_url, caption, title, publish_at)
+            return {"success": True, **result}
         except Exception as e:
-            print(f"[PlatformManager] Failed to publish: {e}")
-            return False
+            print(f"[PlatformManager] ❌ Failed to publish: {e}")
+            return {"success": False, "error": str(e)}
 
 # Singleton
 platform_manager = PlatformManager()
