@@ -98,6 +98,37 @@ async def update_config(config_data: Dict[str, Any], session: AsyncSession = Dep
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/profiles/sync")
+async def sync_profiles():
+    import httpx
+    logger.info("[API] /api/profiles/sync requested")
+    api_key = settings.UPLOAD_POST_API_KEY
+    if not api_key:
+         logger.error("UPLOAD_POST_API_KEY is missing")
+         return {"success": False, "error": "UPLOAD_POST_API_KEY not configured"}
+
+    url = "https://api.upload-post.com/api/uploadposts/users"
+    headers = {"Authorization": f"Apikey {api_key}"}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers, timeout=20.0)
+            
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("success"):
+                profiles = data.get("profiles", [])
+                logger.info(f"[API] Sync success. Found {len(profiles)} profiles.")
+                return {"success": True, "profiles": profiles}
+            else:
+                return {"success": False, "error": data.get("message", "Unknown error")}
+        else:
+            return {"success": False, "error": f"UploadPost returned {resp.status_code}"}
+            
+    except Exception as e:
+        logger.error(f"Sync failed: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/stats")
 async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):
     # This logic mimics existing server.ts /api/stats
@@ -194,6 +225,28 @@ async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = D
         stats[key] = {"published_count": r.published_count, "quota": r.quota}
         
     return {"success": True, "stats": stats, "month": target_month}
+
+@app.post("/api/config/restore-defaults")
+async def restore_defaults(session: AsyncSession = Depends(get_session)):
+    """Force restores client prompts from seed data."""
+    try:
+        from app.seed_data import CLIENTS_SEED
+        config = await get_db_config(session)
+        
+        # Convert Pydantic to dict
+        config_dict = config.dict()
+        
+        # Inject clients
+        config_dict["clients"] = CLIENTS_SEED
+        
+        # Save back
+        await save_db_config(session, config_dict)
+        logger.info(f"Force-restored {len(CLIENTS_SEED)} clients from seed.")
+        
+        return {"success": True, "message": f"Restored {len(CLIENTS_SEED)} clients", "clients": CLIENTS_SEED}
+    except Exception as e:
+        logger.error(f"Failed to restore defaults: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/brands/quotas")
 async def update_brand_quota(
