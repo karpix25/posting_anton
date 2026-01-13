@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.config import settings, LegacyConfig, BrandStats as BrandStatsModel
+from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
 from app.models import BrandStats
 from app.services.yandex import yandex_service
