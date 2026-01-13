@@ -381,6 +381,22 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/cleanup")
+async def cleanup_queue(session: AsyncSession = Depends(get_session)):
+    """Delete all queued (not yet published) posts."""
+    try:
+        from sqlalchemy import delete
+        stmt = delete(PostingHistory).where(PostingHistory.status == "queued")
+        result = await session.execute(stmt)
+        await session.commit()
+        
+        deleted_count = result.rowcount
+        logger.info(f"🗑️ Cleanup: Deleted {deleted_count} queued posts")
+        return {"success": True, "message": f"Удалено {deleted_count} запланированных постов", "deleted": deleted_count}
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+        return {"success": False, "message": f"Ошибка: {str(e)}"}
+
 @app.post("/api/run")
 async def run_automation():
     """Manually trigger the daily schedule generation."""
