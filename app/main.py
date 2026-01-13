@@ -235,6 +235,7 @@ async def update_brand_quota(
 async def get_schedule(session: AsyncSession = Depends(get_session)):
     config = await get_db_config(session)
     cron = config.cronSchedule or ""
+    logger.info(f"[API] get_schedule loaded cron: '{cron}'")
     
     # Default state
     enabled = False
