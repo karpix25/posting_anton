@@ -617,6 +617,43 @@
           </div>
         </div>
 
+        <!-- LOGS TAB -->
+        <div v-if="currentTab === 'logs'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">📋 Логи системы</h2>
+            <div class="flex gap-2">
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" v-model="logsAutoRefresh" class="rounded">
+                <span>Автообновление (3 сек)</span>
+              </label>
+              <button @click="loadLogs" class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+                🔄 Обновить
+              </button>
+            </div>
+          </div>
+
+          <div v-if="logsLoading" class="text-center text-gray-500 py-8">
+            Загрузка логов...
+          </div>
+
+          <div v-else-if="!logsSuccess" class="bg-yellow-50 border border-yellow-200 rounded p-4 mb-4">
+            <p class="text-yellow-800">⚠️ {{ logsMessage }}</p>
+            <p class="text-sm text-yellow-700 mt-2">
+              Используйте логи Docker/EasyPanel для просмотра вывода приложения.
+            </p>
+          </div>
+
+          <div v-else class="bg-gray-900 text-green-400 p-4 rounded font-mono text-xs overflow-auto"
+            style="max-height: 600px;">
+            <div v-for="(line, idx) in logs" :key="idx" class="hover:bg-gray-800">
+              {{ line }}
+            </div>
+            <div v-if="logs.length === 0" class="text-gray-500 text-center py-4">
+              Логов пока нет
+            </div>
+          </div>
+        </div>
+
 
         <script>
           const { createApp } = Vue;
@@ -630,7 +667,8 @@
                   { id: 'stats', name: 'Аналитика' },
                   { id: 'settings', name: 'Настройки' },
                   { id: 'profiles', name: 'Профили' },
-                  { id: 'clients', name: 'AI Клиенты' }
+                  { id: 'clients', name: 'AI Клиенты' },
+                  { id: 'logs', name: '📋 Логи' }
                 ],
                 config: {
                   cronSchedule: '',
@@ -660,6 +698,12 @@
                 expandedGroups: {}, // For accordion view
                 expandedGroupsDisabled: {}, // For disabled profiles accordion
                 selectedProfiles: [], // List of selected usernames for bulk actions
+                logs: [],
+                logsLoading: false,
+                logsSuccess: true,
+                logsMessage: '',
+                logsAutoRefresh: false,
+                logsRefreshInterval: null,
                 selectedDisabledProfiles: [], // List of selected disabled profiles for bulk actions
                 lastSelected: null, // For Shift+Click
                 lastSelectedDisabled: null, // For Shift+Click in disabled profiles
@@ -1230,6 +1274,47 @@
                 this.selectedProfiles = []; // Clear selection
                 this.bulkThemeKey = '';
                 alert(`Успешно обновлено профилей: ${count}`);
+              },
+              async loadLogs() {
+                this.logsLoading = true;
+                try {
+                  const res = await fetch('/api/logs?lines=200');
+                  const data = await res.json();
+
+                  this.logsSuccess = data.success || false;
+                  this.logsMessage = data.message || '';
+                  this.logs = data.logs || [];
+                } catch (e) {
+                  this.logsSuccess = false;
+                  this.logsMessage = e.message;
+                  this.logs = [];
+                } finally {
+                  this.logsLoading = false;
+                }
+              }
+            },
+            watch: {
+              logsAutoRefresh(newVal) {
+                if (newVal) {
+                  // Start auto-refresh
+                  this.logsRefreshInterval = setInterval(() => {
+                    if (this.currentTab === 'logs') {
+                      this.loadLogs();
+                    }
+                  }, 3000);
+                } else {
+                  // Stop auto-refresh
+                  if (this.logsRefreshInterval) {
+                    clearInterval(this.logsRefreshInterval);
+                    this.logsRefreshInterval = null;
+                  }
+                }
+              },
+              currentTab(newTab) {
+                // Load logs when entering logs tab
+                if (newTab === 'logs' && this.logs.length === 0) {
+                  this.loadLogs();
+                }
               }
             }
           }).mount('#app');

@@ -381,6 +381,27 @@ async def run_automation():
     task = generate_daily_schedule.delay()
     return {"success": True, "message": "Automation started", "task_id": str(task.id)}
 
+@app.get("/api/logs")
+async def get_logs(lines: int = 100):
+    """Return last N lines of application logs."""
+    try:
+        log_file = "/tmp/app.log"
+        
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                all_lines = f.readlines()
+                recent = all_lines[-lines:] if len(all_lines) > lines else all_lines
+                return {"success": True, "logs": recent}
+        else:
+            return {
+                "success": False, 
+                "message": "File logging not configured. Use Docker/EasyPanel logs.",
+                "logs": []
+            }
+    except Exception as e:
+        logger.error(f"Failed to fetch logs: {e}")
+        return {"success": False, "message": str(e), "logs": []}
+
 # Serve static files (Frontend)
 # Providing access to public directory if exists
 public_path = os.path.join(os.getcwd(), 'public')
