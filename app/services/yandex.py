@@ -6,7 +6,7 @@ from app.config import settings
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
-        self.client = yadisk.AsyncClient(token=self.token, timeout=60.0)
+        self.client = yadisk.AsyncClient(token=self.token)
 
     async def check_token(self) -> bool:
         async with self.client:
