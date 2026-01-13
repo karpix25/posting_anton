@@ -1,6 +1,6 @@
 import random
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Set, Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,6 +8,9 @@ from app.config import settings, LegacyConfig, SocialProfile
 from app.models import BrandStats
 
 logger = logging.getLogger(__name__)
+
+# Moscow timezone (UTC+3)
+MSK = timezone(timedelta(hours=3))
 
 class ContentScheduler:
     def __init__(self, config: LegacyConfig, db_session: Optional[AsyncSession] = None):
@@ -44,17 +47,19 @@ class ContentScheduler:
             if p.username not in profile_slots:
                 profile_slots[p.username] = []
 
-        start_date = datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
+        # Use Moscow timezone for scheduling
+        now_msk = datetime.now(MSK)
+        start_date = now_msk.replace(hour=8, minute=0, second=0, microsecond=0, tzinfo=None)  # Make naive for compatibility
         days_to_generate = self.config.daysToGenerate or 7
-        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()}")
+        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()} (Moscow time now: {now_msk.strftime('%H:%M')})")
 
         for day_index in range(days_to_generate):
             current_day_start = start_date + timedelta(days=day_index)
             
             # If today, ensuring we don't start in the past
-            now = datetime.now()
-            if day_index == 0 and current_day_start < now:
-                current_day_start = now + timedelta(minutes=10)
+            now_msk_naive = now_msk.replace(tzinfo=None)  # Make naive for comparison
+            if day_index == 0 and current_day_start < now_msk_naive:
+                current_day_start = now_msk_naive + timedelta(minutes=10)
             
             current_day_end = current_day_start.replace(hour=23, minute=0, second=0, microsecond=0)
             
