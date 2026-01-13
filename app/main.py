@@ -233,6 +233,76 @@ async def update_brand_quota(
 
     return {"success": True, "message": f"Updated quota for {category}:{brand} to {quota}"}
 
+@app.get("/api/schedule")
+async def get_schedule():
+    config = settings.load_legacy_config()
+    cron = config.cronSchedule or ""
+    
+    # Default state
+    enabled = False
+    daily_time = "00:00"
+    timezone = "Europe/Moscow" # Hardcode or add to config if needed
+    
+    # Parse Cron: "min hour * * *"
+    # Simple check: does it have 5 parts?
+    parts = cron.split(" ")
+    if len(parts) >= 5:
+        # Check if it looks like a daily schedule: "* * * * *" is not enabled per se, but "M H * * *" is.
+        # We assume if it's set, it's enabled.
+        enabled = True
+        try:
+            minute = parts[0].zfill(2)
+            hour = parts[1].zfill(2)
+            daily_time = f"{hour}:{minute}"
+        except:
+            pass
+            
+    return {
+        "enabled": enabled,
+        "dailyRunTime": daily_time,
+        "timezone": timezone
+    }
+
+@app.post("/api/schedule")
+async def save_schedule(payload: Dict[str, Any] = Body(...)):
+    enabled = payload.get("enabled", False)
+    daily_time = payload.get("dailyRunTime", "00:00")
+    # timezone = payload.get("timezone") # Not used in cron yet, assumed server time or simple shift? 
+    # Current implementation assumes Server System Time = Target Time or Cron handles it?
+    # Actually dynamic_scheduler checks datetime.now() vs cron. 
+    # If container is UTC, we might need adjustment. 
+    # User asks for UI control. UI sends HH:MM.
+    
+    path = settings.get_config_path()
+    try:
+        # Load current
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        if enabled:
+            # Convert HH:MM to Cron
+            try:
+                h, m = daily_time.split(":")
+                # Cron: m h * * *
+                new_cron = f"{int(m)} {int(h)} * * *"
+                data["cronSchedule"] = new_cron
+            except Exception as e:
+                raise HTTPException(status_code=400, detail="Invalid time format")
+        else:
+            # Disable? Empty string or comment?
+            # If we empty it, dynamic scheduler stops.
+            data["cronSchedule"] = ""
+
+        # Persist
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            
+        settings.load_legacy_config() # Reload
+        return {"success": True, "message": "Schedule updated"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/run")
 async def run_automation():
     """Manually trigger the daily schedule generation."""
