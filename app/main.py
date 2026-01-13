@@ -81,7 +81,8 @@ async def update_config(config_data: Dict[str, Any], session: AsyncSession = Dep
             
         for client in config_data["clients"]:
             name = client.get("name", "")
-            quota = client.get("quota", 0)
+            quota = client.get("quota")
+            if quota is None: quota = 0
             regex = client.get("regex", "")
             
             # Try to extract category from regex e.g. /Category/Brand

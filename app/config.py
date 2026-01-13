@@ -28,7 +28,7 @@ class LegacyConfig(BaseModel):
     yandexFolders: List[str] = []
     daysToGenerate: int = 7
     themeAliases: Dict[str, List[str]] = {}
-    brandQuotas: Dict[str, Dict[str, int]] = {}
+    brandQuotas: Dict[str, Dict[str, Optional[int]]] = {}
     limits: GlobalLimits
     profiles: List[SocialProfile] = []
     clients: List[ClientConfig] = []
