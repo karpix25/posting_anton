@@ -12,9 +12,13 @@ ARG DATABASE_URL
 # Install system dependencies (including ffmpeg later)
 RUN apt-get update && apt-get install -y \
     build-essential \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
     libpq-dev \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
