@@ -60,38 +60,29 @@ async def generate_daily_schedule():
             brand_name = extract_brand(video["path"])
             author_name = extract_author(video["path"])
             
-            # Create DB Record as QUEUED
+            # Create DB Record as PROCESSING (immediate execution)
             history = PostingHistory(
                 profile_username=profile.username,
                 platform=platform,
                 video_path=video["path"],
                 video_name=video["name"],
                 author=author_name,
-                status="queued",
-                posted_at=publish_dt,
-                meta={"planned": True, "brand": brand_name}
+                status="processing",
+                posted_at=datetime.now(),
+                meta={"planned": True, "brand": brand_name, "scheduled_for": publish_time_iso}
             )
             session.add(history)
             await session.flush()  # get ID
             
-            # Schedule async task for future execution
-            delay = (publish_dt - datetime.now()).total_seconds()
-            if delay > 0:
-                asyncio.create_task(
-                    schedule_post_with_delay(
-                        delay, history.id, video["path"],
-                        profile.username, platform, publish_time_iso
-                    )
-                )
-                logger.info(f"✅ Scheduled: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} | Time: {publish_time_iso} (ID: {history.id})")
-            else:
-                # Past time - execute immediately
-                asyncio.create_task(
-                    post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
-                )
-                logger.info(f"▶️ Executing NOW: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} (ID: {history.id})")
+            # Execute IMMEDIATELY - no scheduling!
+            logger.info(f"▶️ Publishing NOW: {profile.username} → {platform} | Brand: {brand_name} | Author: {author_name} (ID: {history.id})")
+            
+            asyncio.create_task(
+                post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
+            )
         
         await session.commit()
+        logger.info(f"✅ Triggered {len(schedule)} publications to Upload Post API")
 
 async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
                                    profile_username: str, platform: str, publish_time_iso: str):
