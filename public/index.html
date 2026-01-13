@@ -882,6 +882,8 @@
 
                   if (res.ok) {
                     alert('✅ Расписание сохранено успешно!');
+                    // Reload full config to update local cronSchedule state
+                    await this.loadConfig();
                   } else {
                     const error = await res.json();
                     alert(`❌ Ошибка: ${error.error || 'Не удалось сохранить'}`);
