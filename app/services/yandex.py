@@ -8,11 +8,8 @@ logger = logging.getLogger(__name__)
 
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
-        import httpx
         self.token = token or settings.YANDEX_TOKEN
-        # Match TS timeout (120s) and keep-alive
-        self.http_session = httpx.AsyncClient(timeout=120.0, limits=httpx.Limits(max_keepalive_connections=5))
-        self.client = yadisk.AsyncClient(token=self.token, session=self.http_session)
+        self.client = yadisk.AsyncClient(token=self.token)
 
     async def check_token(self) -> bool:
         async with self.client:
@@ -22,12 +19,10 @@ class YandexDiskService:
         """
         List video files with robust retry logic matching TypeScript implementation.
         Strategies:
-        1. High timeout (120s)
+        1. High timeout (120s) via method kwarg
         2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
         """
         limits_to_try = [limit, min(5000, limit), min(2000, limit)]
-        last_error = None
-        
         # Deduplicate limits
         limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
 
@@ -36,11 +31,12 @@ class YandexDiskService:
                 try:
                     logger.info(f"[Yandex] Fetching files (limit={current_limit}, attempt={attempt+1}/{len(limits_to_try)})...")
                     
-                    # fetch generator
+                    # fetch generator with per-request timeout
                     items_gen = self.client.get_files(
                         limit=current_limit,
                         media_type='video',
-                        fields='items.name,items.path,items.md5,items.size,items.created'
+                        fields='items.name,items.path,items.md5,items.size,items.created',
+                        timeout=120.0
                     )
                     
                     files = []
