@@ -29,11 +29,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.services.config_db import migrate_file_to_db, get_db_config, save_db_config
+
 # Startup event
 @app.on_event("startup")
 async def on_startup():
     logger.info("Application starting up...")
     await init_db()
+    await migrate_file_to_db()
     dynamic_scheduler.start()
 
 @app.get("/health")
@@ -41,56 +44,51 @@ async def health_check():
     return {"status": "ok", "version": "2.0.0"}
 
 @app.get("/api/config")
-async def get_config():
-    config = settings.load_legacy_config()
+async def get_config(session: AsyncSession = Depends(get_session)):
+    config = await get_db_config(session)
     return config.dict()
 
 @app.post("/api/config")
-async def update_config(config_data: Dict[str, Any]):
-    # Save to config.json
-    path = settings.get_config_path()
-    try:
-        # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
-        if "clients" in config_data:
-            if "brandQuotas" not in config_data:
-                config_data["brandQuotas"] = {}
-                
-            for client in config_data["clients"]:
-                name = client.get("name", "")
-                quota = client.get("quota", 0)
-                regex = client.get("regex", "")
-                
-                # Try to extract category from regex e.g. /Category/Brand
-                category = "unknown"
-                if regex:
-                    parts = regex.replace("\\", "/").split("/")
-                    # heuristic: find part that is not 'Brand'
-                    # If regex is simple path: /Videos/Category/Brand
-                    if len(parts) >= 3:
-                         # e.g. ['', 'Videos', 'Category', 'Brand']
-                         category = parts[-2]
-                
-                # Normalize
-                if category: 
-                     category = category.lower().strip()
-                     # Update map
-                     if category not in config_data["brandQuotas"]:
-                         config_data["brandQuotas"][category] = {}
-                     
-                     # Clean brand name
-                     brand_clean = name.lower().replace(" ", "")
-                     config_data["brandQuotas"][category][brand_clean] = quota
+async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session)):
+    # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
+    if "clients" in config_data:
+        if "brandQuotas" not in config_data:
+            config_data["brandQuotas"] = {}
+            
+        for client in config_data["clients"]:
+            name = client.get("name", "")
+            quota = client.get("quota", 0)
+            regex = client.get("regex", "")
+            
+            # Try to extract category from regex e.g. /Category/Brand
+            category = "unknown"
+            if regex:
+                parts = regex.replace("\\", "/").split("/")
+                # heuristic: find part that is not 'Brand'
+                # If regex is simple path: /Videos/Category/Brand
+                if len(parts) >= 3:
+                     # e.g. ['', 'Videos', 'Category', 'Brand']
+                     category = parts[-2]
+            
+            # Normalize
+            if category: 
+                 category = category.lower().strip()
+                 # Update map
+                 if category not in config_data["brandQuotas"]:
+                     config_data["brandQuotas"][category] = {}
+                 
+                 # Clean brand name
+                 brand_clean = name.lower().replace(" ", "")
+                 config_data["brandQuotas"][category][brand_clean] = quota
 
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
-        # Reload internal state
-        settings.load_legacy_config()
-        return {"success": True, "message": "Config saved"}
+    try:
+        await save_db_config(session, config_data)
+        return {"success": True, "message": "Config saved to DB"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stats")
-async def get_stats(refresh: bool = False):
+async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):
     # This logic mimics existing server.ts /api/stats
     # It fetches ALL videos from Yandex and groups them by metadata
     
@@ -102,7 +100,7 @@ async def get_stats(refresh: bool = False):
     
     try:
         # Load folders from config
-        config = settings.load_legacy_config()
+        config = await get_db_config(session)
         all_videos = []
         
         # We fetch all flat files once (wrapper handles limit)
@@ -234,8 +232,8 @@ async def update_brand_quota(
     return {"success": True, "message": f"Updated quota for {category}:{brand} to {quota}"}
 
 @app.get("/api/schedule")
-async def get_schedule():
-    config = settings.load_legacy_config()
+async def get_schedule(session: AsyncSession = Depends(get_session)):
+    config = await get_db_config(session)
     cron = config.cronSchedule or ""
     
     # Default state
@@ -264,47 +262,33 @@ async def get_schedule():
     }
 
 @app.post("/api/schedule")
-async def save_schedule(payload: Dict[str, Any] = Body(...)):
+async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session)):
     enabled = payload.get("enabled", False)
     daily_time = payload.get("dailyRunTime", "00:00")
-    # timezone = payload.get("timezone") # Not used in cron yet, assumed server time or simple shift? 
-    # Current implementation assumes Server System Time = Target Time or Cron handles it?
-    # Actually dynamic_scheduler checks datetime.now() vs cron. 
-    # If container is UTC, we might need adjustment. 
-    # User asks for UI control. UI sends HH:MM.
     
-    path = settings.get_config_path()
-    try:
-        # Load current
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            
-        if enabled:
-            # Convert HH:MM to Cron
-            try:
-                h, m = daily_time.split(":")
-                # Cron: m h * * *
-                # Note: We save literal user time (e.g. 05:30 -> 30 5 * * *)
-                # The DynamicScheduler now explicitly checks against Europe/Moscow time.
-                new_cron = f"{int(m)} {int(h)} * * *"
-                data["cronSchedule"] = new_cron
-                
-                # Also save timezone for UI state if we assume it
-                # data["timezone"] = "Europe/Moscow" 
-            except Exception as e:
-                raise HTTPException(status_code=400, detail="Invalid time format")
-        else:
-            # Disable? Empty string or comment?
-            # If we empty it, dynamic scheduler stops.
-            data["cronSchedule"] = ""
+    # get current config data (dict)
+    current_config_obj = await get_db_config(session)
+    data = current_config_obj.dict()
 
-        # Persist
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-            
-        settings.load_legacy_config() # Reload
+    if enabled:
+        # Convert HH:MM to Cron
+        try:
+            h, m = daily_time.split(":")
+            # Cron: m h * * *
+            # Note: We save literal user time (e.g. 05:30 -> 30 5 * * *)
+            # The DynamicScheduler now explicitly checks against Europe/Moscow time.
+            new_cron = f"{int(m)} {int(h)} * * *"
+            data["cronSchedule"] = new_cron
+        except Exception as e:
+            raise HTTPException(status_code=400, detail="Invalid time format")
+    else:
+        # Disable
+        data["cronSchedule"] = ""
+
+    # Persist
+    try:
+        await save_db_config(session, data)
         return {"success": True, "message": "Schedule updated"}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

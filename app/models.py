@@ -35,3 +35,10 @@ class BrandStats(SQLModel, table=True):
     # However, since the table ALREADY exists in the correct schema, we just need the model to match.
     # If we were relying on create_all to enforce it, we'd add it.
     # __table_args__ = (UniqueConstraint("category", "brand", "month"),)
+    # __table_args__ = (UniqueConstraint("category", "brand", "month"),)
+
+class SystemConfig(SQLModel, table=True):
+    __tablename__ = "system_config"
+    key: str = Field(primary_key=True)
+    value: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
