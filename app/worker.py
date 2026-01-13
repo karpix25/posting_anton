@@ -120,7 +120,29 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     title = ""
     
     if client_config:
-        generated = await content_generator.generate_caption(video_path, platform, client_config, author_name)
+        # Try AI generation with retries
+        generated = None
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"   🤖 AI Generation attempt {attempt + 1}/{max_retries}...")
+                generated = await content_generator.generate_caption(video_path, platform, client_config, author_name)
+                
+                if generated and len(generated.strip()) > 10:  # Minimum quality check
+                    break
+                else:
+                    logger.warning(f"   ⚠️ AI returned empty/short caption, retrying...")
+                    generated = None
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+            except Exception as e:
+                logger.error(f"   ❌ AI generation error (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    logger.error(f"   💥 AI generation FAILED after {max_retries} attempts")
+        
         if generated:
             if platform == 'youtube' and '$$$' in generated:
                 parts = generated.split('$$$')
@@ -129,9 +151,14 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
             else:
                 caption = generated
             logger.info(f"   📝 AI Generated caption: {caption[:100]}...")
+        else:
+            # AI completely failed - use informative fallback
+            logger.error(f"   💥 [Post #{history_id}] AI FAILED for brand '{brand_name}' - using fallback")
+            caption = f"Новинка от {brand_name}! 🔥 #shorts #новинка #by{author_name.replace(' ', '') if author_name else ''}"
+            logger.warning(f"   ⚠️ Using fallback caption")
     else:
         caption = f"{author_name} video #shorts"
-        logger.info(f"   📝 Using default caption")
+        logger.info(f"   📝 Using default caption (no AI client)")
     
     # Get download link
     try:
