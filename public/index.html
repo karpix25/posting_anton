@@ -54,7 +54,7 @@
             <div class="grid grid-cols-3 gap-4 mb-8">
               <div class="bg-blue-50 p-4 rounded border border-blue-100">
                 <div class="text-sm text-gray-500">Следующий запуск</div>
-                <div class="text-lg font-mono">{{ config.cronSchedule }}</div>
+                <div class="text-lg font-mono">{{ formatCron(config.cronSchedule) }}</div>
               </div>
               <div class="bg-purple-50 p-4 rounded border border-purple-100">
                 <div class="text-sm text-gray-500">Активные профили</div>
@@ -1197,6 +1197,18 @@
                     console.error('[Frontend] Cleanup error:', e);
                     alert('Ошибка запуска очистки');
                   });
+              },
+              formatCron(cron) {
+                if (!cron) return 'Отключено';
+                try {
+                  const parts = cron.split(' ');
+                  if (parts.length >= 2) {
+                    const m = parts[0].padStart(2, '0');
+                    const h = parts[1].padStart(2, '0');
+                    return `${h}:${m}`;
+                  }
+                } catch (e) { }
+                return cron;
               },
               applyBulkCategory() {
                 if (!this.bulkThemeKey) return alert('Введите название категории!');
