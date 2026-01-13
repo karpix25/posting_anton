@@ -61,7 +61,7 @@ async def on_startup():
              logger.info(f"✅ System Ready. Current Schedule: {cfg.cronSchedule or 'Disabled'}. Clients: {len(cfg.clients)}")
              
              # Start dynamic scheduler
-             dynamic_scheduler.start(cfg)
+             dynamic_scheduler.start()
              
              # Start background publisher for queued posts
              from app.background_publisher import background_publisher
