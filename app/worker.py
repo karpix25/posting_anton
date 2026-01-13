@@ -23,43 +23,17 @@ async def generate_daily_schedule():
         config = await get_db_config(session)
         break
     
+    # Get ALL videos from Yandex (list_files doesn't support path filtering)
     folders = config.yandexFolders
-    logger.info(f"[Worker] Configured folders: {folders}")
+    logger.info(f"[Worker] Configured folders (for reference): {folders}")
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
-    all_videos = []
     
-    for folder in folders:
-        try:
-            files = await yandex_service.list_files(limit=100000)
-            folder_videos = 0
-            
-            # Debug: show first 5 file paths
-            if files:
-                logger.info(f"[Worker] Sample paths from Yandex (first 5):")
-                for f in files[:5]:
-                    logger.info(f"  → {f.get('path', 'NO PATH')}")
-            
-            for f in files:
-                path = f["path"]
-                norm_path = path.replace("disk:", "").strip("/")
-                norm_folder = folder.replace("disk:", "").strip("/")
-                
-                # Debug: show matching for first file
-                if folder_videos == 0:
-                    logger.info(f"[Worker] Matching logic:")
-                    logger.info(f"  File path: '{path}'")
-                    logger.info(f"  Normalized: '{norm_path}'")
-                    logger.info(f"  Folder cfg: '{folder}'")
-                    logger.info(f"  Norm folder: '{norm_folder}'")
-                    logger.info(f"  Starts with? {norm_path.startswith(norm_folder)}")
-                
-                # Case-insensitive comparison
-                if norm_path.lower().startswith(norm_folder.lower()):
-                    all_videos.append(f)
-                    folder_videos += 1
-            logger.info(f"[Worker] Folder '{folder}': matched {folder_videos} videos")
-        except Exception as e:
-            logger.error(f"Failed to list folder {folder}: {e}")
+    try:
+        all_videos = await yandex_service.list_files(limit=100000)
+        logger.info(f"[Worker] Fetched {len(all_videos)} total videos from Yandex")
+    except Exception as e:
+        logger.error(f"Failed to list files: {e}")
+        all_videos = []
     
     logger.info(f"[Worker] Total videos collected: {len(all_videos)}")
     logger.info(f"[Worker] Total profiles configured: {len(config.profiles)}")
