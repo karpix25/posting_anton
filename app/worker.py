@@ -1,8 +1,6 @@
 import asyncio
 import logging
 from datetime import datetime
-from asgiref.sync import async_to_sync
-from app.celery_app import celery_app
 from app.config import settings
 from app.services.yandex import yandex_service
 from app.services.scheduler import ContentScheduler
@@ -15,7 +13,8 @@ from sqlalchemy import select, update
 
 logger = logging.getLogger(__name__)
 
-async def async_generate_schedule():
+async def generate_daily_schedule():
+    """Main automation function - generates schedule and queues posts."""
     logger.info("Starting schedule generation task...")
     config = settings.load_legacy_config()
     folders = config.yandexFolders
@@ -23,7 +22,7 @@ async def async_generate_schedule():
     
     for folder in folders:
         try:
-            files = await yandex_service.list_files(limit=10000)
+            files = await yandex_service.list_files(limit=100000)
             for f in files:
                 path = f["path"]
                 norm_path = path.replace("disk:", "").strip("/")
@@ -45,10 +44,7 @@ async def async_generate_schedule():
             publish_time_iso = post["publish_at"]
             publish_dt = datetime.fromisoformat(publish_time_iso)
             
-            # 1. Create DB Record as QUEUED
-            # We need a unique way to identify this task later.
-            # We can pass the DB ID to the task.
-            
+            # Create DB Record as QUEUED
             history = PostingHistory(
                 profile_username=profile.username,
                 platform=platform,
@@ -60,34 +56,39 @@ async def async_generate_schedule():
                 meta={"planned": True}
             )
             session.add(history)
-            await session.flush() # get ID
+            await session.flush()  # get ID
             
-            # 2. Queue Task
-            post_content_task.apply_async(
-                kwargs={
-                    "history_id": history.id,
-                    "video_path": video["path"],
-                    "profile_username": profile.username,
-                    "platform": platform,
-                    "publish_time_iso": publish_time_iso
-                },
-                eta=publish_dt 
-            )
-            logger.info(f"Queued post for {profile.username} on {platform} at {publish_time_iso} (ID: {history.id})")
+            # Schedule async task for future execution
+            delay = (publish_dt - datetime.now()).total_seconds()
+            if delay > 0:
+                asyncio.create_task(
+                    schedule_post_with_delay(
+                        delay, history.id, video["path"],
+                        profile.username, platform, publish_time_iso
+                    )
+                )
+                logger.info(f"Scheduled post for {profile.username} on {platform} at {publish_time_iso} (ID: {history.id})")
+            else:
+                # Past time - execute immediately
+                asyncio.create_task(
+                    post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
+                )
+                logger.info(f"Executing immediate post for {profile.username} on {platform} (ID: {history.id})")
         
         await session.commit()
 
-@celery_app.task
-def generate_daily_schedule():
-    async_to_sync(async_generate_schedule)()
+async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
+                                   profile_username: str, platform: str, publish_time_iso: str):
+    """Wait for specified delay, then execute post."""
+    await asyncio.sleep(delay)
+    await post_content(history_id, video_path, profile_username, platform, publish_time_iso)
 
-async def async_post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
-                             publish_time_iso: str):
-    
+async def post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
+                       publish_time_iso: str):
+    """Execute single post publication."""
     logger.info(f"Processing post ID {history_id}: {profile_username} on {platform}")
     config = settings.load_legacy_config()
     
-    # helper
     brand_name = extract_brand(video_path)
     client_config = next((c for c in config.clients if normalize_client(c.name) == brand_name), None)
     
@@ -98,85 +99,101 @@ async def async_post_content(history_id: int, video_path: str, profile_username:
         author = extract_author(video_path)
         generated = await content_generator.generate_caption(video_path, platform, client_config, author)
         if generated:
-            if platform == 'youtube' and "$$$" in generated:
-                parts = generated.split("$$$")
+            if platform == 'youtube' and '$$$' in generated:
+                parts = generated.split('$$$')
                 title = parts[0].strip()
-                caption = parts[1].strip()
+                caption = parts[1].strip() if len(parts) > 1 else ""
             else:
-                caption = generated.strip()
-    
-    if not caption:
+                caption = generated
+    else:
         caption = f"{extract_author(video_path)} video #shorts"
     
-    publish_dt = datetime.fromisoformat(publish_time_iso)
-    
-    # Update DB to processing? (Optional, skipping to save write)
-    
-    success = await platform_manager.publish_post(
-        profile_username, platform, video_path, caption, title, publish_dt
-    )
-    
-    status = "success" if success else "failed"
-    
-    async for session in get_session():
-        # Update specific record
-        stmt = select(PostingHistory).where(PostingHistory.id == history_id)
-        result = await session.execute(stmt)
-        record = result.scalars().first()
-        
-        if record:
-            record.status = status
-            record.meta = {"caption": caption, "title": title}
-            session.add(record)
-        
-        # Update Brand Stats (only if success)
-        if success:
-            category = extract_theme(video_path)
-            brand = extract_brand(video_path)
-            month = datetime.now().strftime("%Y-%m")
-            
-            stmt = select(BrandStats).where(BrandStats.category == category, BrandStats.brand == brand, BrandStats.month == month)
-            result = await session.execute(stmt)
-            stat = result.scalars().first()
-            
-            if not stat:
-                stat = BrandStats(category=category, brand=brand, month=month, published_count=0, quota=0)
-                session.add(stat)
-            
-            stat.published_count += 1
-            stat.updated_at = datetime.utcnow()
-            
-        await session.commit()
-    
-    # Check Cleanup
-    check_cleanup_task.delay(video_path)
-
-def normalize_client(name):
-    return name.lower().replace(" ", "")
-
-@celery_app.task(bind=True, max_retries=3)
-def post_content_task(self, history_id, video_path, profile_username, platform, publish_time_iso):
+    # Get download link
     try:
-        async_to_sync(async_post_content)(history_id, video_path, profile_username, platform, publish_time_iso)
-    except Exception as exc:
-        logger.error(f"Task failed: {exc}")
-        self.retry(exc=exc, countdown=60 * 5)
+        download_link = await yandex_service.get_download_link(video_path)
+    except Exception as e:
+        logger.error(f"Failed to get download link for {video_path}: {e}")
+        await update_post_status(history_id, "failed", str(e))
+        return
+    
+    # Update status to processing
+    await update_post_status(history_id, "processing")
+    
+    # Publish
+    success = False
+    error_msg = None
+    try:
+        resp = await platform_manager.publish_post(
+            video_url=download_link,
+            caption=caption,
+            profile_username=profile_username,
+            platform=platform,
+            title=title if platform == 'youtube' else None
+        )
+        if resp and resp.get("success"):
+            success = True
+            logger.info(f"Successfully published post ID {history_id}")
+        else:
+            error_msg = resp.get("error") or "Unknown error"
+            logger.error(f"Publish failed for post ID {history_id}: {error_msg}")
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Exception during publish for post ID {history_id}: {e}")
+    
+    # Update final status
+    if success:
+        await update_post_status(history_id, "success")
+        # Update brand stats
+        await increment_brand_stats(video_path)
+        # Check cleanup
+        asyncio.create_task(check_cleanup(video_path))
+    else:
+        await update_post_status(history_id, "failed", error_msg)
 
-async def async_check_cleanup(video_path: str):
+async def update_post_status(history_id: int, status: str, error_msg: str = None):
+    """Update posting history status in DB."""
     async for session in get_session():
-        # Check all records for this video that are NOT success
-        # If any is 'queued', 'processing', or 'failed' (if we treat failed as 'retryable'?)
-        # Let's say: if any is 'queued' -> wait.
-        # If all are 'success' -> delete.
-        # If mixed 'success' and 'failed'? 
-        #   If retries exhausted, 'failed' is final state.
-        #   Ideally, we delete if NO 'queued' tasks remain.
+        stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
+            status=status,
+            meta={"error": error_msg} if error_msg else {}
+        )
+        await session.execute(stmt)
+        await session.commit()
+        break
+
+async def increment_brand_stats(video_path: str):
+    """Increment published count for brand in current month."""
+    category = extract_theme(video_path)
+    brand = extract_brand(video_path)
+    month = datetime.now().strftime("%Y-%m")
+    
+    async for session in get_session():
+        stmt = select(BrandStats).where(
+            BrandStats.category == category,
+            BrandStats.brand == brand,
+            BrandStats.month == month
+        )
+        result = await session.execute(stmt)
+        stat = result.scalar_one_or_none()
         
+        if stat:
+            stat.published_count += 1
+        else:
+            stat = BrandStats(category=category, brand=brand, month=month, published_count=1, quota=0)
+            session.add(stat)
+        
+        await session.commit()
+        break
+
+async def check_cleanup(video_path: str):
+    """Check if all posts for video are done, then delete from Yandex."""
+    async for session in get_session():
         stmt = select(PostingHistory).where(PostingHistory.video_path == video_path)
         result = await session.execute(stmt)
         rows = result.scalars().all()
         
-        if not rows: return # Should not happen
+        if not rows:
+            return
         
         has_queued = any(r.status == 'queued' for r in rows)
         has_success = any(r.status == 'success' for r in rows)
@@ -188,7 +205,7 @@ async def async_check_cleanup(video_path: str):
                 logger.info(f"Cleanup: Deleted {video_path}")
             except Exception as e:
                 logger.error(f"Cleanup Failed for {video_path}: {e}")
+        break
 
-@celery_app.task
-def check_cleanup_task(video_path):
-    async_to_sync(async_check_cleanup)(video_path)
+def normalize_client(name):
+    return name.lower().replace(" ", "")

@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Body
@@ -377,9 +378,9 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
 async def run_automation():
     """Manually trigger the daily schedule generation."""
     from app.worker import generate_daily_schedule
-    # Use delay() for async execution
-    task = generate_daily_schedule.delay()
-    return {"success": True, "message": "Automation started", "task_id": str(task.id)}
+    # Run in background without blocking
+    asyncio.create_task(generate_daily_schedule())
+    return {"success": True, "message": "Automation started in background"}
 
 @app.get("/api/logs")
 async def get_logs(lines: int = 100):
