@@ -1,10 +1,13 @@
 import random
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Set, Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.config import settings, LegacyConfig, SocialProfile
 from app.models import BrandStats
+
+logger = logging.getLogger(__name__)
 
 class ContentScheduler:
     def __init__(self, config: LegacyConfig, db_session: Optional[AsyncSession] = None):
