@@ -13,8 +13,12 @@ from app.database import get_session, init_db
 from app.models import BrandStats
 from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
+from app.logging_conf import setup_logging
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
+
+# Setup Logging
+logger = setup_logging()
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +31,7 @@ app.add_middleware(
 # Startup event
 @app.on_event("startup")
 async def on_startup():
+    logger.info("Application starting up...")
     await init_db()
 
 @app.get("/health")

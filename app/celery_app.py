@@ -1,5 +1,9 @@
 from celery import Celery
 from app.config import settings
+from app.logging_conf import setup_logging
+
+# Setup logging for worker
+setup_logging()
 
 celery_app = Celery(
     "worker",
