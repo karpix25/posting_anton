@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     YANDEX_TOKEN: str = ""
     OPENAI_API_KEY: str = ""
     UPLOAD_POST_API_KEY: str = ""
-    DATA_DIR: str = "/data"
+    DATA_DIR: str = "/app"
     REDIS_URL: str = "redis://tools_redis:6379/0"
     
     # Internal state for legacy config
