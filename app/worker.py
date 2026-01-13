@@ -16,7 +16,13 @@ logger = logging.getLogger(__name__)
 async def generate_daily_schedule():
     """Main automation function - generates schedule and queues posts."""
     logger.info("Starting schedule generation task...")
-    config = settings.load_legacy_config()
+    
+    # Load config from DATABASE, not file!
+    async for session in get_session():
+        from app.services.config_db import get_db_config
+        config = await get_db_config(session)
+        break
+    
     folders = config.yandexFolders
     logger.info(f"[Worker] Configured folders: {folders}")
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
@@ -101,7 +107,12 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
                        publish_time_iso: str):
     """Execute single post publication."""
     logger.info(f"Processing post ID {history_id}: {profile_username} on {platform}")
-    config = settings.load_legacy_config()
+    
+    # Load config from DATABASE
+    async for session in get_session():
+        from app.services.config_db import get_db_config
+        config = await get_db_config(session)
+        break
     
     brand_name = extract_brand(video_path)
     client_config = next((c for c in config.clients if normalize_client(c.name) == brand_name), None)
