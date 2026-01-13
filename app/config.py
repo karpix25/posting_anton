@@ -58,8 +58,9 @@ class Settings(BaseSettings):
         
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            self._legacy_config = LegacyConfig(**data)
-            return self._legacy_config
+            # Should we validate?
+            # self._legacy_config = LegacyConfig(**data)
+            return LegacyConfig(**data)
 
     class Config:
         env_file = ".env"
