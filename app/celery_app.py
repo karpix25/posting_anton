@@ -21,11 +21,7 @@ celery_app.conf.update(
 )
 
 # Schedule
-celery_app.conf.beat_schedule = {
-    "generate-daily-schedule": {
-        "task": "app.worker.generate_daily_schedule",
-        "schedule": crontab(hour=7, minute=0), # Run at 7:00 AM MSK
-    },
-}
+# Auto-schedule is now handled by DynamicScheduler in app/main.py
+# celery_app.conf.beat_schedule = ...
 
 celery_app.autodiscover_tasks(["app"])

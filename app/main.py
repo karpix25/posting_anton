@@ -14,6 +14,7 @@ from app.models import BrandStats
 from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
+from app.services.dynamic_scheduler import dynamic_scheduler
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
 
@@ -33,6 +34,7 @@ app.add_middleware(
 async def on_startup():
     logger.info("Application starting up...")
     await init_db()
+    dynamic_scheduler.start()
 
 @app.get("/health")
 async def health_check():
@@ -194,6 +196,14 @@ async def update_brand_quota(
         print(f"Failed to sync quota to config.json: {e}")
 
     return {"success": True, "message": f"Updated quota for {category}:{brand} to {quota}"}
+
+@app.post("/api/run")
+async def run_automation():
+    """Manually trigger the daily schedule generation."""
+    from app.worker import generate_daily_schedule
+    # Use delay() for async execution
+    task = generate_daily_schedule.delay()
+    return {"success": True, "message": "Automation started", "task_id": str(task.id)}
 
 # Serve static files (Frontend)
 # Providing access to public directory if exists
