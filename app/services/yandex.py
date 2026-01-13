@@ -2,71 +2,81 @@ import yadisk
 import asyncio
 from typing import List, Dict, Any, Optional
 from app.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
+        import httpx
         self.token = token or settings.YANDEX_TOKEN
-        self.client = yadisk.AsyncClient(token=self.token)
+        # Match TS timeout (120s) and keep-alive
+        self.http_session = httpx.AsyncClient(timeout=120.0, limits=httpx.Limits(keep_alive_connections=5))
+        self.client = yadisk.AsyncClient(token=self.token, session=self.http_session)
 
     async def check_token(self) -> bool:
         async with self.client:
             return await self.client.check_token()
 
-    async def list_files(self, limit: int = 10000) -> List[Dict[str, Any]]:
+    async def list_files(self, limit: int = 100000) -> List[Dict[str, Any]]:
         """
-        List video files from Yandex Disk using the flat listing endpoint.
-        Matches the behavior of the TypeScript `listFiles` method.
+        List video files with robust retry logic matching TypeScript implementation.
+        Strategies:
+        1. High timeout (120s)
+        2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
         """
-        async with self.client:
-            # yadisk logic to fetch flat list of files
-            # get_files(limit=..., media_type='video')
-            # It returns a generator, need to iterate
-            
-            files = []
-            try:
-                # We need fields: name, path, md5, size, created
-                # yadisk automatically parses many fields, but we can rely on default excessive fields or filter if needed?
-                # yadisk doesn't strictly support `fields` param in helper wrapper easily without custom loop or **kwargs?
-                # Actually get_files supports **kwargs passed to request.
-                
-                # Fetching
-                print(f"[Yandex] Fetching files (limit={limit})...")
-                
-                # Using a manual request might be safer if we want exact fields to save bandwidth, 
-                # but yadisk wrappers are convenient. Let's try wrapper.
-                # get_files returns an async generator for Pagination!
-                
-                # However, the TypeScript code did NOT paginate manually, it just set a high limit (10000).
-                # yadisk `get_files` allows `limit` param.
-                
-                items_gen = self.client.get_files(
-                    limit=limit,
-                    media_type='video',
-                    fields='items.name,items.path,items.md5,items.size,items.created'
-                )
-                
-                # Iterate the generator
-                async for item in items_gen:
-                    files.append({
-                        "name": item.name,
-                        "path": item.path,
-                        "url": item.path, # As per TS logic
-                        "md5": item.md5,
-                        "size": item.size,
-                        "created": item.created.isoformat() if item.created else None
-                    })
-                    
-                print(f"[Yandex] Fetched {len(files)} files.")
-                
-                # Sort by name
-                files.sort(key=lambda x: x["name"])
-                
-                return files
+        limits_to_try = [limit, min(5000, limit), min(2000, limit)]
+        last_error = None
+        
+        # Deduplicate limits
+        limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
 
-            except yadisk.exceptions.RequestError as e:
-                print(f"[Yandex] Error listing files: {e}")
-                # Retry logic could be implemented here or in the caller / Celery
-                raise e
+        async with self.client:
+            for attempt, current_limit in enumerate(limits_to_try):
+                try:
+                    logger.info(f"[Yandex] Fetching files (limit={current_limit}, attempt={attempt+1}/{len(limits_to_try)})...")
+                    
+                    # fetch generator
+                    items_gen = self.client.get_files(
+                        limit=current_limit,
+                        media_type='video',
+                        fields='items.name,items.path,items.md5,items.size,items.created'
+                    )
+                    
+                    files = []
+                    async for item in items_gen:
+                        files.append({
+                            "name": item.name,
+                            "path": item.path,
+                            "url": item.path,
+                            "md5": item.md5,
+                            "size": item.size,
+                            "created": item.created.isoformat() if item.created else None
+                        })
+                    
+                    logger.info(f"[Yandex] Fetched {len(files)} files.")
+                    files.sort(key=lambda x: x["name"])
+                    return files
+
+                except Exception as e:
+                    import httpx
+                    last_error = e
+                    is_timeout = isinstance(e, (yadisk.exceptions.RequestTimeoutError, httpx.ReadTimeout, httpx.ConnectTimeout))
+                    # yadisk wraps exceptions? check string too
+                    if "timeout" in str(e).lower() or isinstance(e, httpx.TimeoutException):
+                        is_timeout = True
+                        
+                    if is_timeout and attempt < len(limits_to_try) - 1:
+                        logger.warning(f"[Yandex] Timeout with limit {current_limit}. Retrying with lower limit...")
+                        await asyncio.sleep(2)
+                        continue
+                    
+                    logger.error(f"[Yandex] Error listing files: {e}")
+                    raise e
+            
+            if last_error:
+                raise last_error
+            return []
 
     async def get_download_link(self, path: str) -> str:
         """Get a temporary download link for a file."""
