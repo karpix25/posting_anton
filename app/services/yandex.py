@@ -11,7 +11,7 @@ class YandexDiskService:
         import httpx
         self.token = token or settings.YANDEX_TOKEN
         # Match TS timeout (120s) and keep-alive
-        self.http_session = httpx.AsyncClient(timeout=120.0, limits=httpx.Limits(keep_alive_connections=5))
+        self.http_session = httpx.AsyncClient(timeout=120.0, limits=httpx.Limits(max_keepalive_connections=5))
         self.client = yadisk.AsyncClient(token=self.token, session=self.http_session)
 
     async def check_token(self) -> bool:
