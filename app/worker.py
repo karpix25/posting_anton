@@ -27,6 +27,7 @@ async def generate_daily_schedule():
     folders = config.yandexFolders
     logger.info(f"[Worker] Configured folders (for reference): {folders}")
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
+    logger.info(f"[Worker] Global limits: IG={config.limits.instagram}, TT={config.limits.tiktok}, YT={config.limits.youtube}")
     
     try:
         all_videos = await yandex_service.list_files(limit=100000)
