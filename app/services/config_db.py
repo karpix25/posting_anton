@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import SystemConfig
@@ -59,21 +60,23 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     record = result.scalar_one_or_none()
     
     if record:
+        # logger.debug(f"DB Config Loaded: {record.value.get('cronSchedule')}")
         return LegacyConfig(**record.value)
     
-    # Fallback to defaults if missing (should be handled by migration though)
     return LegacyConfig(limits={"instagram": 10, "tiktok": 10, "youtube": 2})
 
 async def save_db_config(session: AsyncSession, config_data: dict):
+    logger.info(f"Saving Config to DB. Cron: {config_data.get('cronSchedule')}")
     stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()
     
     if record:
         record.value = config_data
-        record.updated_at = settings.utc_now() if hasattr(settings, 'utc_now') else None # or datetime.utcnow()
+        record.updated_at = datetime.utcnow() # Fix dependency on settings.utc_now if not exists
     else:
         new_config = SystemConfig(key=CONFIG_KEY, value=config_data)
         session.add(new_config)
     
     await session.commit()
+    logger.info("DB Commit Successful")
