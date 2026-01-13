@@ -23,6 +23,10 @@ class ContentScheduler:
         # We'll implement basic extraction here
         
         videos_by_theme = self.group_videos_by_theme(videos)
+        logger.info(f"[Scheduler] Videos grouped by {len(videos_by_theme)} themes: {list(videos_by_theme.keys())}")
+        for theme, brands in videos_by_theme.items():
+            total = sum(len(v) for v in brands.values())
+            logger.info(f"  - Theme '{theme}': {total} videos across {len(brands)} brands: {list(brands.keys())[:10]}")  # Show first 10 brands
         
         profile_slots: Dict[str, List[datetime]] = occupied_slots.copy()
         for p in active_profiles:
