@@ -12,6 +12,13 @@ if db_url.startswith("postgres://"):
 elif db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+# Fix for EasyPanel/Heroku injecting 'sslmode' which asyncpg doesn't support in kwargs
+if "?" in db_url:
+    # simple brute force remove
+    db_url = db_url.replace("?sslmode=disable", "").replace("&sslmode=disable", "")
+    db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
+    db_url = db_url.replace("?sslmode=prefer", "").replace("&sslmode=prefer", "")
+
 engine = create_async_engine(db_url, echo=True, future=True)
 
 async_session_maker = sessionmaker(
