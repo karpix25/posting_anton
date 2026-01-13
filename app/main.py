@@ -147,7 +147,9 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         
         # We fetch all flat files once (wrapper handles limit)
         # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        files = await yandex_service.list_files(limit=20000)
+        # We fetch all flat files once (wrapper handles limit)
+        # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
+        files = await yandex_service.list_files(limit=100000)
         
         stats = {
             "totalVideos": 0,
