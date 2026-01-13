@@ -68,12 +68,12 @@ class YandexDiskService:
                 # Retry logic could be implemented here or in the caller / Celery
                 raise e
 
-    async def get_download_link(self, path: string) -> str:
+    async def get_download_link(self, path: str) -> str:
         """Get a temporary download link for a file."""
         async with self.client:
             return await self.client.get_download_link(path)
 
-    async def delete_file(self, path: string, permanently: bool = True):
+    async def delete_file(self, path: str, permanently: bool = True):
         """Delete a file."""
         async with self.client:
             await self.client.remove(path, permanently=permanently)
