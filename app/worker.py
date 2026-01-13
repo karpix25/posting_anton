@@ -32,11 +32,29 @@ async def generate_daily_schedule():
         try:
             files = await yandex_service.list_files(limit=100000)
             folder_videos = 0
+            
+            # Debug: show first 5 file paths
+            if files:
+                logger.info(f"[Worker] Sample paths from Yandex (first 5):")
+                for f in files[:5]:
+                    logger.info(f"  → {f.get('path', 'NO PATH')}")
+            
             for f in files:
                 path = f["path"]
                 norm_path = path.replace("disk:", "").strip("/")
                 norm_folder = folder.replace("disk:", "").strip("/")
-                if norm_path.startswith(norm_folder):
+                
+                # Debug: show matching for first file
+                if folder_videos == 0:
+                    logger.info(f"[Worker] Matching logic:")
+                    logger.info(f"  File path: '{path}'")
+                    logger.info(f"  Normalized: '{norm_path}'")
+                    logger.info(f"  Folder cfg: '{folder}'")
+                    logger.info(f"  Norm folder: '{norm_folder}'")
+                    logger.info(f"  Starts with? {norm_path.startswith(norm_folder)}")
+                
+                # Case-insensitive comparison
+                if norm_path.lower().startswith(norm_folder.lower()):
                     all_videos.append(f)
                     folder_videos += 1
             logger.info(f"[Worker] Folder '{folder}': matched {folder_videos} videos")
