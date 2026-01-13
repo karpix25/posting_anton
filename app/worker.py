@@ -18,19 +18,33 @@ async def generate_daily_schedule():
     logger.info("Starting schedule generation task...")
     config = settings.load_legacy_config()
     folders = config.yandexFolders
+    logger.info(f"[Worker] Configured folders: {folders}")
+    logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
     all_videos = []
     
     for folder in folders:
         try:
             files = await yandex_service.list_files(limit=100000)
+            folder_videos = 0
             for f in files:
                 path = f["path"]
                 norm_path = path.replace("disk:", "").strip("/")
                 norm_folder = folder.replace("disk:", "").strip("/")
                 if norm_path.startswith(norm_folder):
                     all_videos.append(f)
+                    folder_videos += 1
+            logger.info(f"[Worker] Folder '{folder}': matched {folder_videos} videos")
         except Exception as e:
             logger.error(f"Failed to list folder {folder}: {e}")
+    
+    logger.info(f"[Worker] Total videos collected: {len(all_videos)}")
+    logger.info(f"[Worker] Total profiles configured: {len(config.profiles)}")
+    
+    active_profiles = [p for p in config.profiles if p.enabled]
+    logger.info(f"[Worker] Active profiles: {len(active_profiles)}")
+    if active_profiles:
+        for p in active_profiles[:5]:  # Show first 5
+            logger.info(f"  - {p.username}: theme_key='{p.theme_key}', platforms={p.platforms}")
 
     async for session in get_session():
         scheduler = ContentScheduler(config, session)

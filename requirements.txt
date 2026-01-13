@@ -1,7 +1,5 @@
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-celery>=5.3.6
-redis>=5.0.1
 sqlmodel>=0.0.14
 asyncpg>=0.29.0
 yadisk>=2.0.2
