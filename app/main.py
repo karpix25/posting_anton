@@ -38,13 +38,26 @@ async def on_startup():
     await init_db()
     await migrate_file_to_db()
     
-    # Log current schedule state
+    # Log current schedule state and Force-Check Clients
     try:
-        from app.services.config_db import get_db_config
+        from app.services.config_db import get_db_config, save_db_config
         from app.database import async_session_maker
+        from app.seed_data import CLIENTS_SEED
+        
         async with async_session_maker() as session:
              cfg = await get_db_config(session)
-             logger.info(f"✅ System Ready. Current Schedule: {cfg.cronSchedule or 'Disabled'}")
+             
+             # AGGRESSIVE AUTO-SEED
+             if not cfg.clients and CLIENTS_SEED:
+                 logger.warning(f"⚠️ Startup: No clients found in DB. Injecting {len(CLIENTS_SEED)} default clients...")
+                 cfg_dict = cfg.dict()
+                 cfg_dict["clients"] = CLIENTS_SEED
+                 await save_db_config(session, cfg_dict)
+                 logger.info("✅ Startup: Injected default clients.")
+                 # Re-read to confirm for logging
+                 cfg = await get_db_config(session)
+
+             logger.info(f"✅ System Ready. Current Schedule: {cfg.cronSchedule or 'Disabled'}. Clients: {len(cfg.clients)}")
     except Exception as e:
         logger.error(f"Failed to load initial config: {e}")
 
