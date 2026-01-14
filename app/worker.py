@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
+from typing import Dict, List
 from app.config import settings
 from app.services.yandex import yandex_service
 from app.services.scheduler import ContentScheduler
@@ -45,9 +46,35 @@ async def generate_daily_schedule():
         for p in active_profiles[:5]:  # Show first 5
             logger.info(f"  - {p.username}: theme_key='{p.theme_key}', platforms={p.platforms}")
 
+    # Fetch existing scheduled posts from Upload Post API to avoid conflicts
+    from app.services.platforms import upload_post_client
+    occupied_slots: Dict[str, List[datetime]] = {}
+    try:
+        scheduled_posts = await upload_post_client.get_scheduled_posts()
+        for post in scheduled_posts:
+            profile = post.get('profile_username', '')
+            scheduled_date_str = post.get('scheduled_date', '')
+            if profile and scheduled_date_str:
+                if profile not in occupied_slots:
+                    occupied_slots[profile] = []
+                try:
+                    # Parse ISO datetime
+                    scheduled_dt = datetime.fromisoformat(scheduled_date_str.replace('Z', '+00:00'))
+                    # Convert to naive datetime for comparison
+                    if scheduled_dt.tzinfo:
+                        scheduled_dt = scheduled_dt.replace(tzinfo=None)
+                    occupied_slots[profile].append(scheduled_dt)
+                except Exception:
+                    pass
+        
+        total_occupied = sum(len(v) for v in occupied_slots.values())
+        logger.info(f"[Worker] Found {total_occupied} existing scheduled posts in Upload Post (profiles: {list(occupied_slots.keys())})")
+    except Exception as e:
+        logger.warning(f"[Worker] Failed to fetch scheduled posts: {e} - continuing with empty slots")
+
     async for session in get_session():
         scheduler = ContentScheduler(config, session)
-        schedule = await scheduler.generate_schedule(all_videos, config.profiles, {})
+        schedule = await scheduler.generate_schedule(all_videos, config.profiles, occupied_slots)
         logger.info(f"Generated {len(schedule)} posts.")
         
         for post in schedule:

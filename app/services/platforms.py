@@ -1,14 +1,18 @@
 import httpx
 import asyncio
+import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from app.config import settings
 from app.models import PostingHistory
 from app.services.yandex import yandex_service
 
+logger = logging.getLogger(__name__)
+
 UPLOAD_POST_API_URL = 'https://api.upload-post.com/api/upload'
 USER_PROFILES_API_URL = 'https://api.upload-post.com/api/uploadposts/users'
 HISTORY_API_URL = 'https://api.upload-post.com/api/uploadposts/history'
+SCHEDULE_API_URL = 'https://api.upload-post.com/api/uploadposts/schedule'
 
 class UploadPostClient:
     def __init__(self, api_key: str):
@@ -36,6 +40,22 @@ class UploadPostClient:
             except Exception as e:
                 print(f"[UploadPost] Error fetching profiles: {e}")
                 raise e
+
+    async def get_scheduled_posts(self) -> List[Dict[str, Any]]:
+        """Fetch list of pending scheduled posts from Upload Post API."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(SCHEDULE_API_URL, headers=self.headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"[UploadPost] Fetched {len(data)} scheduled posts")
+                    return data
+                else:
+                    logger.warning(f"[UploadPost] Schedule fetch returned {response.status_code}")
+                    return []
+            except Exception as e:
+                logger.error(f"[UploadPost] Error fetching scheduled posts: {e}")
+                return []
 
     async def publish(self, profile_username: str, platform: str, video_url: str, 
                       caption: str = "", title: str = "", publish_at: Optional[datetime] = None) -> Dict[str, Any]:
@@ -124,3 +144,4 @@ class PlatformManager:
 
 # Singleton
 platform_manager = PlatformManager()
+upload_post_client = UploadPostClient(settings.UPLOAD_POST_API_KEY)
