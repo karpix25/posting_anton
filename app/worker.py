@@ -51,7 +51,14 @@ async def generate_daily_schedule():
     occupied_slots: Dict[str, List[datetime]] = {}
     try:
         scheduled_posts = await upload_post_client.get_scheduled_posts()
+        logger.info(f"[Worker] Raw scheduled posts response type: {type(scheduled_posts)}, count: {len(scheduled_posts) if scheduled_posts else 0}")
+        
         for post in scheduled_posts:
+            # Skip if not a dictionary
+            if not isinstance(post, dict):
+                logger.warning(f"[Worker] Skipping non-dict scheduled post: {type(post)}")
+                continue
+                
             profile = post.get('profile_username', '')
             scheduled_date_str = post.get('scheduled_date', '')
             if profile and scheduled_date_str:
@@ -64,8 +71,8 @@ async def generate_daily_schedule():
                     if scheduled_dt.tzinfo:
                         scheduled_dt = scheduled_dt.replace(tzinfo=None)
                     occupied_slots[profile].append(scheduled_dt)
-                except Exception:
-                    pass
+                except Exception as parse_err:
+                    logger.warning(f"[Worker] Failed to parse date '{scheduled_date_str}': {parse_err}")
         
         total_occupied = sum(len(v) for v in occupied_slots.values())
         logger.info(f"[Worker] Found {total_occupied} existing scheduled posts in Upload Post (profiles: {list(occupied_slots.keys())})")
