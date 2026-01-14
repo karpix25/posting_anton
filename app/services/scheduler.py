@@ -12,6 +12,27 @@ logger = logging.getLogger(__name__)
 # Moscow timezone (UTC+3)
 MSK = timezone(timedelta(hours=3))
 
+def has_ai_client(clients: list, brand_name: str) -> bool:
+    """Check if brand has a matching AI client (by name or regex)."""
+    import re
+    normalized_brand = brand_name.lower().replace(" ", "").replace("-", "")
+    
+    for client in clients:
+        # Method 1: Exact name match (normalized)
+        client_normalized = client.name.lower().replace(" ", "").replace("-", "")
+        if client_normalized == normalized_brand:
+            return True
+        
+        # Method 2: Regex match
+        if client.regex:
+            try:
+                if re.search(client.regex, brand_name, re.IGNORECASE):
+                    return True
+            except re.error:
+                pass  # Invalid regex, skip
+    
+    return False
+
 class ContentScheduler:
     def __init__(self, config: LegacyConfig, db_session: Optional[AsyncSession] = None):
         self.config = config
@@ -188,14 +209,25 @@ class ContentScheduler:
 
     def group_videos_by_theme(self, videos: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
         groups = {}
+        skipped_brands = set()
+        
         for v in videos:
             theme = self.extract_theme(v["path"])
             brand = self.extract_brand(v["path"])
+            
+            # Skip brands without AI client configured
+            if not has_ai_client(self.config.clients, brand):
+                skipped_brands.add(brand)
+                continue
             
             if theme not in groups: groups[theme] = {}
             if brand not in groups[theme]: groups[theme][brand] = []
             
             groups[theme][brand].append(v)
+        
+        if skipped_brands:
+            logger.info(f"[Scheduler] Skipped {len(skipped_brands)} brands without AI client: {list(skipped_brands)[:10]}...")
+        
         return groups
 
     async def select_brand_by_quota(self, category: str, available_brands: List[str], last_brand: Optional[str]) -> str:
