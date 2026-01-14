@@ -276,10 +276,10 @@ async def check_cleanup(video_path: str):
         has_success = any(r.status == 'success' for r in rows)
         
         if not has_queued and has_success:
-            logger.info(f"Cleanup: All tasks done for {video_path}. Deleting...")
+            logger.info(f"Cleanup: All tasks done for {video_path}. Moving to archive...")
             try:
-                await yandex_service.delete_file(video_path)
-                logger.info(f"Cleanup: Deleted {video_path}")
+                await yandex_service.move_file(video_path, "disk:/опубликовано")
+                logger.info(f"Cleanup: Archived {video_path}")
             except Exception as e:
                 logger.error(f"Cleanup Failed for {video_path}: {e}")
         break

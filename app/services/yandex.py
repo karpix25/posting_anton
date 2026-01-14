@@ -85,5 +85,37 @@ class YandexDiskService:
             await client.remove(path, permanently=permanently)
             print(f"[Yandex] Deleted file: {path}")
 
+    async def move_file(self, source_path: str, dest_folder: str = "disk:/опубликовано"):
+        """Move a file to archive folder instead of deleting."""
+        import os
+        
+        async with yadisk.AsyncClient(token=self.token) as client:
+            # Ensure destination folder exists
+            try:
+                if not await client.exists(dest_folder):
+                    await client.mkdir(dest_folder)
+                    logger.info(f"[Yandex] Created archive folder: {dest_folder}")
+            except Exception as e:
+                logger.warning(f"[Yandex] Could not create/check folder {dest_folder}: {e}")
+            
+            # Get filename from path
+            filename = os.path.basename(source_path)
+            dest_path = f"{dest_folder}/{filename}"
+            
+            # Handle duplicate filenames by adding timestamp
+            try:
+                if await client.exists(dest_path):
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    name, ext = os.path.splitext(filename)
+                    dest_path = f"{dest_folder}/{name}_{timestamp}{ext}"
+            except Exception:
+                pass  # If check fails, just try to move
+            
+            # Move file
+            await client.move(source_path, dest_path, overwrite=True)
+            logger.info(f"[Yandex] Moved file: {source_path} -> {dest_path}")
+            return dest_path
+
 # Singleton-like usage or dependency injection
 yandex_service = YandexDiskService()
