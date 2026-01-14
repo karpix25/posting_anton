@@ -73,6 +73,49 @@
               </div>
             </div>
 
+            <!-- Today Stats Cards -->
+            <div class="flex gap-4 flex-wrap">
+              <!-- Date Card -->
+              <div
+                class="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-slate-500 mb-1">📅 Дата (МСК)</div>
+                <div class="text-xl font-bold text-slate-700">{{ todayStats.date || '--' }}</div>
+                <div class="text-xs text-slate-400 mt-1">{{ todayStats.time_msk || '--:--' }}</div>
+              </div>
+
+              <!-- Success Posts -->
+              <div
+                class="bg-gradient-to-br from-green-50 to-emerald-100 border border-green-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-green-600 mb-1">✅ Опубликовано</div>
+                <div class="text-2xl font-bold text-green-700">{{ todayStats.success_count || 0 }}</div>
+                <div class="text-xs text-green-500 mt-1">за сегодня</div>
+              </div>
+
+              <!-- Active Profiles -->
+              <div
+                class="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-blue-600 mb-1">👤 Профилей</div>
+                <div class="text-2xl font-bold text-blue-700">{{ todayStats.profiles_count || 0 }}</div>
+                <div class="text-xs text-blue-500 mt-1">активных</div>
+              </div>
+
+              <!-- Queued Posts -->
+              <div
+                class="bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-amber-600 mb-1">⏳ В очереди</div>
+                <div class="text-2xl font-bold text-amber-700">{{ todayStats.queued_count || 0 }}</div>
+                <div class="text-xs text-amber-500 mt-1">ожидают</div>
+              </div>
+
+              <!-- Failed Posts -->
+              <div v-if="todayStats.failed_count > 0"
+                class="bg-gradient-to-br from-red-50 to-rose-100 border border-red-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-red-600 mb-1">❌ Ошибки</div>
+                <div class="text-2xl font-bold text-red-700">{{ todayStats.failed_count }}</div>
+                <div class="text-xs text-red-500 mt-1">за сегодня</div>
+              </div>
+            </div>
+
             <button @click="triggerRun(false)"
               class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold">
               Запустить автоматизацию
@@ -700,6 +743,14 @@
                 brandStats: {},
                 currentMonth: new Date().toISOString().substring(0, 7),
                 statsSummary: null,
+                todayStats: {
+                  date: '--',
+                  time_msk: '--:--',
+                  success_count: 0,
+                  failed_count: 0,
+                  queued_count: 0,
+                  profiles_count: 0
+                },
                 loading: true,
                 statsLoading: false,
                 statsViewMode: 'category', // 'category' or 'author'
@@ -732,8 +783,12 @@
               await this.loadConfig();
               this.loadSchedule();
               this.loadStats();
+              this.loadTodayStats();
               this.fetchStatsSummary();
               this.loadBrandStats();
+
+              // Auto-refresh today stats every 60 seconds
+              setInterval(() => this.loadTodayStats(), 60000);
             },
             computed: {
               currentStatsList() {
@@ -823,6 +878,16 @@
                   }
                 });
                 return total > 0 ? total : '-';
+              },
+              async loadTodayStats() {
+                try {
+                  const res = await fetch('/api/stats/today');
+                  if (res.ok) {
+                    this.todayStats = await res.json();
+                  }
+                } catch (e) {
+                  console.error('Failed to load today stats:', e);
+                }
               },
               async loadStats() {
                 this.statsLoading = true;

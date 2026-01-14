@@ -381,6 +381,77 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/stats/today")
+async def get_today_stats(session: AsyncSession = Depends(get_session)):
+    """Get statistics for today's publications (Moscow timezone)."""
+    try:
+        from datetime import timezone, timedelta
+        from sqlalchemy import func, distinct
+        from app.models import PostingHistory
+        
+        # Moscow timezone (UTC+3)
+        MSK = timezone(timedelta(hours=3))
+        now_msk = datetime.now(MSK)
+        today_start_msk = now_msk.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end_msk = now_msk.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Convert to UTC for database query
+        today_start_utc = today_start_msk.astimezone(timezone.utc).replace(tzinfo=None)
+        today_end_utc = today_end_msk.astimezone(timezone.utc).replace(tzinfo=None)
+        
+        # Count successful posts today
+        success_stmt = select(func.count(PostingHistory.id)).where(
+            PostingHistory.status == "success",
+            PostingHistory.posted_at >= today_start_utc,
+            PostingHistory.posted_at <= today_end_utc
+        )
+        success_result = await session.execute(success_stmt)
+        success_count = success_result.scalar() or 0
+        
+        # Count unique profiles with successful posts today
+        profiles_stmt = select(func.count(distinct(PostingHistory.profile_username))).where(
+            PostingHistory.status == "success",
+            PostingHistory.posted_at >= today_start_utc,
+            PostingHistory.posted_at <= today_end_utc
+        )
+        profiles_result = await session.execute(profiles_stmt)
+        profiles_count = profiles_result.scalar() or 0
+        
+        # Count failed posts today
+        failed_stmt = select(func.count(PostingHistory.id)).where(
+            PostingHistory.status == "failed",
+            PostingHistory.posted_at >= today_start_utc,
+            PostingHistory.posted_at <= today_end_utc
+        )
+        failed_result = await session.execute(failed_stmt)
+        failed_count = failed_result.scalar() or 0
+        
+        # Count queued posts
+        queued_stmt = select(func.count(PostingHistory.id)).where(
+            PostingHistory.status == "queued"
+        )
+        queued_result = await session.execute(queued_stmt)
+        queued_count = queued_result.scalar() or 0
+        
+        return {
+            "date": now_msk.strftime("%d.%m.%Y"),
+            "time_msk": now_msk.strftime("%H:%M"),
+            "success_count": success_count,
+            "failed_count": failed_count,
+            "queued_count": queued_count,
+            "profiles_count": profiles_count
+        }
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        return {
+            "date": datetime.now().strftime("%d.%m.%Y"),
+            "time_msk": "??:??",
+            "success_count": 0,
+            "failed_count": 0,
+            "queued_count": 0,
+            "profiles_count": 0
+        }
+
 @app.post("/api/cleanup")
 async def cleanup_queue(session: AsyncSession = Depends(get_session)):
     """Delete all queued (not yet published) posts."""
