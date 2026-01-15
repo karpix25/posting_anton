@@ -107,7 +107,7 @@ async def generate_daily_schedule():
                 meta={"planned": True, "brand": brand_name}
             )
             session.add(history)
-            await session.flush()  # get ID
+            await session.commit()  # Commit immediately so it's visible to background workers
             
             # Send to Upload Post API with scheduled time
             logger.info(f"📤 Sending to Upload Post: {profile.username} → {platform} | Brand: {brand_name} | Schedule: {publish_time_iso} (ID: {history.id})")
@@ -116,7 +116,6 @@ async def generate_daily_schedule():
                 post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
             )
         
-        await session.commit()
         logger.info(f"✅ Sent {len(schedule)} posts to Upload Post API with scheduling")
 
 async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
