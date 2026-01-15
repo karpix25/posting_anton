@@ -43,7 +43,7 @@ class ContentGenerator:
 
         try:
             response = await self.client.chat.completions.create(
-                model="gpt-4", # Or gpt-4o as in original
+                model="openai/gpt-4o-mini", # User requested cheaper model
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
