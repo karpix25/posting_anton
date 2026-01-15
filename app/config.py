@@ -31,6 +31,13 @@ class GlobalLimits(BaseModel):
     tiktok: int
     youtube: int
 
+class ScheduleConfig(BaseModel):
+    enabled: bool = True
+    timezone: str = "Europe/Moscow"
+    dailyRunTime: str = "00:01"
+    start_hour: int = 8
+    end_hour: int = 23
+
 class LegacyConfig(BaseModel):
     cronSchedule: Optional[str] = None
     yandexFolders: List[str] = []
@@ -40,7 +47,7 @@ class LegacyConfig(BaseModel):
     limits: GlobalLimits
     profiles: List[SocialProfile] = []
     clients: List[ClientConfig] = []
-    schedule: Optional[Dict[str, Any]] = None
+    schedule: Optional[ScheduleConfig] = None
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://admin:admin@tools_postgres:5432/postgres"

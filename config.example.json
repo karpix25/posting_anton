@@ -35,7 +35,9 @@
   "schedule": {
     "enabled": true,
     "timezone": "Europe/Moscow",
-    "dailyRunTime": "00:01"
+    "dailyRunTime": "00:01",
+    "start_hour": 8,
+    "end_hour": 23
   },
   "clients": [
     {

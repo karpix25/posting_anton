@@ -68,11 +68,17 @@ class ContentScheduler:
             if p.username not in profile_slots:
                 profile_slots[p.username] = []
 
-        # Use Moscow timezone for scheduling
+        # Get scheduling window from config
+        start_hour = 8
+        end_hour = 23
+        if self.config.schedule:
+            start_hour = self.config.schedule.start_hour
+            end_hour = self.config.schedule.end_hour
+            
         now_msk = datetime.now(MSK)
-        start_date = now_msk.replace(hour=8, minute=0, second=0, microsecond=0, tzinfo=None)  # Make naive for compatibility
+        start_date = now_msk.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=None)  # Make naive for compatibility
         days_to_generate = self.config.daysToGenerate or 7
-        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()} (Moscow time now: {now_msk.strftime('%H:%M')})")
+        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()} (Window: {start_hour}:00 - {end_hour}:00)")
 
         for day_index in range(days_to_generate):
             current_day_start = start_date + timedelta(days=day_index)
@@ -82,7 +88,7 @@ class ContentScheduler:
             if day_index == 0 and current_day_start < now_msk_naive:
                 current_day_start = now_msk_naive + timedelta(minutes=10)
             
-            current_day_end = current_day_start.replace(hour=23, minute=0, second=0, microsecond=0)
+            current_day_end = current_day_start.replace(hour=end_hour, minute=0, second=0, microsecond=0)
             
             if current_day_start >= current_day_end:
                 logger.info(f"[Scheduler] Skipping day {day_index} - already past end time (start={current_day_start}, end={current_day_end})")
