@@ -231,6 +231,26 @@ class ContentScheduler:
             
             groups[theme][brand].append(v)
         
+        # Debug: Log author distribution per brand
+        for theme, brands in groups.items():
+            for br, vids in brands.items():
+                authors = set()
+                for v in vids:
+                    # Extract author (index 1 after video)
+                    # /ВИДЕО/Author/Category/Brand/file.mp4
+                    parts = [p for p in v["path"].replace("\\", "/").split("/") if p and p != "disk:"]
+                    try:
+                        v_idx = -1
+                        for i, p in enumerate(parts):
+                            if p.lower() in ["video", "видео"]:
+                                v_idx = i
+                                break
+                        if v_idx != -1 and v_idx + 1 < len(parts):
+                            authors.add(parts[v_idx + 1])
+                    except:
+                         pass
+                logger.info(f"[Scheduler] Theme '{theme}' / Brand '{br}': {len(vids)} videos from {len(authors)} authors: {list(authors)}")
+
         if skipped_brands:
             logger.info(f"[Scheduler] Skipped {len(skipped_brands)} brands without AI client: {list(skipped_brands)[:10]}...")
         
@@ -281,6 +301,24 @@ class ContentScheduler:
         # Simplified port of extractTheme from main.ts/scheduler.ts
         # Logic: /ВИДЕО/Author/Category/Brand/file.mp4
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
+        
+        # Strategy 1: Search for known theme aliases in path
+        aliases = self.config.themeAliases or {}
+        for canonical, list_ in aliases.items():
+            # Check canonical first
+            norm_canonical = self.normalize(canonical)
+            for p in parts:
+                if self.normalize(p) == norm_canonical:
+                    return canonical
+            
+            # Check aliases
+            for alias in list_:
+                norm_alias = self.normalize(alias)
+                for p in parts:
+                    if self.normalize(p) == norm_alias:
+                        return canonical
+
+        # Strategy 2: Positional
         try:
             # Find index of "video"
             v_idx = -1
@@ -298,6 +336,28 @@ class ContentScheduler:
 
     def extract_brand(self, path: str) -> str:
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
+        
+        # Strategy 1: Search for known client names/regex matches in the path
+        # This is more robust than fixed indices
+        for client in self.config.clients:
+            normalized_client = self.normalize(client.name)
+            
+            # Check for exact name match in path parts
+            for p in parts:
+                if self.normalize(p) == normalized_client:
+                    return normalized_client
+                    
+            # Check regex if available
+            import re
+            if client.regex:
+                try:
+                    if re.search(client.regex, path, re.IGNORECASE):
+                        return normalized_client
+                except:
+                    pass
+
+        # Strategy 2: Fallback to positional (Index 3 after 'video')
+        # /Video/Author/Category/Brand/file
         try:
             v_idx = -1
             for i, p in enumerate(parts):
@@ -307,6 +367,9 @@ class ContentScheduler:
             
             if v_idx != -1 and v_idx + 3 < len(parts):
                  raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
+                 # If the extracted part looks like a filename (has dot), abort positional
+                 if "." in raw:
+                     return "unknown"
                  return self.normalize(raw)
         except:
              pass
