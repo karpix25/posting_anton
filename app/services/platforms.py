@@ -57,6 +57,23 @@ class UploadPostClient:
                 logger.error(f"[UploadPost] Error fetching scheduled posts: {e}")
                 return []
 
+    async def get_analytics(self, profile_username: str, platforms: List[str]) -> Dict[str, Any]:
+        """Fetch analytics for specific profile and platforms."""
+        url = f"https://api.upload-post.com/api/analytics/{profile_username}"
+        params = {'platforms': ','.join(platforms)}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(url, params=params, headers=self.headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    logger.warning(f"[Analytics] Failed to fetch for {profile_username}: {response.status_code} {response.text}")
+                    return {}
+            except Exception as e:
+                logger.error(f"[Analytics] Error fetching for {profile_username}: {e}")
+                return {}
+
     async def publish(self, profile_username: str, platform: str, video_url: str, 
                       caption: str = "", title: str = "", publish_at: Optional[datetime] = None) -> Dict[str, Any]:
         

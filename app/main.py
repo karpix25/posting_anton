@@ -16,6 +16,7 @@ from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
+from app.services.event_broadcaster import event_broadcaster
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
 
@@ -457,6 +458,52 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
             "profiles_count": 0
         }
 
+@app.get("/api/stats/errors")
+async def get_today_errors(session: AsyncSession = Depends(get_session)):
+    """Get detailed list of failed posts for today."""
+    try:
+        from datetime import timezone, timedelta
+        from sqlalchemy import desc
+        from app.models import PostingHistory
+        
+        # Moscow timezone (UTC+3) logic
+        MSK = timezone(timedelta(hours=3))
+        now_msk = datetime.now(MSK)
+        today_start_msk = now_msk.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end_msk = now_msk.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        today_start_utc = today_start_msk.astimezone(timezone.utc).replace(tzinfo=None)
+        today_end_utc = today_end_msk.astimezone(timezone.utc).replace(tzinfo=None)
+        
+        stmt = select(PostingHistory).where(
+            PostingHistory.status == "failed",
+            PostingHistory.posted_at >= today_start_utc,
+            PostingHistory.posted_at <= today_end_utc
+        ).order_by(desc(PostingHistory.posted_at))
+        
+        result = await session.execute(stmt)
+        posts = result.scalars().all()
+        
+        errors = []
+        for p in posts:
+            err_msg = "Unknown error"
+            if p.meta and "error" in p.meta:
+                err_msg = p.meta["error"]
+                
+            errors.append({
+                "id": p.id,
+                "profile_username": p.profile_username,
+                "platform": p.platform,
+                "video_name": p.video_name,
+                "error": err_msg,
+                "timestamp": p.posted_at.isoformat()
+            })
+            
+        return {"success": True, "errors": errors}
+    except Exception as e:
+        logger.error(f"Failed to fetch errors: {e}")
+        return {"success": False, "errors": [], "message": str(e)}
+
 @app.post("/api/cleanup")
 async def cleanup_queue(session: AsyncSession = Depends(get_session)):
     """Delete all queued (not yet published) posts."""
@@ -501,6 +548,76 @@ async def get_logs(lines: int = 100):
     except Exception as e:
         logger.error(f"Failed to fetch logs: {e}")
         return {"success": False, "message": str(e), "logs": []}
+
+@app.get("/api/events/stream")
+async def event_stream():
+    """
+    Server-Sent Events (SSE) endpoint for real-time updates.
+    Streams post status changes and statistics updates to connected clients.
+    """
+    from fastapi.responses import StreamingResponse
+    
+    async def event_generator():
+        # Subscribe to all events
+        queue = event_broadcaster.subscribe('all')
+        
+        try:
+            logger.info("[SSE] Client connected to event stream")
+            
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            
+            # Keep sending events as they arrive
+            while True:
+                try:
+                    # Wait for new event (with timeout to send keepalive)
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    
+                    # Send event to client
+                    yield f"data: {json.dumps(event)}\n\n"
+                    
+                except asyncio.TimeoutError:
+                    # Send keepalive comment to prevent connection timeout
+                    yield f": keepalive\n\n"
+                    
+        except asyncio.CancelledError:
+            logger.info("[SSE] Client disconnected from event stream")
+            event_broadcaster.unsubscribe('all', queue)
+        except Exception as e:
+            logger.error(f"[SSE] Error in event stream: {e}")
+            event_broadcaster.unsubscribe('all', queue)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+        }
+    )
+
+@app.get("/api/analytics/global")
+async def get_global_analytics(session: AsyncSession = Depends(get_session)):
+    """Get aggregated analytics stats globally."""
+    from app.services.analytics_service import analytics_service
+    try:
+        data = await analytics_service.get_aggregated_stats()
+        return {"success": True, "stats": data}
+    except Exception as e:
+        logger.error(f"Global analytics error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/analytics/refresh")
+async def refresh_analytics():
+    """Trigger manual refresh of daily analytics."""
+    from app.services.analytics_service import analytics_service
+    # Run in background
+    asyncio.create_task(analytics_service.fetch_and_save_daily_stats())
+    return {"success": True, "message": "Analytics refresh started in background"}
 
 # Serve static files (Frontend)
 # Providing access to public directory if exists

@@ -6,6 +6,7 @@ from app.database import get_session
 from app.models import PostingHistory
 from app.services.status_checker import upload_status_checker
 from app.worker import increment_brand_stats, check_cleanup
+from app.services.event_broadcaster import event_broadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,13 @@ async def status_polling_worker():
                                 
                                 logger.info(f"✅ [StatusPolling] Post #{post.id} completed successfully")
                                 
+                                # Broadcast real-time event
+                                await event_broadcaster.broadcast_post_status(
+                                    post_id=post.id,
+                                    status='success',
+                                    meta={'video_path': post.video_path, 'profile': post.profile_username}
+                                )
+                                
                                 # Increment brand stats and trigger cleanup
                                 await increment_brand_stats(post.video_path)
                                 asyncio.create_task(check_cleanup(post.video_path))
@@ -82,12 +90,26 @@ async def status_polling_worker():
                                 await session.commit()
                                 
                                 logger.error(f"❌ [StatusPolling] Post #{post.id} failed: {error_msg}")
+                                
+                                # Broadcast real-time event
+                                await event_broadcaster.broadcast_post_status(
+                                    post_id=post.id,
+                                    status='failed',
+                                    meta={'error': error_msg, 'video_path': post.video_path}
+                                )
                         
                         elif api_status == 'in_progress':
                             # Still processing, check again later
                             completed = status_data.get('completed', 0)
                             total = status_data.get('total', 0)
                             logger.info(f"🔄 [StatusPolling] Post #{post.id} in progress ({completed}/{total})")
+                            
+                            # Broadcast progress update
+                            await event_broadcaster.broadcast_post_status(
+                                post_id=post.id,
+                                status='in_progress',
+                                meta={'completed': completed, 'total': total}
+                            )
                         
                         elif api_status == 'pending':
                             # Not started yet

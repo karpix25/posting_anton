@@ -42,3 +42,22 @@ class SystemConfig(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class DailyAnalytics(SQLModel, table=True):
+    __tablename__ = "daily_analytics"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date: datetime = Field(default_factory=datetime.utcnow, index=True) # Normalized to YYYY-MM-DD
+    profile_username: str = Field(index=True)
+    platform: str = Field(index=True) # instagram, tiktok, youtube
+    
+    # Metrics
+    followers: int = Field(default=0)
+    reach: int = Field(default=0) # Or views for TikTok/YouTube
+    engagement_rate: float = Field(default=0.0)
+    
+    # Store raw API response just in case
+    raw_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+

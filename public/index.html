@@ -49,10 +49,24 @@
     <!-- Header -->
     <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
       <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
-      <button @click="saveConfig" aria-label="Сохранить все изменения конфигурации"
-        class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow focus-visible:ring-2 focus-visible:ring-green-300">
-        Сохранить изменения
-      </button>
+      <div class="flex items-center gap-4">
+        <!-- Real-time Status Indicator -->
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold transition-colors"
+          :class="realtime.connected ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-amber-100 text-amber-700 border border-amber-200'">
+          <span class="relative flex h-3 w-3">
+            <span v-if="realtime.connected"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3"
+              :class="realtime.connected ? 'bg-green-500' : 'bg-amber-500'"></span>
+          </span>
+          {{ realtime.connected ? 'Online' : 'Connecting...' }}
+        </div>
+
+        <button @click="saveConfig" aria-label="Сохранить все изменения конфигурации"
+          class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow focus-visible:ring-2 focus-visible:ring-green-300">
+          Сохранить изменения
+        </button>
+      </div>
     </div>
 
     <!-- Main Content -->
@@ -154,6 +168,50 @@
               title="Удалить все запланированные посты">
               🗑️ Сброс
             </button>
+
+            <!-- GROUPED ERRORS -->
+            <div v-if="groupedErrors.length > 0" class="mt-8 col-span-full w-full">
+              <h3 class="text-xl font-bold mb-4 text-red-600 flex items-center gap-2">
+                <span>⚠️ Проблемные публикации сегодня</span>
+                <span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">{{ groupedErrors.length }}</span>
+              </h3>
+
+              <div class="space-y-4">
+                <div v-for="(group, idx) in groupedErrors" :key="idx"
+                  class="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                  <div class="flex flex-col sm:flex-row justify-between items-start gap-2">
+                    <div>
+                      <div class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                        <span>@{{ group.profile }}</span>
+                        <span class="text-gray-500 font-normal text-sm">({{ group.video }})</span>
+                      </div>
+                      <div class="text-xs text-gray-400 mt-0.5">
+                        🕒 {{ new Date(group.timestamp).toLocaleTimeString() }}
+                      </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                      <span v-for="platform in group.platforms" :key="platform"
+                        class="px-2 py-1 text-xs rounded font-bold uppercase tracking-wider" :class="{
+                                 'bg-pink-100 text-pink-700': platform === 'instagram',
+                                 'bg-blue-100 text-blue-700': platform === 'tiktok',
+                                 'bg-red-100 text-red-700': platform === 'youtube'
+                               }">
+                        {{ platform }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="mt-3 bg-white rounded p-3 border border-red-100">
+                    <div v-for="(msg, mIdx) in group.messages" :key="mIdx"
+                      class="text-sm text-red-700 font-medium flex items-start gap-2">
+                      <span>•</span>
+                      <span>{{ msg }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -695,6 +753,144 @@
           </div>
         </div>
 
+        <!-- ANALYTICS TAB -->
+        <div v-if="currentTab === 'analytics'">
+          <div class="flex justify-between items-center mb-6">
+            <div>
+              <h2 class="text-2xl font-bold flex items-center gap-2">
+                📊 Глобальная Аналитика
+                <span v-if="analytics.loading"
+                  class="text-sm font-normal text-gray-500 animate-pulse">(Обновление...)</span>
+              </h2>
+              <div class="text-sm text-gray-500 mt-1">
+                Данные за: <span class="font-medium text-gray-700">{{ analytics.date ? new
+                  Date(analytics.date).toLocaleDateString() : 'Неизвестно' }}</span>
+              </div>
+            </div>
+
+            <button @click="refreshAnalytics"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 shadow-sm transition-colors"
+              :disabled="analytics.loading">
+              <span v-if="analytics.loading" class="animate-spin">🔄</span>
+              <span v-else>🔄</span>
+              Обновить данные
+            </button>
+          </div>
+
+          <div v-if="!analytics.date && !analytics.loading"
+            class="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <div class="text-4xl mb-2">📉</div>
+            <h3 class="text-lg font-medium text-gray-600">Нет данных аналитики</h3>
+            <p class="text-gray-500 mb-4">Нажмите кнопку обновления, чтобы собрать статистику.</p>
+            <button @click="refreshAnalytics" class="text-blue-600 hover:underline">Запустить сбор данных</button>
+          </div>
+
+          <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- INSTAGRAM -->
+            <div
+              class="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                <i class="fab fa-instagram"></i> 📸
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">Instagram
+              </h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-purple-100 text-sm mb-1">Фолловеры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.instagram?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-purple-100 text-sm mb-1">Охваты (Reach)</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.instagram?.reach || 0).toLocaleString() }}
+                  </div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-purple-200">
+                Активных профилей: {{ analytics.platforms.instagram?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- TIKTOK -->
+            <div
+              class="bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                🎵
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">TikTok</h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-gray-400 text-sm mb-1">Фолловеры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.tiktok?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-gray-400 text-sm mb-1">Просмотры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.tiktok?.reach || 0).toLocaleString() }}</div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-gray-500">
+                Активных профилей: {{ analytics.platforms.tiktok?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- YOUTUBE -->
+            <div
+              class="bg-gradient-to-br from-red-600 to-red-700 rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                ▶️
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">YouTube</h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-red-200 text-sm mb-1">Подписчики</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.youtube?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-red-200 text-sm mb-1">Просмотры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.youtube?.reach || 0).toLocaleString() }}</div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-red-200">
+                Активных профилей: {{ analytics.platforms.youtube?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- TOTAL SUMMARY -->
+            <div class="md:col-span-3 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h3 class="text-gray-500 uppercase text-xs font-bold tracking-widest mb-4">Сводная статистика</h3>
+              <div class="flex flex-wrap gap-8 justify-around">
+                <div class="text-center">
+                  <div class="text-4xl font-bold text-gray-800">
+                    {{
+                    ((analytics.platforms.instagram?.followers || 0) +
+                    (analytics.platforms.tiktok?.followers || 0) +
+                    (analytics.platforms.youtube?.followers || 0)).toLocaleString()
+                    }}
+                  </div>
+                  <div class="text-gray-400 text-sm uppercase mt-2">Всего подписчиков</div>
+                </div>
+                <div class="text-center">
+                  <div class="text-4xl font-bold text-gray-800">
+                    {{
+                    ((analytics.platforms.instagram?.reach || 0) +
+                    (analytics.platforms.tiktok?.reach || 0) +
+                    (analytics.platforms.youtube?.reach || 0)).toLocaleString()
+                    }}
+                  </div>
+                  <div class="text-gray-400 text-sm uppercase mt-2">Общий охват / просмотры</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         <!-- LOGS TAB -->
         <div v-if="currentTab === 'logs'">
           <div class="flex justify-between items-center mb-4">
@@ -803,6 +999,21 @@
                   enabled: false,
                   timezone: 'Europe/Moscow',
                   dailyRunTime: '00:01'
+                },
+                realtime: {
+                  connected: false,
+                  eventSource: null,
+                  reconnectTimer: null
+                },
+                autoRefreshIntervals: {
+                  today: null,
+                  dashboard: null
+                },
+                errors: [],
+                analytics: {
+                  loading: false,
+                  date: null,
+                  platforms: {}
                 }
               }
             },
@@ -811,11 +1022,35 @@
               this.loadSchedule();
               this.loadStats();
               this.loadTodayStats();
+              this.loadTodayStats();
+              this.loadErrors();
               this.fetchStatsSummary();
               this.loadBrandStats();
 
-              // Auto-refresh today stats every 60 seconds
-              setInterval(() => this.loadTodayStats(), 60000);
+              this.loadBrandStats();
+
+              this.loadGlobalAnalytics();
+
+              // Initialize Real-Time Updates
+              this.setupSSE();
+
+              // Auto-refresh timers
+              // 1. Today Stats: every 30 seconds
+              this.autoRefreshIntervals.today = setInterval(() => {
+                this.loadTodayStats();
+                this.loadErrors();
+                // Also refresh logs if visible
+                if (this.currentTab === 'logs' && this.logsAutoRefresh) this.loadLogs();
+              }, 30000);
+
+              // 2. Dashboard General Stats: every 60 seconds
+              this.autoRefreshIntervals.dashboard = setInterval(() => this.loadStats(), 60000);
+            },
+            beforeUnmount() {
+              // Cleanup
+              if (this.realtime.eventSource) this.realtime.eventSource.close();
+              if (this.autoRefreshIntervals.today) clearInterval(this.autoRefreshIntervals.today);
+              if (this.autoRefreshIntervals.dashboard) clearInterval(this.autoRefreshIntervals.dashboard);
             },
             computed: {
               currentStatsList() {
@@ -879,6 +1114,29 @@
                   return Object.keys(this.config.themeAliases).sort();
                 }
                 return [];
+              },
+              groupedErrors() {
+                // Group errors by (Profile + VideoName) to combine platform errors
+                const grouped = {};
+
+                this.errors.forEach(err => {
+                  const key = `${err.profile_username}|${err.video_name}`;
+                  if (!grouped[key]) {
+                    grouped[key] = {
+                      profile: err.profile_username,
+                      video: err.video_name,
+                      platforms: [],
+                      timestamp: err.timestamp,
+                      messages: []
+                    };
+                  }
+                  grouped[key].platforms.push(err.platform);
+                  if (!grouped[key].messages.includes(err.error)) {
+                    grouped[key].messages.push(err.error);
+                  }
+                });
+
+                return Object.values(grouped).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
               }
             },
             methods: {
@@ -968,6 +1226,17 @@
                   }
                 } catch (error) {
                   console.error('Failed to fetch stats summary:', error);
+                }
+              },
+              async loadErrors() {
+                try {
+                  const res = await fetch('/api/stats/errors');
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.errors = data.errors || [];
+                  }
+                } catch (e) {
+                  console.error('Failed to load errors:', e);
                 }
               },
               async loadConfig() {
@@ -1387,6 +1656,34 @@
                 this.selectedProfiles = []; // Clear selection
                 this.bulkThemeKey = '';
                 alert(`Успешно обновлено профилей: ${count}`);
+              },
+              this.selectedProfiles = []; // Clear selection
+              this.bulkThemeKey = '';
+              alert(`Успешно обновлено профилей: ${count}`);
+              },
+              async loadGlobalAnalytics() {
+                this.analytics.loading = true;
+                try {
+                  const res = await fetch('/api/analytics/global');
+                  const data = await res.json();
+                  if (data.success && data.stats) {
+                    this.analytics.date = data.stats.date;
+                    this.analytics.platforms = data.stats.platforms || {};
+                  }
+                } catch (e) {
+                   console.error('Failed to load global analytics', e);
+                } finally {
+                   this.analytics.loading = false;
+                }
+              },
+              async refreshAnalytics() {
+                 if(!confirm('Запустить сбор аналитики для всех профилей? Это может занять время.')) return;
+                 try {
+                    await fetch('/api/analytics/refresh', { method: 'POST' });
+                    alert('Сбор аналитики запущен в фоне. Обновите страницу через пару минут.');
+                 } catch(e) {
+                    alert('Ошибка запуска: ' + e);
+                 }
               },
               async loadLogs() {
                 this.logsLoading = true;
