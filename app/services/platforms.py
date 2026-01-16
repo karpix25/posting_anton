@@ -69,7 +69,9 @@ class UploadPostClient:
 
         # Add scheduled_date in ISO format
         if publish_at:
-            data['scheduled_date'] = publish_at.isoformat()
+            # Format strictly as ISO 8601 with Z (JS style) for API
+            # Python's isoformat() uses +00:00 for UTC, which APIs sometimes dislike if they expect JS toISOString() format
+            data['scheduled_date'] = publish_at.isoformat().replace('+00:00', 'Z')
 
         # Platform-specific parameters (matching TS version)
         if platform == 'instagram':
@@ -98,10 +100,16 @@ class UploadPostClient:
                     print(f"[UploadPost] ✅ Success! Request ID: {request_id}")
                     return res_data
                 else:
-                    error = res_data.get('message', 'Unknown error')
+                    error = res_data.get('message') or res_data.get('error') or 'Unknown error'
+                    logger.error(f"[UploadPost] ❌ Failed: {error} | Full response: {res_data}")
                     print(f"[UploadPost] ❌ Failed: {error}")
                     raise Exception(error)
+            except httpx.HTTPStatusError as e:
+                logger.error(f"[UploadPost] ❌ HTTP Error {e.response.status_code}: {e.response.text}")
+                print(f"[UploadPost] ❌ HTTP Error: {e.response.status_code}")
+                raise e
             except Exception as e:
+                logger.error(f"[UploadPost] ❌ Exception: {type(e).__name__}: {e}")
                 print(f"[UploadPost] ❌ Error: {e}")
                 raise e
 

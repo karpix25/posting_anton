@@ -206,27 +206,40 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     # Update status to processing
     await update_post_status(history_id, "processing")
     
-    # Parse scheduled time (remove timezone info for comparison)
-    publish_dt = datetime.fromisoformat(publish_time_iso)
-    if publish_dt.tzinfo is not None:
-        publish_dt = publish_dt.replace(tzinfo=None)  # Make naive for comparison
-    now_local = datetime.now()  # Local time, naive
+    # Parse scheduled time
+    # The scheduler generates time in User's timezone (Moscow, UTC+3) but stores as naive ISO
+    # We need to explicitely handle this conversion for UploadPost API which likely expects UTC or specific ISO
+    from datetime import timezone, timedelta
+    
+    MSK = timezone(timedelta(hours=3))
+    publish_dt_naive = datetime.fromisoformat(publish_time_iso.replace('Z', ''))
+    
+    # Treat as Moscow Time
+    publish_dt_msk = publish_dt_naive.replace(tzinfo=MSK)
+    
+    # Convert to UTC for API consistency
+    publish_dt_utc = publish_dt_msk.astimezone(timezone.utc)
+    
+    now_utc = datetime.now(timezone.utc)
     
     # Only send scheduled_date if it's in the future
-    # Upload Post API rejects past times
     schedule_param = None
-    if publish_dt > now_local:
-        schedule_param = publish_dt
-        logger.info(f"   ⏰ Will schedule for: {publish_time_iso}")
+    if publish_dt_utc > now_utc:
+        schedule_param = publish_dt_utc
+        # Format strictly as ISO 8601 with Z (JS style) for API
+        # .isoformat() might use +00:00, let's force Z if needed or standard isoformat() is usually fine if API parses standard ISO. 
+        # But to be safe and match TS toISOString(), we use Z.
+        schedule_str_log = publish_dt_utc.isoformat().replace('+00:00', 'Z')
+        logger.info(f"   ⏰ Will schedule for: {schedule_str_log} (UTC) | Local was: {publish_time_iso}")
     else:
-        logger.info(f"   ▶️ Publishing immediately (scheduled time {publish_time_iso} already passed)")
+        logger.info(f"   ▶️ Publishing immediately (scheduled time {publish_time_iso} MSK passed)")
     
     # Publish via Upload Post API with scheduled time (if future)
     success = False
     error_msg = None
     try:
         if schedule_param:
-            logger.info(f"   📤 Calling Upload Post API with schedule: {publish_time_iso}")
+            logger.info(f"   📤 Calling Upload Post API with schedule: {schedule_param}")
         else:
             logger.info(f"   📤 Calling Upload Post API (immediate publish)")
             
@@ -236,7 +249,7 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
             profile_username=profile_username,
             platform=platform,
             title=title if platform == 'youtube' else None,
-            publish_at=schedule_param  # ← None if past, datetime if future
+            publish_at=schedule_param  # datetime with tzinfo
         )
         if resp and resp.get("success"):
             success = True
