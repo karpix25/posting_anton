@@ -64,7 +64,8 @@ class UploadPostClient:
             'user': profile_username,
             'platform[]': platform,
             'video': video_url,
-            'title': title or caption  # Fallback title
+            'title': title or caption,  # Fallback title
+            'async_upload': 'true'  # Enable async processing
         }
 
         # Add scheduled_date in ISO format
@@ -90,15 +91,26 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minutes for large video uploads
+        async with httpx.AsyncClient(timeout=30.0) as client:  # Async returns fast
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
                 
                 if res_data.get('success'):
-                    request_id = res_data.get('request_id') or res_data.get('job_id') or 'sync'
-                    print(f"[UploadPost] ✅ Success! Request ID: {request_id}")
-                    return res_data
+                    # Extract request_id or job_id for status tracking
+                    request_id = res_data.get('request_id')
+                    job_id = res_data.get('job_id')
+                    tracking_id = request_id or job_id or 'unknown'
+                    
+                    print(f"[UploadPost] ✅ Async request accepted! ID: {tracking_id}")
+                    
+                    # Return with tracking info
+                    return {
+                        'success': True,
+                        'request_id': request_id,
+                        'job_id': job_id,
+                        'async': True
+                    }
                 else:
                     error = res_data.get('message') or res_data.get('error') or 'Unknown error'
                     logger.error(f"[UploadPost] ❌ Failed: {error} | Full response: {res_data}")

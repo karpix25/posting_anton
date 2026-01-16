@@ -68,6 +68,11 @@ async def on_startup():
              asyncio.create_task(background_publisher())
              logger.info("🚀 Started background post publisher")
              
+             # Start status polling worker for async uploads
+             from app.services.status_polling import start_status_polling_worker
+             await start_status_polling_worker()
+             logger.info("🔄 Started status polling worker")
+             
     except Exception as e:
         logger.error(f"Startup failed: {e}")
 

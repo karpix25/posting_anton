@@ -253,7 +253,10 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
         )
         if resp and resp.get("success"):
             success = True
-            logger.info(f"   ✅ Successfully published to Upload Post!")
+            # Extract tracking IDs for async uploads
+            request_id = resp.get('request_id')
+            job_id = resp.get('job_id')
+            logger.info(f"   ✅ Async request accepted (request_id={request_id}, job_id={job_id})")
         else:
             error_msg = resp.get("error") or "Unknown error"
             logger.error(f"   ❌ Upload Post API failed: {error_msg}")
@@ -261,14 +264,23 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
         error_msg = str(e)
         logger.error(f"   ❌ Exception during publish: {e}")
     
-    # Update final status
+    # Update status based on async response
     if success:
-        await update_post_status(history_id, "success")
-        logger.info(f"🎉 [Post #{history_id}] Publication SUCCESS!")
-        # Update brand stats
-        await increment_brand_stats(video_path)
-        # Check cleanup
-        asyncio.create_task(check_cleanup(video_path))
+        # Save tracking IDs to meta for status polling
+        async for session in get_session():
+            stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
+                status='processing',  # Will be updated by status_checker
+                meta={
+                    'request_id': request_id,
+                    'job_id': job_id,
+                    'brand': brand_name
+                }
+            )
+            await session.execute(stmt)
+            await session.commit()
+            break
+        
+        logger.info(f"🔄 [Post #{history_id}] Async upload initiated - will be checked by background worker")
     else:
         await update_post_status(history_id, "failed", error_msg)
         logger.error(f"💥 [Post #{history_id}] Publication FAILED: {error_msg}")
