@@ -309,7 +309,7 @@ async def increment_brand_stats(video_path: str):
         break
 
 async def check_cleanup(video_path: str):
-    """Check if all posts for video are done, then delete from Yandex ONLY if ALL succeeded."""
+    """Check if all posts for video are done, then archive if at least 1 succeeded."""
     async for session in get_session():
         stmt = select(PostingHistory).where(PostingHistory.video_path == video_path)
         result = await session.execute(stmt)
@@ -327,19 +327,19 @@ async def check_cleanup(video_path: str):
         
         logger.info(f"Cleanup check for {video_path}: Total={total_posts}, Queued={queued_count}, Processing={processing_count}, Success={success_count}, Failed={failed_count}")
         
-        # Only archive if ALL posts are completed AND ALL are successful
+        # Archive if: all posts completed AND at least 1 success
         all_completed = (queued_count == 0 and processing_count == 0)
-        all_successful = (success_count == total_posts)
+        has_any_success = (success_count > 0)
         
-        if all_completed and all_successful:
-            logger.info(f"✅ Cleanup: ALL {total_posts} posts successful for {video_path}. Moving to archive...")
+        if all_completed and has_any_success:
+            logger.info(f"✅ Cleanup: {success_count}/{total_posts} posts successful for {video_path}. Moving to archive...")
             try:
                 await yandex_service.move_file(video_path, "disk:/опубликовано")
                 logger.info(f"✅ Cleanup: Archived {video_path}")
             except Exception as e:
                 logger.error(f"❌ Cleanup Failed for {video_path}: {e}")
-        elif all_completed and failed_count > 0:
-            logger.warning(f"⚠️ Cleanup: {video_path} has {failed_count} failed posts - NOT archiving")
+        elif all_completed and not has_any_success:
+            logger.warning(f"⚠️ Cleanup: {video_path} has 0 successes (all {total_posts} failed) - NOT archiving")
         else:
             logger.info(f"⏳ Cleanup: {video_path} still has pending posts (queued={queued_count}, processing={processing_count})")
         
