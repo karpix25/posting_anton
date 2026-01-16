@@ -15,6 +15,9 @@ def extract_brand(path: str) -> str:
         
         if v_idx != -1 and v_idx + 3 < len(parts):
                 raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
+                # Filter out file extensions
+                if any(raw.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
+                    return "unknown"
                 return normalize(raw)
     except:
             pass
@@ -30,7 +33,11 @@ def extract_author(path: str) -> str:
                 break
         
         if v_idx != -1 and v_idx + 1 < len(parts):
-                return parts[v_idx + 1].strip()
+                author = parts[v_idx + 1].strip()
+                # Filter out file extensions
+                if any(author.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
+                    return "unknown"
+                return author
     except:
             pass
     return "unknown"
