@@ -309,7 +309,7 @@ async def increment_brand_stats(video_path: str):
         break
 
 async def check_cleanup(video_path: str):
-    """Check if all posts for video are done, then delete from Yandex."""
+    """Check if all posts for video are done, then delete from Yandex ONLY if ALL succeeded."""
     async for session in get_session():
         stmt = select(PostingHistory).where(PostingHistory.video_path == video_path)
         result = await session.execute(stmt)
@@ -318,16 +318,31 @@ async def check_cleanup(video_path: str):
         if not rows:
             return
         
-        has_queued = any(r.status == 'queued' for r in rows)
-        has_success = any(r.status == 'success' for r in rows)
+        # Check statuses
+        total_posts = len(rows)
+        queued_count = sum(1 for r in rows if r.status == 'queued')
+        processing_count = sum(1 for r in rows if r.status == 'processing')
+        success_count = sum(1 for r in rows if r.status == 'success')
+        failed_count = sum(1 for r in rows if r.status == 'failed')
         
-        if not has_queued and has_success:
-            logger.info(f"Cleanup: All tasks done for {video_path}. Moving to archive...")
+        logger.info(f"Cleanup check for {video_path}: Total={total_posts}, Queued={queued_count}, Processing={processing_count}, Success={success_count}, Failed={failed_count}")
+        
+        # Only archive if ALL posts are completed AND ALL are successful
+        all_completed = (queued_count == 0 and processing_count == 0)
+        all_successful = (success_count == total_posts)
+        
+        if all_completed and all_successful:
+            logger.info(f"✅ Cleanup: ALL {total_posts} posts successful for {video_path}. Moving to archive...")
             try:
                 await yandex_service.move_file(video_path, "disk:/опубликовано")
-                logger.info(f"Cleanup: Archived {video_path}")
+                logger.info(f"✅ Cleanup: Archived {video_path}")
             except Exception as e:
-                logger.error(f"Cleanup Failed for {video_path}: {e}")
+                logger.error(f"❌ Cleanup Failed for {video_path}: {e}")
+        elif all_completed and failed_count > 0:
+            logger.warning(f"⚠️ Cleanup: {video_path} has {failed_count} failed posts - NOT archiving")
+        else:
+            logger.info(f"⏳ Cleanup: {video_path} still has pending posts (queued={queued_count}, processing={processing_count})")
+        
         break
 
 def normalize_client(name: str) -> str:

@@ -43,7 +43,7 @@ class UploadPostClient:
 
     async def get_scheduled_posts(self) -> List[Dict[str, Any]]:
         """Fetch list of pending scheduled posts from Upload Post API."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:  # 2 minutes for schedule fetching
             try:
                 response = await client.get(SCHEDULE_API_URL, headers=self.headers)
                 if response.status_code == 200:
@@ -90,7 +90,7 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minutes for large video uploads
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
