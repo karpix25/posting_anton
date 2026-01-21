@@ -888,23 +888,23 @@
                   <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
                     <tr>
                       <th class="px-6 py-3">Дата</th>
-                      <th class="px-6 py-3 text-right">Опубликовано видео</th>
-                      <th class="px-6 py-3"></th>
+                      <th class="px-6 py-3 text-center text-green-700">Опубликовано</th>
+                      <th class="px-6 py-3 text-center text-red-700">Ошибки</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100">
                     <tr v-for="day in history" :key="day.date" class="hover:bg-gray-50">
                       <td class="px-6 py-4 font-medium text-gray-900">{{ day.date }}</td>
-                      <td class="px-6 py-4 text-right">
-                        <span class="bg-green-100 text-green-800 px-2 py-1 rounded font-bold">
-                          {{ day.count }}
+                      <td class="px-6 py-4 text-center">
+                        <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full font-bold">
+                          {{ day.success || 0 }}
                         </span>
                       </td>
-                      <td class="px-6 py-4">
-                        <div class="w-full bg-gray-100 rounded-full h-1.5 max-w-[100px]">
-                          <div class="bg-green-500 h-1.5 rounded-full"
-                            :style="{ width: Math.min(100, day.count * 2) + '%' }"></div>
-                        </div>
+                      <td class="px-6 py-4 text-center">
+                        <span v-if="day.failed > 0" class="bg-red-100 text-red-800 px-3 py-1 rounded-full font-bold">
+                          {{ day.failed }}
+                        </span>
+                        <span v-else class="text-gray-300">-</span>
                       </td>
                     </tr>
                     <tr v-if="history.length === 0">

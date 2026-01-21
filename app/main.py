@@ -469,9 +469,8 @@ async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_
         now_utc = datetime.now(timezone.utc)
         start_date = now_utc - timedelta(days=days)
         
-        # Fetch all successful posts in range
+        # Fetch all posts in range (both success and failed)
         stmt = select(PostingHistory).where(
-            PostingHistory.status == 'success',
             PostingHistory.posted_at >= start_date
         )
         result = await session.execute(stmt)
@@ -485,12 +484,16 @@ async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_
             date_str = dt_msk.strftime("%Y-%m-%d")
             
             if date_str not in daily_stats:
-                daily_stats[date_str] = 0
-            daily_stats[date_str] += 1
+                daily_stats[date_str] = {"success": 0, "failed": 0}
+            
+            if post.status == 'success':
+                daily_stats[date_str]["success"] += 1
+            elif post.status == 'failed':
+                daily_stats[date_str]["failed"] += 1
             
         # Format as list sorted by date
         history = [
-            {"date": k, "count": v} 
+            {"date": k, "success": v["success"], "failed": v["failed"]} 
             for k, v in sorted(daily_stats.items(), reverse=True)
         ]
         
