@@ -288,12 +288,20 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
 async def update_post_status(history_id: int, status: str, error_msg: str = None):
     """Update posting history status in DB."""
     async for session in get_session():
-        stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
-            status=status,
-            meta={"error": error_msg} if error_msg else {}
-        )
-        await session.execute(stmt)
-        await session.commit()
+        # Fetch first to preserve existing meta values
+        stmt_get = select(PostingHistory).where(PostingHistory.id == history_id)
+        result = await session.execute(stmt_get)
+        post = result.scalar_one_or_none()
+        
+        if post:
+            new_meta = post.meta.copy() if post.meta else {}
+            if error_msg:
+                new_meta["error"] = error_msg
+            
+            post.status = status
+            post.meta = new_meta
+            session.add(post)
+            await session.commit()
         break
 
 async def increment_brand_stats(video_path: str):
