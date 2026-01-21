@@ -41,9 +41,21 @@ async def status_polling_worker():
                     
                     if not request_id and not job_id:
                         # Check if stuck (active for > 60 mins without ID)
-                        # Worker uses Naive MSK for posted_at, so we compare with Naive MSK
-                        now_msk = datetime.utcnow() + timedelta(hours=3)
-                        age = now_msk - post.posted_at if post.posted_at else timedelta(hours=999)
+                        from datetime import timezone
+                        
+                        # Normalize to UTC Aware
+                        now_utc = datetime.now(timezone.utc)
+                        post_time = post.posted_at
+                        
+                        if post_time:
+                            if post_time.tzinfo is None:
+                                post_time = post_time.replace(tzinfo=timezone.utc)
+                            else:
+                                post_time = post_time.astimezone(timezone.utc)
+                                
+                            age = now_utc - post_time
+                        else:
+                            age = timedelta(hours=999)
                         
                         if age > timedelta(minutes=60):
                             logger.error(f"[StatusPolling] Post #{post.id} stuck (no ID) for {age} - marking failed")
