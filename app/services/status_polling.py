@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import select, update
 from app.database import get_session
 from app.models import PostingHistory
@@ -40,7 +40,25 @@ async def status_polling_worker():
                     job_id = post.meta.get('job_id') if post.meta else None
                     
                     if not request_id and not job_id:
-                        logger.warning(f"[StatusPolling] Post #{post.id} has no tracking ID - skipping")
+                        # Check if stuck (active for > 60 mins without ID)
+                        # Worker uses Naive MSK for posted_at, so we compare with Naive MSK
+                        now_msk = datetime.utcnow() + timedelta(hours=3)
+                        age = now_msk - post.posted_at if post.posted_at else timedelta(hours=999)
+                        
+                        if age > timedelta(minutes=60):
+                            logger.error(f"[StatusPolling] Post #{post.id} stuck (no ID) for {age} - marking failed")
+                            
+                            new_meta = post.meta.copy() if post.meta else {}
+                            new_meta['error'] = 'Stuck in processing (no ID)'
+                            
+                            stmt = update(PostingHistory).where(PostingHistory.id == post.id).values(
+                                status='failed',
+                                meta=new_meta
+                            )
+                            await session.execute(stmt)
+                            await session.commit()
+                        else:
+                            logger.warning(f"[StatusPolling] Post #{post.id} has no tracking ID - skipping")
                         continue
                     
                     # Check status via API
