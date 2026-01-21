@@ -16,13 +16,18 @@ logger = logging.getLogger(__name__)
 
 async def generate_daily_schedule():
     """Main automation function - generates schedule and queues posts."""
-    logger.info("Starting schedule generation task...")
+    logger.info("🚀 [Worker] Starting schedule generation task (triggered manually)...")
     
     # Load config from DATABASE, not file!
-    async for session in get_session():
-        from app.services.config_db import get_db_config
-        config = await get_db_config(session)
-        break
+    try:
+        async for session in get_session():
+            from app.services.config_db import get_db_config
+            config = await get_db_config(session)
+            break
+        logger.info("   ✅ Config loaded from DB")
+    except Exception as e:
+        logger.error(f"   ❌ Failed to load config: {e}")
+        return
     
     # Get ALL videos from Yandex (list_files doesn't support path filtering)
     folders = config.yandexFolders
@@ -116,7 +121,8 @@ async def generate_daily_schedule():
                 post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
             )
         
-        logger.info(f"✅ Sent {len(schedule)} posts to Upload Post API with scheduling")
+        logger.info(f"✅ [Worker] Sent {len(schedule)} posts to Upload Post API with scheduling")
+        logger.info("🏁 [Worker] Schedule generation task finished.")
 
 async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
                                    profile_username: str, platform: str, publish_time_iso: str):

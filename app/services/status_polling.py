@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from app.database import get_session
 from app.models import PostingHistory
@@ -9,6 +9,24 @@ from app.worker import increment_brand_stats, check_cleanup
 from app.services.event_broadcaster import event_broadcaster
 
 logger = logging.getLogger(__name__)
+
+async def _fail_post(session, post, error_msg):
+    """Helper to mark a post as failed and broadcast event."""
+    new_meta = post.meta.copy() if post.meta else {}
+    new_meta['error'] = error_msg
+    
+    stmt = update(PostingHistory).where(PostingHistory.id == post.id).values(
+        status='failed',
+        meta=new_meta
+    )
+    await session.execute(stmt)
+    await session.commit()
+    
+    await event_broadcaster.broadcast_post_status(
+        post_id=post.id,
+        status='failed',
+        meta={'error': error_msg, 'video_path': post.video_path}
+    )
 
 async def status_polling_worker():
     """
@@ -134,22 +152,33 @@ async def status_polling_worker():
                             total = status_data.get('total', 0)
                             logger.info(f"🔄 [StatusPolling] Post #{post.id} in progress ({completed}/{total})")
                             
-                            # Broadcast progress update
-                            await event_broadcaster.broadcast_post_status(
-                                post_id=post.id,
-                                status='in_progress',
-                                meta={'completed': completed, 'total': total}
-                            )
+                            # Timeout if stuck in progress for > 2 hours
+                            if age > timedelta(hours=2):
+                                logger.error(f"❌ [StatusPolling] Post #{post.id} stuck in_progress for {age} - failing")
+                                await _fail_post(session, post, f"Stuck in processing for {age}")
+                            else:
+                                # Broadcast progress update
+                                await event_broadcaster.broadcast_post_status(
+                                    post_id=post.id,
+                                    status='in_progress',
+                                    meta={'completed': completed, 'total': total}
+                                )
                         
                         elif api_status == 'pending':
                             # Not started yet
                             logger.info(f"⏳ [StatusPolling] Post #{post.id} pending...")
+                            # Timeout if pending for > 2 hours
+                            if age > timedelta(hours=2):
+                                logger.error(f"❌ [StatusPolling] Post #{post.id} stuck pending for {age} - failing")
+                                await _fail_post(session, post, f"Stuck in pending for {age}")
                         
                         elif api_status == 'error':
                             # API error occurred
                             error_msg = status_data.get('error', 'Unknown API error')
                             logger.error(f"❌ [StatusPolling] Error checking post #{post.id}: {error_msg}")
-                            # Don't mark as failed yet, might be temporary
+                            # If it's a persistent error and post is old, mark failed
+                            if age > timedelta(hours=1):
+                                await _fail_post(session, post, f"API Error: {error_msg}")
                     
                     except Exception as e:
                         logger.error(f"❌ [StatusPolling] Exception checking post #{post.id}: {e}")

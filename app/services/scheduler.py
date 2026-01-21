@@ -203,11 +203,15 @@ class ContentScheduler:
                                 delay = random.randint(2, 5)
                                 publish_time += timedelta(minutes=delay)
                             
+                            # Convert candidate_time (naive MSK) to aware MSK, then to UTC
+                            aware_msk = candidate_time.replace(tzinfo=MSK)
+                            utc_time = aware_msk.astimezone(timezone.utc)
+                            
                             schedule.append({
                                 "video": video_for_slot,
                                 "profile": profile, # Pydantic model
                                 "platform": pl,
-                                "publish_at": publish_time.isoformat()
+                                "publish_at": utc_time.isoformat()
                             })
                             profile_counts[profile.username][pl] += 1
 

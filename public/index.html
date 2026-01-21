@@ -1141,6 +1141,59 @@
               }
             },
             methods: {
+              setupSSE() {
+                if (this.realtime.eventSource) {
+                  this.realtime.eventSource.close();
+                }
+
+                console.log('[SSE] Connecting to /api/events/stream...');
+                const es = new EventSource('/api/events/stream');
+                this.realtime.eventSource = es;
+
+                es.onopen = () => {
+                  console.log('[SSE] Connection established');
+                  this.realtime.connected = true;
+                  if (this.realtime.reconnectTimer) {
+                    clearTimeout(this.realtime.reconnectTimer);
+                    this.realtime.reconnectTimer = null;
+                  }
+                };
+
+                es.onmessage = (e) => {
+                  try {
+                    const data = JSON.parse(e.data);
+                    console.log('[SSE] Event received:', data);
+
+                    if (data.type === 'connected') {
+                      this.realtime.connected = true;
+                    } else if (data.type === 'post_status_changed' || data.type === 'stats_updated') {
+                      // Refresh relevant parts of the UI
+                      this.loadTodayStats();
+                      this.loadErrors();
+                      this.loadHistory();
+                      if (this.currentTab === 'analytics') {
+                         this.loadBrandStats();
+                         this.fetchStatsSummary();
+                      }
+                    }
+                  } catch (err) {
+                    console.warn('[SSE] Failed to parse message:', err);
+                  }
+                };
+
+                es.onerror = () => {
+                  console.log('[SSE] Connection lost, reconnecting in 5s...');
+                  this.realtime.connected = false;
+                  es.close();
+
+                  if (!this.realtime.reconnectTimer) {
+                    this.realtime.reconnectTimer = setTimeout(() => {
+                      this.realtime.reconnectTimer = null;
+                      this.setupSSE();
+                    }, 5000);
+                  }
+                };
+              },
               getProfilesForCategory(categoryName) {
                 // Get profiles based on current view mode
                 const key = categoryName.toLowerCase().trim();
