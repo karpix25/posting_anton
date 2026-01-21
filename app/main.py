@@ -501,47 +501,72 @@ async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_
         return {"success": False, "error": str(e)}
 
 @app.get("/api/stats/errors")
-async def get_today_errors(session: AsyncSession = Depends(get_session)):
-    """Get detailed list of failed posts for today."""
+async def get_grouped_errors(days: int = 7, session: AsyncSession = Depends(get_session)):
+    """Get grouped errors for the last N days."""
     try:
         from datetime import timezone, timedelta
         from sqlalchemy import desc
         from app.models import PostingHistory
         
-        # Moscow timezone (UTC+3) logic
+        # Moscow timezone (UTC+3)
         MSK = timezone(timedelta(hours=3))
-        now_msk = datetime.now(MSK)
-        today_start_msk = now_msk.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end_msk = now_msk.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
-        today_start_utc = today_start_msk.astimezone(timezone.utc).replace(tzinfo=None)
-        today_end_utc = today_end_msk.astimezone(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(timezone.utc)
+        start_date = now_utc - timedelta(days=days)
         
         stmt = select(PostingHistory).where(
             PostingHistory.status == "failed",
-            PostingHistory.posted_at >= today_start_utc,
-            PostingHistory.posted_at <= today_end_utc
+            PostingHistory.posted_at >= start_date
         ).order_by(desc(PostingHistory.posted_at))
         
         result = await session.execute(stmt)
         posts = result.scalars().all()
         
-        errors = []
+        # Group: Date -> ErrorType -> Count
+        grouped = {}
+        
         for p in posts:
+            # Date Key
+            dt_msk = p.posted_at.replace(tzinfo=timezone.utc).astimezone(MSK)
+            date_key = dt_msk.strftime("%Y-%m-%d")
+            
+            # Error Key
             err_msg = "Unknown error"
             if p.meta and "error" in p.meta:
-                err_msg = p.meta["error"]
-                
-            errors.append({
-                "id": p.id,
-                "profile_username": p.profile_username,
-                "platform": p.platform,
-                "video_name": p.video_name,
-                "error": err_msg,
-                "timestamp": p.posted_at.isoformat()
+                raw_err = p.meta["error"]
+                # Simplify common errors for grouping
+                if "429" in raw_err: err_msg = "Rate Limit (429)"
+                elif "401" in raw_err: err_msg = "Auth Error (401)"
+                elif "timeout" in raw_err.lower(): err_msg = "Timeout Error"
+                elif "no tracking id" in raw_err.lower(): err_msg = "Stuck (No ID)"
+                elif "stuck in processing" in raw_err.lower(): err_msg = "Stuck (Cleanup)"
+                elif "upload post api failed" in raw_err.lower(): 
+                     parts = raw_err.split(":")
+                     err_msg = parts[1].strip() if len(parts) > 1 else "Upload API Failed"
+                else: 
+                     # Truncate long custom errors
+                     err_msg = raw_err[:50] + "..." if len(raw_err) > 50 else raw_err
+
+            if date_key not in grouped:
+                grouped[date_key] = {}
+            
+            if err_msg not in grouped[date_key]:
+                grouped[date_key][err_msg] = 0
+            
+            grouped[date_key][err_msg] += 1
+            
+        # Transform to list
+        output = []
+        for date, errs in sorted(grouped.items(), reverse=True):
+            error_list = [{"type": k, "count": v} for k, v in errs.items()]
+            # Sort errors by count desc
+            error_list.sort(key=lambda x: x["count"], reverse=True)
+            output.append({
+                "date": date,
+                "total": sum(e["count"] for e in error_list),
+                "errors": error_list
             })
             
-        return {"success": True, "errors": errors}
+        return {"success": True, "grouped_errors": output}
     except Exception as e:
         logger.error(f"Failed to fetch errors: {e}")
         return {"success": False, "errors": [], "message": str(e)}

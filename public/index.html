@@ -169,44 +169,36 @@
               🗑️ Сброс
             </button>
 
-            <!-- GROUPED ERRORS -->
-            <div v-if="groupedErrors.length > 0" class="mt-8 col-span-full w-full">
+            <!-- GROUPED ERRORS BY DATE & TYPE -->
+            <div v-if="errorStats.length > 0" class="mt-8 col-span-full w-full">
               <h3 class="text-xl font-bold mb-4 text-red-600 flex items-center gap-2">
-                <span>⚠️ Проблемные публикации сегодня</span>
-                <span class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">{{ groupedErrors.length }}</span>
+                <span>⚠️ Журнал Ошибок (7 дней)</span>
               </h3>
 
-              <div class="space-y-4">
-                <div v-for="(group, idx) in groupedErrors" :key="idx"
-                  class="bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div class="flex flex-col sm:flex-row justify-between items-start gap-2">
-                    <div>
-                      <div class="font-bold text-lg text-gray-800 flex items-center gap-2">
-                        <span>@{{ group.profile }}</span>
-                        <span class="text-gray-500 font-normal text-sm">({{ group.video }})</span>
-                      </div>
-                      <div class="text-xs text-gray-400 mt-0.5">
-                        🕒 {{ new Date(group.timestamp).toLocaleTimeString() }}
-                      </div>
-                    </div>
-
-                    <div class="flex gap-2">
-                      <span v-for="platform in group.platforms" :key="platform"
-                        class="px-2 py-1 text-xs rounded font-bold uppercase tracking-wider" :class="{
-                                 'bg-pink-100 text-pink-700': platform === 'instagram',
-                                 'bg-blue-100 text-blue-700': platform === 'tiktok',
-                                 'bg-red-100 text-red-700': platform === 'youtube'
-                               }">
-                        {{ platform }}
-                      </span>
-                    </div>
+              <div class="space-y-6">
+                <div v-for="day in errorStats" :key="day.date"
+                  class="border border-gray-200 rounded-lg overflow-hidden">
+                  <!-- Day Header -->
+                  <div class="bg-gray-100 px-4 py-2 font-bold flex justify-between items-center">
+                    <span class="text-gray-700">{{ day.date }}</span>
+                    <span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">
+                      Всего: {{ day.total }}
+                    </span>
                   </div>
 
-                  <div class="mt-3 bg-white rounded p-3 border border-red-100">
-                    <div v-for="(msg, mIdx) in group.messages" :key="mIdx"
-                      class="text-sm text-red-700 font-medium flex items-start gap-2">
-                      <span>•</span>
-                      <span>{{ msg }}</span>
+                  <!-- Error Types List -->
+                  <div class="divide-y divide-gray-100 bg-white">
+                    <div v-for="(err, idx) in day.errors" :key="idx"
+                      class="px-4 py-3 flex justify-between items-center hover:bg-red-50 transition-colors">
+                      <div class="flex items-center gap-3">
+                        <span class="text-red-500 font-bold w-6 text-right">{{ err.count }}x</span>
+                        <span class="text-gray-800 font-medium">{{ err.type }}</span>
+                      </div>
+                      <!-- Progress bar visualization -->
+                      <div class="w-32 bg-gray-100 rounded-full h-1.5 hidden sm:block">
+                        <div class="bg-red-400 h-1.5 rounded-full"
+                          :style="{ width: Math.min(100, (err.count / day.total) * 100) + '%' }"></div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1047,12 +1039,7 @@
                   dashboard: null
                 },
                 errors: [],
-                analytics: {
-                  loading: false,
-                  date: null,
-                  platforms: {}
-                },
-                history: [] // Daily Publication History
+                errorStats: [] // New grouped stats
               }
             },
             async mounted() {
@@ -1060,7 +1047,7 @@
               this.loadSchedule();
               this.loadStats();
               this.loadTodayStats();
-              this.loadTodayStats();
+              // this.loadTodayStats(); // Removed duplicate
               this.loadErrors();
               this.fetchStatsSummary();
               this.loadBrandStats();
@@ -1151,29 +1138,6 @@
                   return Object.keys(this.config.themeAliases).sort();
                 }
                 return [];
-              },
-              groupedErrors() {
-                // Group errors by (Profile + VideoName) to combine platform errors
-                const grouped = {};
-
-                this.errors.forEach(err => {
-                  const key = `${err.profile_username}|${err.video_name}`;
-                  if (!grouped[key]) {
-                    grouped[key] = {
-                      profile: err.profile_username,
-                      video: err.video_name,
-                      platforms: [],
-                      timestamp: err.timestamp,
-                      messages: []
-                    };
-                  }
-                  grouped[key].platforms.push(err.platform);
-                  if (!grouped[key].messages.includes(err.error)) {
-                    grouped[key].messages.push(err.error);
-                  }
-                });
-
-                return Object.values(grouped).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
               }
             },
             methods: {
@@ -1267,10 +1231,15 @@
               },
               async loadErrors() {
                 try {
-                  const res = await fetch('/api/stats/errors');
+                  const res = await fetch('/api/stats/errors'); // uses default 7 days group
                   if (res.ok) {
                     const data = await res.json();
-                    this.errors = data.errors || [];
+                    if (data.success && data.grouped_errors) {
+                      this.errorStats = data.grouped_errors;
+                    } else if (data.errors) {
+                      // Fallback if old API
+                      this.errors = data.errors;
+                    }
                   }
                 } catch (e) {
                   console.error('Failed to load errors:', e);
