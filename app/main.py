@@ -458,6 +458,48 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
             "profiles_count": 0
         }
 
+@app.get("/api/stats/history")
+async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_session)):
+    """Get daily publication history for the last N days."""
+    try:
+        from datetime import timezone, timedelta
+        
+        # Moscow timezone (UTC+3)
+        MSK = timezone(timedelta(hours=3))
+        now_utc = datetime.now(timezone.utc)
+        start_date = now_utc - timedelta(days=days)
+        
+        # Fetch all successful posts in range
+        stmt = select(PostingHistory).where(
+            PostingHistory.status == 'success',
+            PostingHistory.posted_at >= start_date
+        )
+        result = await session.execute(stmt)
+        posts = result.scalars().all()
+        
+        # Group by Date (MSK)
+        daily_stats = {}
+        for post in posts:
+            # Convert UTC posted_at to MSK
+            dt_msk = post.posted_at.replace(tzinfo=timezone.utc).astimezone(MSK)
+            date_str = dt_msk.strftime("%Y-%m-%d")
+            
+            if date_str not in daily_stats:
+                daily_stats[date_str] = 0
+            daily_stats[date_str] += 1
+            
+        # Format as list sorted by date
+        history = [
+            {"date": k, "count": v} 
+            for k, v in sorted(daily_stats.items(), reverse=True)
+        ]
+        
+        return {"success": True, "history": history}
+        
+    except Exception as e:
+        logger.error(f"History stats error: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/stats/errors")
 async def get_today_errors(session: AsyncSession = Depends(get_session)):
     """Get detailed list of failed posts for today."""
@@ -597,8 +639,6 @@ async def event_stream():
         }
     )
 
-        }
-    )
 
 @app.get("/api/analytics/global")
 async def get_global_analytics(session: AsyncSession = Depends(get_session)):

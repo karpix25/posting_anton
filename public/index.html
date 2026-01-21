@@ -888,6 +888,43 @@
               </div>
             </div>
 
+            <!-- DAILY HISTORY TABLE -->
+            <div class="md:col-span-3 mt-6">
+              <h3 class="text-xl font-bold mb-4">История Публикаций (30 дней)</h3>
+              <div class="bg-white border rounded-lg overflow-hidden shadow-sm">
+                <table class="w-full text-sm text-left">
+                  <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
+                    <tr>
+                      <th class="px-6 py-3">Дата</th>
+                      <th class="px-6 py-3 text-right">Опубликовано видео</th>
+                      <th class="px-6 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    <tr v-for="day in history" :key="day.date" class="hover:bg-gray-50">
+                      <td class="px-6 py-4 font-medium text-gray-900">{{ day.date }}</td>
+                      <td class="px-6 py-4 text-right">
+                        <span class="bg-green-100 text-green-800 px-2 py-1 rounded font-bold">
+                          {{ day.count }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-4">
+                        <div class="w-full bg-gray-100 rounded-full h-1.5 max-w-[100px]">
+                          <div class="bg-green-500 h-1.5 rounded-full"
+                            :style="{ width: Math.min(100, day.count * 2) + '%' }"></div>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="history.length === 0">
+                      <td colspan="3" class="px-6 py-8 text-center text-gray-500">
+                        Нет данных за последние 30 дней
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -1014,7 +1051,8 @@
                   loading: false,
                   date: null,
                   platforms: {}
-                }
+                },
+                history: [] // Daily Publication History
               }
             },
             async mounted() {
@@ -1027,9 +1065,8 @@
               this.fetchStatsSummary();
               this.loadBrandStats();
 
-              this.loadBrandStats();
-
               this.loadGlobalAnalytics();
+              this.loadHistory(); // New History Load
 
               // Initialize Real-Time Updates
               this.setupSSE();
@@ -1657,10 +1694,6 @@
                 this.bulkThemeKey = '';
                 alert(`Успешно обновлено профилей: ${count}`);
               },
-              this.selectedProfiles = []; // Clear selection
-              this.bulkThemeKey = '';
-              alert(`Успешно обновлено профилей: ${count}`);
-              },
               async loadGlobalAnalytics() {
                 this.analytics.loading = true;
                 try {
@@ -1671,19 +1704,32 @@
                     this.analytics.platforms = data.stats.platforms || {};
                   }
                 } catch (e) {
-                   console.error('Failed to load global analytics', e);
+                  console.error('Failed to load global analytics', e);
                 } finally {
-                   this.analytics.loading = false;
+                  this.analytics.loading = false;
+                }
+              },
+              async loadHistory() {
+                try {
+                  const res = await fetch('/api/stats/history?days=30');
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                      this.history = data.history || [];
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to load history', e);
                 }
               },
               async refreshAnalytics() {
-                 if(!confirm('Запустить сбор аналитики для всех профилей? Это может занять время.')) return;
-                 try {
-                    await fetch('/api/analytics/refresh', { method: 'POST' });
-                    alert('Сбор аналитики запущен в фоне. Обновите страницу через пару минут.');
-                 } catch(e) {
-                    alert('Ошибка запуска: ' + e);
-                 }
+                if (!confirm('Запустить сбор аналитики для всех профилей? Это может занять время.')) return;
+                try {
+                  await fetch('/api/analytics/refresh', { method: 'POST' });
+                  alert('Сбор аналитики запущен в фоне. Обновите страницу через пару минут.');
+                } catch (e) {
+                  alert('Ошибка запуска: ' + e);
+                }
               },
               async loadLogs() {
                 this.logsLoading = true;
