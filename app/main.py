@@ -462,11 +462,13 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
 async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_session)):
     """Get daily publication history for the last N days."""
     try:
+        from app.models import PostingHistory
         from datetime import timezone, timedelta
         
         # Moscow timezone (UTC+3)
         MSK = timezone(timedelta(hours=3))
-        now_utc = datetime.now(timezone.utc)
+        # Use Naive UTC for DB (assuming Postgres stores naive timestamps or consistent UTC)
+        now_utc = datetime.utcnow() 
         start_date = now_utc - timedelta(days=days)
         
         # Fetch all posts in range (both success and failed)
@@ -513,7 +515,8 @@ async def get_grouped_errors(days: int = 7, session: AsyncSession = Depends(get_
         
         # Moscow timezone (UTC+3)
         MSK = timezone(timedelta(hours=3))
-        now_utc = datetime.now(timezone.utc)
+        # Use Naive UTC for DB comparison to avoid offset mismatch
+        now_utc = datetime.utcnow()
         start_date = now_utc - timedelta(days=days)
         
         stmt = select(PostingHistory).where(
