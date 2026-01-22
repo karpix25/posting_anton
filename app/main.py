@@ -618,9 +618,19 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         caption_from_webhook = payload.get('caption', '')  # ✅ Get caption from webhook
         result = payload.get('result', {})
         
-        if event != 'upload_completed':
+        # ✅ Handle different event types (Upload Post sends notifications for all stages)
+        if event == 'upload_started':
+            logger.info(f"[Webhook] Upload started for {profile_username}/{platform} - ignoring (waiting for completion)")
+            return {"success": True, "message": "Upload started notification received"}
+        elif event == 'upload_in_progress':
+            logger.info(f"[Webhook] Upload in progress for {profile_username}/{platform} - ignoring (waiting for completion)")
+            return {"success": True, "message": "Upload in progress notification received"}
+        elif event != 'upload_completed':
             logger.warning(f"[Webhook] Unknown event type: {event}")
             return {"success": False, "error": "Unknown event type"}
+        
+        # Only process 'upload_completed' events
+        logger.info(f"[Webhook] Processing upload_completed event")
         
         # Find the post in database by caption (most accurate)
         # Fallback to profile_username + platform if caption not available
@@ -697,6 +707,11 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         upload_success = result.get('success', False)
         new_status = 'success' if upload_success else 'failed'
         
+        # ✅ IDEMPOTENCY: Check if post is already in final state
+        if post.status in ['success', 'failed']:
+            logger.warning(f"[Webhook] ⚠️ Post #{post.id} already in final state '{post.status}' - ignoring duplicate webhook")
+            return {"success": True, "message": "Duplicate webhook ignored (idempotency)"}
+        
         # Preserve existing meta and add result info
         updated_meta = post.meta.copy() if post.meta else {}
         if not upload_success:
@@ -712,7 +727,7 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         await session.execute(stmt_update)
         await session.commit()
         
-        logger.info(f"✅ [Webhook] Updated post #{post.id} to {new_status}")
+        logger.info(f"✅ [Webhook] Updated post #{post.id}: {post.status} → {new_status}")
         
         # Broadcast real-time event to UI
         await event_broadcaster.broadcast_post_status(
