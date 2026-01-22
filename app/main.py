@@ -69,10 +69,11 @@ async def on_startup():
              asyncio.create_task(background_publisher())
              logger.info("🚀 Started background post publisher")
              
-             # Start status polling worker for async uploads
-             from app.services.status_polling import start_status_polling_worker
-             await start_status_polling_worker()
-             logger.info("🔄 Started status polling worker")
+             # Status polling worker DISABLED - using webhook instead
+             # Webhook is more efficient and prevents duplicate processing
+             # from app.services.status_polling import start_status_polling_worker
+             # await start_status_polling_worker()
+             logger.info("✅ Using webhook for status updates (polling disabled)")
              
     except Exception as e:
         logger.error(f"Startup failed: {e}")
@@ -603,7 +604,12 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
     }
     """
     try:
-        logger.info(f"[Webhook] Received Upload Post notification: {payload.get('event')}")
+        # ✅ ENHANCED DEBUGGING: Log full payload for verification
+        import json
+        logger.info(f"[Webhook] ═══════════════════════════════════════════")
+        logger.info(f"[Webhook] Received Upload Post notification")
+        logger.info(f"[Webhook] Full payload: {json.dumps(payload, indent=2, ensure_ascii=False)}")
+        logger.info(f"[Webhook] ═══════════════════════════════════════════")
         
         # Extract data from payload
         event = payload.get('event')
@@ -622,7 +628,8 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         
         if caption_from_webhook:
             # Match by caption (100% accurate - AI generates unique captions)
-            logger.info(f"[Webhook] Matching by caption: {caption_from_webhook[:50]}...")
+            logger.info(f"[Webhook] 🔍 PRIMARY MATCH: Using caption matching")
+            logger.info(f"[Webhook] Caption from webhook: '{caption_from_webhook[:100]}...'")
             stmt = select(PostingHistory).where(
                 PostingHistory.profile_username == profile_username,
                 PostingHistory.platform == platform,
@@ -631,7 +638,7 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
             ).limit(1)
         else:
             # Fallback: match by profile + platform + most recent
-            logger.warning(f"[Webhook] No caption in payload, using fallback matching")
+            logger.warning(f"[Webhook] ⚠️ FALLBACK MATCH: No caption in payload, using profile/platform")
             stmt = select(PostingHistory).where(
                 PostingHistory.profile_username == profile_username,
                 PostingHistory.platform == platform,
@@ -643,17 +650,28 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         
         if not post:
             # Debug: Check how many posts exist for this profile/platform
+            logger.error(f"[Webhook] ❌ NO MATCH FOUND!")
             debug_stmt = select(PostingHistory).where(
                 PostingHistory.profile_username == profile_username,
                 PostingHistory.platform == platform
             )
             debug_result = await session.execute(debug_stmt)
             all_posts = debug_result.scalars().all()
-            logger.warning(f"[Webhook] No matching post found for {profile_username}/{platform}")
-            logger.warning(f"[Webhook] Total posts for this profile/platform: {len(all_posts)}")
+            logger.warning(f"[Webhook] Total posts for {profile_username}/{platform}: {len(all_posts)}")
+            
             if all_posts:
                 statuses = [p.status for p in all_posts[:5]]
                 logger.warning(f"[Webhook] Recent post statuses: {statuses}")
+                
+                # ✅ ENHANCED: Compare captions if webhook has caption
+                if caption_from_webhook:
+                    logger.warning(f"[Webhook] 🔍 Caption comparison for debugging:")
+                    for p in all_posts[:3]:
+                        saved_caption = p.meta.get('caption', '') if p.meta else ''
+                        logger.warning(f"[Webhook]   Post #{p.id} ({p.status}):")
+                        logger.warning(f"[Webhook]     Saved:   '{saved_caption[:80]}...'")
+                        logger.warning(f"[Webhook]     Webhook: '{caption_from_webhook[:80]}...'")
+                        logger.warning(f"[Webhook]     Match: {saved_caption == caption_from_webhook}")
             return {"success": False, "error": "Post not found"}
         
         # Update post status based on result
