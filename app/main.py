@@ -636,6 +636,24 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
                 PostingHistory.status.in_(['queued', 'processing']),  # Match queued or processing posts
                 PostingHistory.meta['caption'].astext == caption_from_webhook
             ).limit(1)
+            
+            result_obj = await session.execute(stmt)
+            post = result_obj.scalar_one_or_none()
+            
+            # If not found in queued/processing, try ALL statuses (webhook might arrive late)
+            if not post:
+                logger.warning(f"[Webhook] No match in queued/processing, trying all statuses...")
+                stmt_all = select(PostingHistory).where(
+                    PostingHistory.profile_username == profile_username,
+                    PostingHistory.platform == platform,
+                    PostingHistory.meta['caption'].astext == caption_from_webhook
+                ).order_by(PostingHistory.posted_at.desc()).limit(1)
+                
+                result_obj = await session.execute(stmt_all)
+                post = result_obj.scalar_one_or_none()
+                
+                if post:
+                    logger.warning(f"[Webhook] Found post #{post.id} in status '{post.status}' (late/duplicate webhook)")
         else:
             # Fallback: match by profile + platform + most recent
             logger.warning(f"[Webhook] ⚠️ FALLBACK MATCH: No caption in payload, using profile/platform")
@@ -644,9 +662,9 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
                 PostingHistory.platform == platform,
                 PostingHistory.status.in_(['queued', 'processing'])  # Match queued or processing posts
             ).order_by(PostingHistory.posted_at.desc()).limit(1)
-        
-        result_obj = await session.execute(stmt)
-        post = result_obj.scalar_one_or_none()
+            
+            result_obj = await session.execute(stmt)
+            post = result_obj.scalar_one_or_none()
         
         if not post:
             # Debug: Check how many posts exist for this profile/platform
