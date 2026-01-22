@@ -195,7 +195,7 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
                 caption = parts[1].strip() if len(parts) > 1 else ""
             else:
                 caption = generated
-            logger.info(f"   📝 AI Generated caption: {caption[:100]}...")
+            logger.info(f"   📝 AI Generated caption ({len(caption)} chars): {caption[:100]}...")
         else:
             # AI completely failed - use informative fallback
             logger.error(f"   💥 [Post #{history_id}] AI FAILED for brand '{brand_name}' - using fallback")
@@ -290,6 +290,10 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
                 updated_meta['request_id'] = request_id
                 updated_meta['job_id'] = job_id
                 updated_meta['caption'] = caption  # ✅ Save caption for webhook matching
+                
+                # ✅ DEBUG: Log what we're saving
+                logger.info(f"   💾 [Post #{history_id}] Saving caption to DB ({len(caption)} chars): '{caption[:100]}...'")
+                logger.info(f"   💾 [Post #{history_id}] Meta keys: {list(updated_meta.keys())}")
                 
                 stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
                     status='processing',  # Will be updated by status_checker

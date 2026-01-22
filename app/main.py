@@ -669,8 +669,9 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
                     for p in all_posts[:3]:
                         saved_caption = p.meta.get('caption', '') if p.meta else ''
                         logger.warning(f"[Webhook]   Post #{p.id} ({p.status}):")
-                        logger.warning(f"[Webhook]     Saved:   '{saved_caption[:80]}...'")
-                        logger.warning(f"[Webhook]     Webhook: '{caption_from_webhook[:80]}...'")
+                        logger.warning(f"[Webhook]     Meta keys: {list(p.meta.keys()) if p.meta else 'None'}")
+                        logger.warning(f"[Webhook]     Saved ({len(saved_caption)} chars):   '{saved_caption[:80]}...'")
+                        logger.warning(f"[Webhook]     Webhook ({len(caption_from_webhook)} chars): '{caption_from_webhook[:80]}...'")
                         logger.warning(f"[Webhook]     Match: {saved_caption == caption_from_webhook}")
             return {"success": False, "error": "Post not found"}
         
