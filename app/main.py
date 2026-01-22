@@ -185,6 +185,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             "byCategory": {},
             "byAuthor": {},
             "byBrand": {},
+            "byAuthorBrand": {},  # author -> brand -> count
             "profilesByCategory": {}
         }
         
@@ -215,6 +216,12 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             
             if author != "unknown":
                 stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
+                
+                # Track brand breakdown per author
+                if author not in stats["byAuthorBrand"]:
+                    stats["byAuthorBrand"][author] = {}
+                if brand != "unknown":
+                    stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
                 
             if brand != "unknown":
                 stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1

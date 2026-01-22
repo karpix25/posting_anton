@@ -350,6 +350,7 @@
               <table class="w-full border-collapse mt-6">
                 <thead class="bg-gray-100">
                   <tr>
+                    <th v-if="statsViewMode === 'author'" class="text-left p-3 border-b w-8"></th>
                     <th class="text-left p-3 border-b">{{ statsHeader }}</th>
                     <th class="text-left p-3 border-b">Профили</th>
                     <th class="text-right p-3 border-b w-32">На Диске</th>
@@ -357,26 +358,62 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in currentStatsList" :key="item.name" class="border-b hover:bg-gray-50">
-                    <td class="p-3 capitalize">{{ item.name }}</td>
-                    <td class="p-3">
-                      <div class="flex gap-2 flex-wrap">
-                        <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
-                          class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
-                          {{ profile }}
-                        </span>
-                        <span
-                          v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
-                          class="text-gray-400 text-sm italic">
-                          Нет профилей
-                        </span>
-                      </div>
-                    </td>
-                    <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
-                    <td class="p-3 text-right font-bold text-green-600">{{ getPublishedCount(item.name) }}</td>
-                  </tr>
+                  <template v-for="item in currentStatsList" :key="item.name">
+                    <tr class="border-b hover:bg-gray-50">
+                      <td v-if="statsViewMode === 'author'" class="p-3 text-center">
+                        <button @click="toggleAuthorExpand(item.name)"
+                          class="text-blue-600 hover:text-blue-800 font-bold text-lg"
+                          :title="expandedAuthors.includes(item.name) ? 'Свернуть' : 'Развернуть бренды'">
+                          {{ expandedAuthors.includes(item.name) ? '▼' : '▶' }}
+                        </button>
+                      </td>
+                      <td class="p-3 capitalize">{{ item.name }}</td>
+                      <td class="p-3">
+                        <div class="flex gap-2 flex-wrap">
+                          <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
+                            class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
+                            {{ profile }}
+                          </span>
+                          <span
+                            v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
+                            class="text-gray-400 text-sm italic">
+                            Нет профилей
+                          </span>
+                        </div>
+                      </td>
+                      <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
+                      <td class="p-3 text-right font-bold text-green-600">{{ getPublishedCount(item.name) }}</td>
+                    </tr>
+                    <tr v-if="statsViewMode === 'author' && expandedAuthors.includes(item.name)" class="bg-blue-50">
+                      <td :colspan="5" class="p-0">
+                        <div class="px-8 py-3">
+                          <div class="text-xs font-semibold text-gray-600 mb-2">Разбивка по брендам:</div>
+                          <table class="w-full text-sm">
+                            <thead>
+                              <tr class="text-xs text-gray-500">
+                                <th class="text-left py-1">Бренд</th>
+                                <th class="text-right py-1">Количество</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="(count, brand) in getAuthorBrands(item.name)" :key="brand"
+                                class="border-t border-blue-100">
+                                <td class="py-2 capitalize">{{ brand }}</td>
+                                <td class="py-2 text-right font-semibold">{{ count }}</td>
+                              </tr>
+                              <tr
+                                v-if="!getAuthorBrands(item.name) || Object.keys(getAuthorBrands(item.name)).length === 0">
+                                <td colspan="2" class="py-2 text-center text-gray-400 italic">Нет данных</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                   <tr v-if="currentStatsList.length === 0">
-                    <td colspan="3" class="p-4 text-center text-gray-400">Категории не найдены.</td>
+                    <td :colspan="statsViewMode === 'author' ? 5 : 4" class="p-4 text-center text-gray-400">Категории не
+                      найдены.</td>
                   </tr>
                 </tbody>
               </table>
@@ -1060,10 +1097,12 @@
                   byCategory: {},
                   byAuthor: {},
                   byBrand: {},
+                  byAuthorBrand: {},  // author -> brand -> count
                   profilesByCategory: {},
                   profilesByAuthor: {},
                   profilesByBrand: {}
                 },
+                expandedAuthors: [],  // Track which authors are expanded
                 brandStats: {},
                 currentMonth: new Date().toISOString().substring(0, 7),
                 statsSummary: null,
@@ -1280,6 +1319,17 @@
                   // category mode
                   return this.stats.profilesByCategory?.[key] || [];
                 }
+              },
+              toggleAuthorExpand(authorName) {
+                const index = this.expandedAuthors.indexOf(authorName);
+                if (index > -1) {
+                  this.expandedAuthors.splice(index, 1);
+                } else {
+                  this.expandedAuthors.push(authorName);
+                }
+              },
+              getAuthorBrands(authorName) {
+                return this.stats.byAuthorBrand?.[authorName] || {};
               },
               getPublishedCount(name) {
                 // Try to find matching brand stat
