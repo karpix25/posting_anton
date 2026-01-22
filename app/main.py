@@ -626,7 +626,7 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
             stmt = select(PostingHistory).where(
                 PostingHistory.profile_username == profile_username,
                 PostingHistory.platform == platform,
-                PostingHistory.status == 'processing',
+                PostingHistory.status.in_(['queued', 'processing']),  # Match queued or processing posts
                 PostingHistory.meta['caption'].astext == caption_from_webhook
             ).limit(1)
         else:
@@ -635,14 +635,25 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
             stmt = select(PostingHistory).where(
                 PostingHistory.profile_username == profile_username,
                 PostingHistory.platform == platform,
-                PostingHistory.status == 'processing'
+                PostingHistory.status.in_(['queued', 'processing'])  # Match queued or processing posts
             ).order_by(PostingHistory.posted_at.desc()).limit(1)
         
         result_obj = await session.execute(stmt)
         post = result_obj.scalar_one_or_none()
         
         if not post:
+            # Debug: Check how many posts exist for this profile/platform
+            debug_stmt = select(PostingHistory).where(
+                PostingHistory.profile_username == profile_username,
+                PostingHistory.platform == platform
+            )
+            debug_result = await session.execute(debug_stmt)
+            all_posts = debug_result.scalars().all()
             logger.warning(f"[Webhook] No matching post found for {profile_username}/{platform}")
+            logger.warning(f"[Webhook] Total posts for this profile/platform: {len(all_posts)}")
+            if all_posts:
+                statuses = [p.status for p in all_posts[:5]]
+                logger.warning(f"[Webhook] Recent post statuses: {statuses}")
             return {"success": False, "error": "Post not found"}
         
         # Update post status based on result
