@@ -664,6 +664,23 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
             from app.worker import increment_brand_stats, check_cleanup
             await increment_brand_stats(post.video_path)
             asyncio.create_task(check_cleanup(post.video_path))
+        else:
+            # Publication failed - try to restore video from archive
+            import os
+            video_filename = os.path.basename(post.video_path)
+            archived_path = f"disk:/опубликовано/{video_filename}"
+            
+            # Check if video was already archived
+            if await yandex_service.exists(archived_path):
+                logger.info(f"↩️ [Webhook] Video found in archive, restoring to original location")
+                try:
+                    # Move back to original location
+                    await yandex_service.move_file(archived_path, os.path.dirname(post.video_path))
+                    logger.info(f"✅ [Webhook] Restored failed video: {archived_path} → {post.video_path}")
+                except Exception as e:
+                    logger.error(f"❌ [Webhook] Failed to restore video from archive: {e}")
+            else:
+                logger.info(f"📁 [Webhook] Video not in archive (still in original location or already processed)")
         
         return {"success": True, "message": "Webhook processed"}
         

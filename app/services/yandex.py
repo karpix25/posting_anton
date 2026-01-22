@@ -100,6 +100,15 @@ class YandexDiskService:
             await client.remove(path, permanently=permanently)
             print(f"[Yandex] Deleted file: {path}")
 
+    async def exists(self, path: str) -> bool:
+        """Check if file or folder exists on Yandex Disk."""
+        try:
+            async with yadisk.AsyncClient(token=self.token) as client:
+                return await client.exists(path)
+        except Exception as e:
+            logger.error(f"[Yandex] Error checking existence of {path}: {e}")
+            return False
+
     async def move_file(self, source_path: str, dest_folder: str = "disk:/опубликовано"):
         """Move a file to archive folder instead of deleting."""
         import os
