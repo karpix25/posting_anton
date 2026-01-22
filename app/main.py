@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
-from app.models import BrandStats
+from app.models import BrandStats, PostingHistory
 from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
@@ -582,6 +582,93 @@ async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_
         
     except Exception as e:
         logger.error(f"History stats error: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/webhooks/upload-post")
+async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session)):
+    """
+    Webhook endpoint for Upload Post API notifications.
+    Called by Upload Post when an upload completes (success or failure).
+    
+    Payload example:
+    {
+        "event": "upload_completed",
+        "profile_username": "username",
+        "platform": "instagram",
+        "result": {
+            "success": true,
+            "url": "https://instagram.com/p/...",
+            "error": null
+        }
+    }
+    """
+    try:
+        logger.info(f"[Webhook] Received Upload Post notification: {payload.get('event')}")
+        
+        # Extract data from payload
+        event = payload.get('event')
+        profile_username = payload.get('profile_username')
+        platform = payload.get('platform')
+        result = payload.get('result', {})
+        
+        if event != 'upload_completed':
+            logger.warning(f"[Webhook] Unknown event type: {event}")
+            return {"success": False, "error": "Unknown event type"}
+        
+        # Find the post in database by profile_username and platform
+        # We need to match the most recent 'processing' post for this profile/platform
+        from sqlalchemy import update
+        stmt = select(PostingHistory).where(
+            PostingHistory.profile_username == profile_username,
+            PostingHistory.platform == platform,
+            PostingHistory.status == 'processing'
+        ).order_by(PostingHistory.posted_at.desc()).limit(1)
+        
+        result_obj = await session.execute(stmt)
+        post = result_obj.scalar_one_or_none()
+        
+        if not post:
+            logger.warning(f"[Webhook] No matching post found for {profile_username}/{platform}")
+            return {"success": False, "error": "Post not found"}
+        
+        # Update post status based on result
+        upload_success = result.get('success', False)
+        new_status = 'success' if upload_success else 'failed'
+        
+        # Preserve existing meta and add result info
+        updated_meta = post.meta.copy() if post.meta else {}
+        if not upload_success:
+            updated_meta['error'] = result.get('error', 'Upload failed')
+        if result.get('url'):
+            updated_meta['url'] = result.get('url')
+        
+        # Update database
+        stmt_update = update(PostingHistory).where(PostingHistory.id == post.id).values(
+            status=new_status,
+            meta=updated_meta
+        )
+        await session.execute(stmt_update)
+        await session.commit()
+        
+        logger.info(f"✅ [Webhook] Updated post #{post.id} to {new_status}")
+        
+        # Broadcast real-time event to UI
+        await event_broadcaster.broadcast_post_status(
+            post_id=post.id,
+            status=new_status,
+            meta={'video_path': post.video_path, 'profile': profile_username}
+        )
+        
+        # If successful, increment brand stats and trigger cleanup
+        if upload_success:
+            from app.worker import increment_brand_stats, check_cleanup
+            await increment_brand_stats(post.video_path)
+            asyncio.create_task(check_cleanup(post.video_path))
+        
+        return {"success": True, "message": "Webhook processed"}
+        
+    except Exception as e:
+        logger.error(f"[Webhook] Error processing webhook: {e}")
         return {"success": False, "error": str(e)}
 
 @app.get("/api/stats/errors")
