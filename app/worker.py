@@ -279,16 +279,23 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
     if success:
         # Save tracking IDs to meta for status polling
         async for session in get_session():
-            stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
-                status='processing',  # Will be updated by status_checker
-                meta={
-                    'request_id': request_id,
-                    'job_id': job_id,
-                    'brand': brand_name
-                }
-            )
-            await session.execute(stmt)
-            await session.commit()
+            # Fetch existing post to preserve meta fields
+            stmt_get = select(PostingHistory).where(PostingHistory.id == history_id)
+            result = await session.execute(stmt_get)
+            post = result.scalar_one_or_none()
+            
+            if post:
+                # Preserve existing meta and add tracking IDs
+                updated_meta = post.meta.copy() if post.meta else {}
+                updated_meta['request_id'] = request_id
+                updated_meta['job_id'] = job_id
+                
+                stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
+                    status='processing',  # Will be updated by status_checker
+                    meta=updated_meta
+                )
+                await session.execute(stmt)
+                await session.commit()
             break
         
         logger.info(f"🔄 [Post #{history_id}] Async upload initiated - will be checked by background worker")

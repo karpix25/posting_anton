@@ -108,26 +108,35 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        # Increase timeout to 120s for large video uploads
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        # Async upload returns immediately, so 30s timeout is sufficient
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
                 
                 if res_data.get('success'):
-                    # Extract request_id or job_id for status tracking
+                    # Extract request_id (async) or job_id (scheduled) for status tracking
                     request_id = res_data.get('request_id')
                     job_id = res_data.get('job_id')
                     tracking_id = request_id or job_id or 'unknown'
                     
-                    print(f"[UploadPost] ✅ Async request accepted! ID: {tracking_id}")
+                    # Check if it's scheduled (202) or async (200)
+                    is_scheduled = response.status_code == 202 or job_id is not None
+                    
+                    if is_scheduled:
+                        logger.info(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
+                        print(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
+                    else:
+                        logger.info(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
+                        print(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
                     
                     # Return with tracking info
                     return {
                         'success': True,
                         'request_id': request_id,
                         'job_id': job_id,
-                        'async': True
+                        'async': True,
+                        'scheduled': is_scheduled
                     }
                 else:
                     # Improved error extraction - try multiple fields
@@ -141,7 +150,7 @@ class UploadPostClient:
                     print(f"[UploadPost] ❌ Failed: {error}")
                     raise Exception(error)
             except httpx.ReadTimeout as e:
-                error_msg = f"ReadTimeout after 120s - video upload too slow or API overloaded"
+                error_msg = f"ReadTimeout after 30s - API not responding (should be instant for async)"
                 logger.error(f"[UploadPost] ❌ {error_msg}")
                 print(f"[UploadPost] ❌ {error_msg}")
                 raise Exception(error_msg)
