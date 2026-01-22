@@ -108,7 +108,8 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        async with httpx.AsyncClient(timeout=30.0) as client:  # Async returns fast
+        # Increase timeout to 120s for large video uploads
+        async with httpx.AsyncClient(timeout=120.0) as client:
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
@@ -129,18 +130,31 @@ class UploadPostClient:
                         'async': True
                     }
                 else:
-                    error = res_data.get('message') or res_data.get('error') or 'Unknown error'
-                    logger.error(f"[UploadPost] ❌ Failed: {error} | Full response: {res_data}")
+                    # Improved error extraction - try multiple fields
+                    error = (res_data.get('message') or 
+                            res_data.get('error') or 
+                            res_data.get('errors') or
+                            str(res_data))
+                    
+                    logger.error(f"[UploadPost] ❌ API Error: {error}")
+                    logger.error(f"[UploadPost] Full response: {res_data}")
                     print(f"[UploadPost] ❌ Failed: {error}")
                     raise Exception(error)
+            except httpx.ReadTimeout as e:
+                error_msg = f"ReadTimeout after 120s - video upload too slow or API overloaded"
+                logger.error(f"[UploadPost] ❌ {error_msg}")
+                print(f"[UploadPost] ❌ {error_msg}")
+                raise Exception(error_msg)
             except httpx.HTTPStatusError as e:
-                logger.error(f"[UploadPost] ❌ HTTP Error {e.response.status_code}: {e.response.text}")
+                error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+                logger.error(f"[UploadPost] ❌ {error_msg}")
                 print(f"[UploadPost] ❌ HTTP Error: {e.response.status_code}")
-                raise e
+                raise Exception(error_msg)
             except Exception as e:
                 logger.error(f"[UploadPost] ❌ Exception: {type(e).__name__}: {e}")
                 print(f"[UploadPost] ❌ Error: {e}")
                 raise e
+
 
 
 class PlatformManager:

@@ -458,6 +458,78 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
             "profiles_count": 0
         }
 
+@app.get("/api/stats/publishing")
+async def get_publishing_stats(session: AsyncSession = Depends(get_session)):
+    """Get comprehensive publishing statistics for all posts."""
+    try:
+        from sqlalchemy import func
+        from app.models import PostingHistory
+        from app.services.config_db import get_db_config
+        
+        # Get total profiles count
+        config = await get_db_config(session)
+        total_profiles = len(config.profiles)
+        active_profiles = len([p for p in config.profiles if p.enabled])
+        
+        # Count posts by status
+        status_counts = {}
+        for status in ["queued", "processing", "success", "failed"]:
+            stmt = select(func.count(PostingHistory.id)).where(PostingHistory.status == status)
+            result = await session.execute(stmt)
+            status_counts[status] = result.scalar() or 0
+        
+        # Count posts by platform
+        platform_counts = {}
+        for platform in ["instagram", "tiktok", "youtube"]:
+            stmt = select(func.count(PostingHistory.id)).where(PostingHistory.platform == platform)
+            result = await session.execute(stmt)
+            platform_counts[platform] = result.scalar() or 0
+        
+        # Calculate total expected posts (approximation based on active profiles and platform limits)
+        total_expected = 0
+        for profile in config.profiles:
+            if profile.enabled:
+                for platform in profile.platforms:
+                    if platform == "instagram":
+                        limit = profile.instagramLimit or config.limits.instagram
+                    elif platform == "tiktok":
+                        limit = profile.tiktokLimit or config.limits.tiktok
+                    elif platform == "youtube":
+                        limit = profile.youtubeLimit or config.limits.youtube
+                    else:
+                        limit = 0
+                    total_expected += limit * config.daysToGenerate
+        
+        total_posts = sum(status_counts.values())
+        success_rate = (status_counts["success"] / total_posts * 100) if total_posts > 0 else 0
+        
+        return {
+            "success": True,
+            "total_profiles": total_profiles,
+            "active_profiles": active_profiles,
+            "total_expected_posts": total_expected,
+            "total_actual_posts": total_posts,
+            "posts_by_status": status_counts,
+            "posts_by_platform": platform_counts,
+            "avg_success_rate": round(success_rate, 2),
+            "last_updated": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Publishing stats error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "total_profiles": 0,
+            "active_profiles": 0,
+            "total_expected_posts": 0,
+            "total_actual_posts": 0,
+            "posts_by_status": {},
+            "posts_by_platform": {},
+            "avg_success_rate": 0,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+
+
 @app.get("/api/stats/history")
 async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_session)):
     """Get daily publication history for the last N days."""
@@ -637,14 +709,14 @@ async def event_stream():
         try:
             logger.info("[SSE] Client connected to event stream")
             
-            # Send initial connection event
+            # Send initial connection event IMMEDIATELY
             yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
             
             # Keep sending events as they arrive
             while True:
                 try:
-                    # Wait for new event (with timeout to send keepalive)
-                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    # Wait for new event (with shorter timeout for faster keepalive)
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
                     
                     # Send event to client
                     yield f"data: {json.dumps(event)}\n\n"
