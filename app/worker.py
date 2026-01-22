@@ -97,6 +97,10 @@ async def generate_daily_schedule():
             publish_time_iso = post["publish_at"]
             publish_dt = datetime.fromisoformat(publish_time_iso)
             
+            # Remove timezone info for database (TIMESTAMP WITHOUT TIME ZONE)
+            if publish_dt.tzinfo is not None:
+                publish_dt = publish_dt.replace(tzinfo=None)
+            
             # Extract brand for logging
             brand_name = extract_brand(video["path"])
             author_name = extract_author(video["path"])
