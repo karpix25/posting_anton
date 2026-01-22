@@ -36,7 +36,8 @@ async def generate_daily_schedule():
     logger.info(f"[Worker] Global limits: IG={config.limits.instagram}, TT={config.limits.tiktok}, YT={config.limits.youtube}")
     
     try:
-        all_videos = await yandex_service.list_files(limit=100000)
+        # Force refresh for scheduler to get latest files
+        all_videos = await yandex_service.list_files(limit=100000, force_refresh=True)
         logger.info(f"[Worker] Fetched {len(all_videos)} total videos from Yandex")
     except Exception as e:
         logger.error(f"Failed to list files: {e}")

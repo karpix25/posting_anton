@@ -7,20 +7,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 class YandexDiskService:
+    CACHE_TTL = 900  # 15 minutes
+
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
+        self._cache: List[Dict[str, Any]] = []
+        self._cache_time: float = 0
 
     async def check_token(self) -> bool:
         async with yadisk.AsyncClient(token=self.token) as client:
             return await client.check_token()
 
-    async def list_files(self, limit: int = 100000) -> List[Dict[str, Any]]:
+    async def list_files(self, limit: int = 100000, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """
-        List video files with robust retry logic matching TypeScript implementation.
-        Strategies:
-        1. High timeout (600s) per request
-        2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
+        List video files with in-memory caching and robust retry logic.
         """
+        import time
+        now = time.time()
+        
+        # Check cache
+        if not force_refresh and self._cache and (now - self._cache_time < self.CACHE_TTL):
+            age = int(now - self._cache_time)
+            logger.info(f"[Yandex] Returning cached file list ({len(self._cache)} files, age: {age}s)")
+            return self._cache
+
         limits_to_try = [limit, min(5000, limit), min(2000, limit)]
         # Deduplicate limits
         limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
@@ -52,6 +62,11 @@ class YandexDiskService:
                     
                     logger.info(f"[Yandex] Fetched {len(files)} files.")
                     files.sort(key=lambda x: x["name"])
+                    
+                    # Update Cache
+                    self._cache = files
+                    self._cache_time = time.time()
+                    
                     return files
 
                 except Exception as e:
