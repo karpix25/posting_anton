@@ -285,10 +285,11 @@ async def post_content(history_id: int, video_path: str, profile_username: str, 
             post = result.scalar_one_or_none()
             
             if post:
-                # Preserve existing meta and add tracking IDs
+                # Preserve existing meta and add tracking IDs + caption
                 updated_meta = post.meta.copy() if post.meta else {}
                 updated_meta['request_id'] = request_id
                 updated_meta['job_id'] = job_id
+                updated_meta['caption'] = caption  # ✅ Save caption for webhook matching
                 
                 stmt = update(PostingHistory).where(PostingHistory.id == history_id).values(
                     status='processing',  # Will be updated by status_checker

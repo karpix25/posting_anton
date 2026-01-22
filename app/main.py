@@ -609,20 +609,34 @@ async def upload_post_webhook(payload: Dict[str, Any] = Body(...), session: Asyn
         event = payload.get('event')
         profile_username = payload.get('profile_username')
         platform = payload.get('platform')
+        caption_from_webhook = payload.get('caption', '')  # ✅ Get caption from webhook
         result = payload.get('result', {})
         
         if event != 'upload_completed':
             logger.warning(f"[Webhook] Unknown event type: {event}")
             return {"success": False, "error": "Unknown event type"}
         
-        # Find the post in database by profile_username and platform
-        # We need to match the most recent 'processing' post for this profile/platform
+        # Find the post in database by caption (most accurate)
+        # Fallback to profile_username + platform if caption not available
         from sqlalchemy import update
-        stmt = select(PostingHistory).where(
-            PostingHistory.profile_username == profile_username,
-            PostingHistory.platform == platform,
-            PostingHistory.status == 'processing'
-        ).order_by(PostingHistory.posted_at.desc()).limit(1)
+        
+        if caption_from_webhook:
+            # Match by caption (100% accurate - AI generates unique captions)
+            logger.info(f"[Webhook] Matching by caption: {caption_from_webhook[:50]}...")
+            stmt = select(PostingHistory).where(
+                PostingHistory.profile_username == profile_username,
+                PostingHistory.platform == platform,
+                PostingHistory.status == 'processing',
+                PostingHistory.meta['caption'].astext == caption_from_webhook
+            ).limit(1)
+        else:
+            # Fallback: match by profile + platform + most recent
+            logger.warning(f"[Webhook] No caption in payload, using fallback matching")
+            stmt = select(PostingHistory).where(
+                PostingHistory.profile_username == profile_username,
+                PostingHistory.platform == platform,
+                PostingHistory.status == 'processing'
+            ).order_by(PostingHistory.posted_at.desc()).limit(1)
         
         result_obj = await session.execute(stmt)
         post = result_obj.scalar_one_or_none()
