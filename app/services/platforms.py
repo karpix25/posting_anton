@@ -82,7 +82,7 @@ class UploadPostClient:
             'platform[]': platform,
             'video': video_url,
             'title': title or caption,  # Fallback title
-            'async_upload': 'true'  # Enable async processing
+            'async_upload': True  # ✅ CRITICAL: Must be boolean True, not string 'true'
         }
 
         # Add scheduled_date in ISO format
