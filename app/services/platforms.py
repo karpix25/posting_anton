@@ -62,7 +62,7 @@ class UploadPostClient:
         url = f"https://api.upload-post.com/api/analytics/{profile_username}"
         params = {'platforms': ','.join(platforms)}
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=200.0) as client:
             try:
                 response = await client.get(url, params=params, headers=self.headers)
                 if response.status_code == 200:
@@ -108,8 +108,8 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        # Async upload returns immediately, so 30s timeout is sufficient
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        # Increased timeout to 200s as API might be slow to respond even for async
+        async with httpx.AsyncClient(timeout=200.0) as client:
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()
@@ -150,7 +150,7 @@ class UploadPostClient:
                     print(f"[UploadPost] ❌ Failed: {error}")
                     raise Exception(error)
             except httpx.ReadTimeout as e:
-                error_msg = f"ReadTimeout after 30s - API not responding (should be instant for async)"
+                error_msg = f"ReadTimeout after 200s - API not responding"
                 logger.error(f"[UploadPost] ❌ {error_msg}")
                 print(f"[UploadPost] ❌ {error_msg}")
                 raise Exception(error_msg)

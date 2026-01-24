@@ -141,7 +141,7 @@ async def sync_profiles():
     
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers, timeout=20.0)
+            resp = await client.get(url, headers=headers, timeout=200.0)
             
         if resp.status_code == 200:
             data = resp.json()

@@ -41,7 +41,7 @@ class UploadStatusChecker:
         if job_id:
             params['job_id'] = job_id
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=200.0) as client:
             try:
                 response = await client.get(
                     STATUS_API_URL,
