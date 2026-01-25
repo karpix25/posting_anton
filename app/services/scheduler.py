@@ -38,6 +38,7 @@ class ContentScheduler:
         self.config = config
         self.db_session = db_session
         self.used_video_md5s: Set[str] = set()
+        self.used_video_profile_pairs: Set[tuple] = set()
 
     async def generate_schedule(self, videos: List[Dict[str, Any]], 
                                 profiles: List[SocialProfile], 
@@ -169,17 +170,22 @@ class ContentScheduler:
 
                     for i, v in enumerate(available_brand_videos):
                         vid_id = v.get("md5") or v.get("path")
-                        if vid_id not in self.used_video_md5s:
+                        
+                        # Check availability based on config
+                        is_available = False
+                        if self.config.allowVideoReuse:
+                            # Reuse allowed: check if this profile has used it
+                            if (vid_id, profile.username) not in self.used_video_profile_pairs:
+                                is_available = True
+                        else:
+                            # Strict global uniqueness
+                            if vid_id not in self.used_video_md5s:
+                                is_available = True
+
+                        if is_available:
                             video_for_slot = v
-                            # Remove from the ORIGINAL list to avoid re-picking
-                            # We need to find index in original list or just remove by value logic
-                            # Since dicts are by ref, we can traverse original and remove
-                            
-                            # Simplest: remove from theme_brands[selected_brand] by reference
-                            if v in theme_brands[selected_brand]:
-                                theme_brands[selected_brand].remove(v)
-                                
-                            self.used_video_md5s.add(vid_id)
+                            # DO NOT remove from original list here - wait until slot is confirmed!
+                            # This fixes the "video burning" bug.
                             break
                     
                     if not video_for_slot:
@@ -190,7 +196,20 @@ class ContentScheduler:
                     candidate_time = self.find_safe_slot(profile_slots[profile.username], base_time, current_day_start, current_day_end)
                     
                     if not candidate_time:
-                        continue
+                         # Slot conflict - video is NOT burned, just skipped for this iteration
+                         # It remains in available_brand_videos for other profiles (or next pass)
+                         continue
+
+                    # SUCCESS - Now mark as used
+                    vid_id = video_for_slot.get("md5") or video_for_slot.get("path")
+                    
+                    if self.config.allowVideoReuse:
+                        self.used_video_profile_pairs.add((vid_id, profile.username))
+                    else:
+                        self.used_video_md5s.add(vid_id)
+                        # Remove from the ORIGINAL list to prevent re-picking by others (optimization)
+                        if video_for_slot in theme_brands[selected_brand]:
+                            theme_brands[selected_brand].remove(video_for_slot)
 
                     profile_slots[profile.username].append(candidate_time)
 

@@ -108,8 +108,8 @@ class UploadPostClient:
         if publish_at:
             print(f"[UploadPost] Scheduled for: {publish_at.isoformat()}")
         
-        # Increased timeout to 200s as API might be slow to respond even for async
-        async with httpx.AsyncClient(timeout=200.0) as client:
+        # Increased timeout to 600s (10 mins) as API might be extremely busy
+        async with httpx.AsyncClient(timeout=600.0) as client:
             try:
                 response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
                 res_data = response.json()

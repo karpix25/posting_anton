@@ -48,6 +48,7 @@ class LegacyConfig(BaseModel):
     profiles: List[SocialProfile] = []
     clients: List[ClientConfig] = []
     schedule: Optional[ScheduleConfig] = None
+    allowVideoReuse: bool = False
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://admin:admin@tools_postgres:5432/postgres"
