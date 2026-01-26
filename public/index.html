@@ -617,76 +617,101 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(profile, idx) in config.profiles" :key="idx"
-                                class="border-b border-gray-700 hover:bg-gray-800 transition-colors"
-                                :class="{ 'opacity-50': profile.enabled === false, 'bg-blue-900/20': selectedProfiles.includes(profile.username) }">
-                                <td class="p-4 text-center pb-8 align-middle">
-                                    <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
-                                        @change="toggleSelection(profile.username)"
-                                        class="w-5 h-5 rounded cursor-pointer">
-                                </td>
-                                <td class="p-4 text-center text-xl">
-                                    {{ profile.enabled !== false ? '🟢' : '⚫' }}
-                                </td>
-                                <td class="p-4 font-medium">{{ profile.username || 'Без имени' }}</td>
-                                <td class="p-4">
-                                    <div class="relative">
-                                        <input v-model="profile.theme_key" list="themes-list"
-                                            class="px-2 py-1 rounded border-0 text-sm w-full"
-                                            style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)"
-                                            placeholder="Название категории">
-                                        <datalist id="themes-list">
-                                            <option v-for="theme in availableThemes" :key="theme" :value="theme">
-                                            </option>
-                                        </datalist>
-                                    </div>
-                                </td>
-                                </td>
-                                <td class="p-4">
-                                    <div class="flex gap-2 flex-wrap">
-                                        <span v-for="platform in (profile.platforms || [])" :key="platform" :class="['px-2 py-1 text-xs rounded font-medium',
-                                                platform === 'instagram' ? 'bg-pink-500/20 text-pink-400' :
-                                                platform === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400' :
-                                                'bg-red-500/20 text-red-400']">
-                                            {{ platform === 'instagram' ? 'IG' : platform === 'tiktok' ? 'TT' : 'YT' }}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="p-4 text-center">
-                                    <input type="number" min="0" max="50" v-model.number="profile.instagramLimit"
-                                        placeholder="-"
-                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                        title="Instagram лимит (пусто = глобальный)">
-                                </td>
-                                <td class="p-4 text-center">
-                                    <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit"
-                                        placeholder="-"
-                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                        title="TikTok лимит (пусто = глобальный)">
-                                </td>
-                                <td class="p-4 text-center">
-                                    <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit"
-                                        placeholder="-"
-                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                        title="YouTube лимит (пусто = глобальный)">
-                                </td>
-                                <td class="p-4 text-center">
-                                    <label class="inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" :checked="profile.enabled !== false"
-                                            @change="profile.enabled = !profile.enabled; saveConfig()"
-                                            class="sr-only peer">
-                                        <div class="relative w-11 h-6 rounded-full peer
-                                            bg-gray-700 peer-checked:after:translate-x-full
-                                            peer-checked:after:border-white after:content-['']
-                                            after:absolute after:top-[2px] after:start-[2px]
-                                            after:bg-white after:border-gray-300 after:border
-                                            after:rounded-full after:h-5 after:w-5 after:transition-all
-                                            peer-checked:bg-green-600"></div>
-                                    </label>
-                                </td>
-                            </tr>
+                            <template v-for="group in groupedProfiles" :key="group.name">
+                                <!-- Group Header -->
+                                <tr class="bg-gray-800/80 hover:bg-gray-700 cursor-pointer transition-colors"
+                                    @click="toggleGroup(group.name)">
+                                    <td class="p-4 text-center">
+                                        <!-- Group Checkbox -->
+                                        <input type="checkbox" :checked="isGroupSelected(group.profiles)"
+                                            @click.stop="toggleGroupSelection(group.profiles, $event.target.checked)"
+                                            class="w-5 h-5 rounded cursor-pointer accent-blue-500">
+                                    </td>
+                                    <td colspan="8" class="p-4 font-bold text-lg text-blue-200">
+                                        <div class="flex items-center gap-2">
+                                            <span>{{ isGroupExpanded(group.name) ? '▼' : '▶' }}</span>
+                                            <span>{{ group.name }}</span>
+                                            <span
+                                                class="text-sm font-normal text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded-full">
+                                                {{ group.profiles.length }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <!-- Group Profiles (Rows) -->
+                                <tr v-if="isGroupExpanded(group.name)" v-for="(profile, idx) in group.profiles"
+                                    :key="profile.username"
+                                    class="border-b border-gray-700 hover:bg-gray-800 transition-colors"
+                                    :class="{ 'opacity-50': profile.enabled === false, 'bg-blue-900/20': selectedProfiles.includes(profile.username) }">
+                                    <td class="p-4 text-center pb-8 align-middle">
+                                        <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
+                                            @change="toggleSelection(profile.username)"
+                                            class="w-5 h-5 rounded cursor-pointer">
+                                    </td>
+                                    <td class="p-4 text-center text-xl">
+                                        {{ profile.enabled !== false ? '🟢' : '⚫' }}
+                                    </td>
+                                    <td class="p-4 font-medium">{{ profile.username || 'Без имени' }}</td>
+                                    <td class="p-4">
+                                        <div class="relative">
+                                            <input v-model="profile.theme_key" list="themes-list"
+                                                class="px-2 py-1 rounded border-0 text-sm w-full"
+                                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)"
+                                                placeholder="Название категории">
+                                            <datalist id="themes-list">
+                                                <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                                                </option>
+                                            </datalist>
+                                        </div>
+                                    </td>
+                                    <td class="p-4">
+                                        <div class="flex gap-2 flex-wrap">
+                                            <span v-for="platform in (profile.platforms || [])" :key="platform" :class="['px-2 py-1 text-xs rounded font-medium',
+                                                    platform === 'instagram' ? 'bg-pink-500/20 text-pink-400' :
+                                                    platform === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400' :
+                                                    'bg-red-500/20 text-red-400']">
+                                                {{ platform === 'instagram' ? 'IG' : platform === 'tiktok' ? 'TT' : 'YT'
+                                                }}
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <input type="number" min="0" max="50" v-model.number="profile.instagramLimit"
+                                            placeholder="-"
+                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                            title="Instagram лимит (пусто = глобальный)">
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit"
+                                            placeholder="-"
+                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                            title="TikTok лимит (пусто = глобальный)">
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit"
+                                            placeholder="-"
+                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                            title="YouTube лимит (пусто = глобальный)">
+                                    </td>
+                                    <td class="p-4 text-center">
+                                        <label class="inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" :checked="profile.enabled !== false"
+                                                @change="profile.enabled = !profile.enabled; saveConfig()"
+                                                class="sr-only peer">
+                                            <div class="relative w-11 h-6 rounded-full peer
+                                                bg-gray-700 peer-checked:after:translate-x-full
+                                                peer-checked:after:border-white after:content-['']
+                                                after:absolute after:top-[2px] after:start-[2px]
+                                                after:bg-white after:border-gray-300 after:border
+                                                after:rounded-full after:h-5 after:w-5 after:transition-all
+                                                peer-checked:bg-green-600"></div>
+                                        </label>
+                                    </td>
+                                </tr>
+                            </template>
                             <tr v-if="config.profiles.length === 0">
-                                <td colspan="5" class="p-8 text-center" style="color: var(--text-secondary)">
+                                <td colspan="9" class="p-8 text-center" style="color: var(--text-secondary)">
                                     Нет профилей. Используйте Sync для загрузки из UploadPost.
                                 </td>
                             </tr>
@@ -935,7 +960,8 @@
                     selectedProfiles: [],
                     bulkThemeKey: '',
                     publishingStats: null,
-                    errorStats: []
+                    errorStats: [],
+                    expandedGroups: {} // Format: { 'GroupName': true/false }
                 };
             },
             async mounted() {
@@ -948,6 +974,30 @@
                 setInterval(() => this.loadStats(), 60000);
             },
             computed: {
+                groupedProfiles() {
+                    if (!this.config.profiles) return [];
+                    const groups = {};
+
+                    // Sort profiles by username first for consistent internal order
+                    const sortedProfiles = [...this.config.profiles].sort((a, b) =>
+                        (a.username || '').localeCompare(b.username || '')
+                    );
+
+                    sortedProfiles.forEach(p => {
+                        const rawKey = p.theme_key ? p.theme_key.trim() : 'Без категорий';
+                        // Capitalize logic if desired, or keep raw
+                        const key = rawKey || 'Без категорий';
+
+                        if (!groups[key]) groups[key] = [];
+                        groups[key].push(p);
+                    });
+
+                    // Return as array of objects for consistent sorting
+                    return Object.keys(groups).sort().map(key => ({
+                        name: key,
+                        profiles: groups[key]
+                    }));
+                },
                 currentStatsList() {
                     let source = {};
                     if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
@@ -1210,6 +1260,38 @@
                     await this.saveConfig();
                     alert(`✅ ${count} профилей ${state ? 'активированы' : 'отключены'}`);
                     this.selectedProfiles = [];
+                },
+                toggleGroup(groupName) {
+                    // Initialize if undefined (default should be true/expanded, but we check inverse)
+                    if (this.expandedGroups[groupName] === undefined) {
+                        this.expandedGroups[groupName] = false; // Toggle to closed if it was implicitly open? 
+                        // Actually let's assume default is CLOSED to save space, user clicks to OPEN?
+                        // Or default OPEN? Most users want to see everything.
+                        // Let's implement: if undefined -> set to false (collapsed). User explicitly opens.
+                        // User request: "they all go in a long list", implying they want organization.
+                        // Let's default to OPEN (true) in logic, so toggle sets to false.
+                        this.expandedGroups[groupName] = false;
+                    } else {
+                        this.expandedGroups[groupName] = !this.expandedGroups[groupName];
+                    }
+                },
+                isGroupExpanded(groupName) {
+                    // Default to TRUE (Expanded) if undefined
+                    return this.expandedGroups[groupName] !== false;
+                },
+                toggleGroupSelection(groupProfiles, checked) {
+                    groupProfiles.forEach(p => {
+                        const idx = this.selectedProfiles.indexOf(p.username);
+                        if (checked) {
+                            if (idx === -1) this.selectedProfiles.push(p.username);
+                        } else {
+                            if (idx !== -1) this.selectedProfiles.splice(idx, 1);
+                        }
+                    });
+                },
+                isGroupSelected(groupProfiles) {
+                    if (groupProfiles.length === 0) return false;
+                    return groupProfiles.every(p => this.selectedProfiles.includes(p.username));
                 }
             }
         }).mount('#app');
