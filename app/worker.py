@@ -135,9 +135,20 @@ async def schedule_post_with_delay(delay: float, history_id: int, video_path: st
     await asyncio.sleep(delay)
     await post_content(history_id, video_path, profile_username, platform, publish_time_iso)
 
+# Global concurrency limiter to prevent "Too many open files"
+# Limits concurrent execution of post_content (DB connections + HTTP requests)
+deploy_semaphore = asyncio.Semaphore(5)
+
 async def post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
                        publish_time_iso: str):
     """Execute single post publication."""
+    # Acquire semaphore to limit concurrency
+    async with deploy_semaphore:
+        return await _post_content_impl(history_id, video_path, profile_username, platform, publish_time_iso)
+
+async def _post_content_impl(history_id: int, video_path: str, profile_username: str, platform: str, 
+                       publish_time_iso: str):
+    """Internal implementation of post_content."""
     brand_name = extract_brand(video_path)
     author_name = extract_author(video_path)
     
