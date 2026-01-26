@@ -119,14 +119,37 @@ class ContentScheduler:
             # Track profile publish counts per day
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
 
-            # Determine max iterations = max of global limits
-            # Profile-specific limits are checked individually in the loop
-            max_limit = max(
+            # Determine max iterations
+            # We must consider both global limits AND profile-specific overrides
+            # Otherwise, if global=10 but profile=20, we stop at 10.
+            
+            global_max = max(
                 self.config.limits.instagram, 
                 self.config.limits.tiktok, 
                 self.config.limits.youtube
             )
-            logger.info(f"[Scheduler] Max iterations: {max_limit} (from global limits: IG={self.config.limits.instagram}, TT={self.config.limits.tiktok}, YT={self.config.limits.youtube})")
+            
+            profiles_max = 0
+            for p in active_profiles:
+                # Check all platform limits for this profile
+                p_limits = [
+                    p.instagramLimit or 0,
+                    p.tiktokLimit or 0,
+                    p.youtubeLimit or 0
+                ]
+                if p.limit: # Backwards comaptibility
+                    p_limits.append(p.limit)
+                    
+                if p_limits:
+                    profiles_max = max(profiles_max, max(p_limits))
+            
+            # The loop must run enough times to satisfy the HIGHEST requirement
+            max_limit = max(global_max, profiles_max)
+            
+            # Safety cap just in case (e.g. 50)
+            max_limit = min(max_limit, 50)
+            
+            logger.info(f"[Scheduler] Max iterations: {max_limit} (Global max: {global_max}, Profiles max: {profiles_max})")
             
             last_brand_used_per_theme: Dict[str, str] = {}
             
@@ -145,10 +168,10 @@ class ContentScheduler:
                 # 1. Platform-specific limit (if set)
                 # 2. Deprecated profile.limit (backwards compat)
                 # 3. Global config limit
-                if platform_limit is not None:
-                    return platform_limit
-                if profile.limit is not None:
-                    return profile.limit
+                if platform_limit is not None and platform_limit > 0:
+                     return platform_limit
+                if profile.limit is not None and profile.limit > 0:
+                     return profile.limit
                 return getattr(self.config.limits, platform, 1)
 
             for pass_idx in range(max_limit):
