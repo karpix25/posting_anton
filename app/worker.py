@@ -55,18 +55,21 @@ async def generate_daily_schedule():
     # Fetch existing scheduled posts from Upload Post API to avoid conflicts
     from app.services.platforms import upload_post_client
     occupied_slots: Dict[str, List[datetime]] = {}
+    existing_counts: Dict[str, Dict[str, Dict[str, int]]] = {}
+    
     try:
         scheduled_posts = await upload_post_client.get_scheduled_posts()
-        logger.info(f"[Worker] Raw scheduled posts response type: {type(scheduled_posts)}, count: {len(scheduled_posts) if scheduled_posts else 0}")
+        logger.info(f"[Worker] Raw scheduled posts count: {len(scheduled_posts) if scheduled_posts else 0}")
         
         for post in scheduled_posts:
             # Skip if not a dictionary
             if not isinstance(post, dict):
-                logger.warning(f"[Worker] Skipping non-dict scheduled post: {type(post)}")
                 continue
                 
             profile = post.get('profile_username', '')
             scheduled_date_str = post.get('scheduled_date', '')
+            platform = post.get('platform') or (post.get('platforms')[0] if post.get('platforms') else 'unknown')
+            
             if profile and scheduled_date_str:
                 if profile not in occupied_slots:
                     occupied_slots[profile] = []
@@ -77,17 +80,27 @@ async def generate_daily_schedule():
                     if scheduled_dt.tzinfo:
                         scheduled_dt = scheduled_dt.replace(tzinfo=None)
                     occupied_slots[profile].append(scheduled_dt)
+                    
+                    # Populate existing_counts for backfilling
+                    date_key = scheduled_dt.strftime("%Y-%m-%d")
+                    if date_key not in existing_counts:
+                         existing_counts[date_key] = {}
+                    if profile not in existing_counts[date_key]:
+                         existing_counts[date_key][profile] = {}
+                    
+                    existing_counts[date_key][profile][platform] = existing_counts[date_key][profile].get(platform, 0) + 1
+                    
                 except Exception as parse_err:
                     logger.warning(f"[Worker] Failed to parse date '{scheduled_date_str}': {parse_err}")
         
         total_occupied = sum(len(v) for v in occupied_slots.values())
-        logger.info(f"[Worker] Found {total_occupied} existing scheduled posts in Upload Post (profiles: {list(occupied_slots.keys())})")
+        logger.info(f"[Worker] Found {total_occupied} existing scheduled posts. Syncing counts...")
     except Exception as e:
         logger.warning(f"[Worker] Failed to fetch scheduled posts: {e} - continuing with empty slots")
 
     async for session in get_session():
         scheduler = ContentScheduler(config, session)
-        schedule = await scheduler.generate_schedule(all_videos, config.profiles, occupied_slots)
+        schedule = await scheduler.generate_schedule(all_videos, config.profiles, occupied_slots, existing_counts)
         logger.info(f"Generated {len(schedule)} posts.")
         
         for post in schedule:

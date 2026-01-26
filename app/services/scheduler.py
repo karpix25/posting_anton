@@ -42,7 +42,8 @@ class ContentScheduler:
 
     async def generate_schedule(self, videos: List[Dict[str, Any]], 
                                 profiles: List[SocialProfile], 
-                                occupied_slots: Dict[str, List[datetime]]) -> List[Dict[str, Any]]:
+                                occupied_slots: Dict[str, List[datetime]],
+                                existing_counts: Optional[Dict[str, Dict[str, Dict[str, int]]]] = None) -> List[Dict[str, Any]]:
         # 1. Filter active profiles (Enabled + Has at least one valid platform)
         active_profiles = []
         skipped_reasons = {"disabled": 0, "no_platforms": 0}
@@ -116,8 +117,22 @@ class ContentScheduler:
             daily_profiles = active_profiles.copy()
             random.shuffle(daily_profiles)
             
-            # Track profile publish counts per day
+            # Track profile publish counts per day (Pre-fill with existing counts if available)
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
+            
+            date_key = current_day_start.strftime("%Y-%m-%d")
+            if existing_counts and date_key in existing_counts:
+                logger.info(f"[Scheduler] Found existing posts for {date_key}, syncing counters...")
+                for p_user, p_counts in existing_counts[date_key].items():
+                    if p_user in profile_counts:
+                         for pl, count in p_counts.items():
+                             if pl in profile_counts[p_user]:
+                                 profile_counts[p_user][pl] = count
+                
+                # Debug log for first profile
+                first_p = list(existing_counts[date_key].keys())[0] if existing_counts[date_key] else None
+                if first_p and first_p in profile_counts:
+                     logger.info(f"   (Debug) {first_p} starts with: {profile_counts[first_p]}")
 
             # Determine max iterations
             # We must consider both global limits AND profile-specific overrides
