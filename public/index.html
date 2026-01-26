@@ -344,6 +344,128 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- PUBLISHING STATS WIDGET -->
+                <div v-if="publishingStats" class="mt-6 mb-8 glass-card p-6"
+                    style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-bold flex items-center gap-2">
+                            📊 Общая статистика публикаций
+                        </h3>
+                        <button @click="loadPublishingStats" class="btn-secondary py-1 px-3 text-sm">
+                            🔄 Обновить
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+                            <div class="text-xs opacity-70 mb-1">Ожидается постов</div>
+                            <div class="text-2xl font-bold text-blue-400">{{ publishingStats.total_expected_posts || 0
+                                }}</div>
+                        </div>
+                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+                            <div class="text-xs opacity-70 mb-1">Всего создано</div>
+                            <div class="text-2xl font-bold text-purple-400">{{ publishingStats.total_actual_posts || 0
+                                }}</div>
+                        </div>
+                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+                            <div class="text-xs opacity-70 mb-1">Успешно</div>
+                            <div class="text-2xl font-bold text-green-400">{{ publishingStats.posts_by_status?.success
+                                || 0 }}</div>
+                        </div>
+                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
+                            <div class="text-xs opacity-70 mb-1">Успешность</div>
+                            <div class="text-2xl font-bold text-cyan-400">{{ publishingStats.avg_success_rate || 0 }}%
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Status Breakdown -->
+                        <div class="bg-gray-800/30 p-4 rounded-xl border border-gray-700">
+                            <div class="text-sm font-semibold opacity-80 mb-3 border-b border-gray-700 pb-2">По статусу:
+                            </div>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-amber-400">⏳ В очереди:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_status?.queued || 0 }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-blue-400">🔄 Обработка:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_status?.processing || 0
+                                        }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-red-400">❌ Ошибки:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_status?.failed || 0 }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Platform Breakdown -->
+                        <div class="bg-gray-800/30 p-4 rounded-xl border border-gray-700">
+                            <div class="text-sm font-semibold opacity-80 mb-3 border-b border-gray-700 pb-2">По
+                                платформам:</div>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-pink-400">📸 Instagram:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.instagram || 0
+                                        }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-cyan-400">🎵 TikTok:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.tiktok || 0 }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-red-400">📹 YouTube:</span>
+                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.youtube || 0 }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ERROR LOG WIDGET -->
+                <div v-if="errorStats.length > 0" class="glass-card p-6 border-red-900/50"
+                    style="background: rgba(40, 10, 10, 0.4);">
+                    <h3 class="text-xl font-bold mb-6 text-red-500 flex items-center gap-2">
+                        <span>⚠️ Журнал Ошибок (7 дней)</span>
+                        <button @click="loadErrors" class="btn-secondary py-1 px-3 text-xs ml-auto">
+                            🔄 Обновить
+                        </button>
+                    </h3>
+
+                    <div class="space-y-4">
+                        <div v-for="day in errorStats" :key="day.date"
+                            class="border border-red-900/30 rounded-lg overflow-hidden">
+                            <!-- Day Header -->
+                            <div class="bg-red-900/20 px-4 py-3 font-bold flex justify-between items-center">
+                                <span class="text-gray-200">{{ day.date }}</span>
+                                <span
+                                    class="bg-red-500/20 text-red-300 text-xs px-2 py-1 rounded-full font-bold border border-red-500/30">
+                                    Всего: {{ day.total }}
+                                </span>
+                            </div>
+
+                            <!-- Error list -->
+                            <div class="divide-y divide-red-900/20 bg-black/20">
+                                <div v-for="(err, idx) in day.errors" :key="idx"
+                                    class="px-4 py-3 flex justify-between items-center hover:bg-red-900/10 transition-colors">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-red-400 font-bold w-8 text-right">{{ err.count }}x</span>
+                                        <span class="text-gray-300 font-medium text-sm">{{ err.type }}</span>
+                                    </div>
+                                    <div class="w-32 bg-gray-800 rounded-full h-1.5 hidden sm:block">
+                                        <div class="bg-red-500 h-1.5 rounded-full"
+                                            :style="{ width: Math.min(100, (err.count / day.total) * 100) + '%' }">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
 
@@ -998,8 +1120,6 @@
                         this.logs = data.logs || [];
                     } catch (e) {
                         console.error('Failed to load logs:', e);
-                    } finally {
-                        this.logsLoading = false;
                     } finally {
                         this.logsLoading = false;
                     }
