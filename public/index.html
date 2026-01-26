@@ -488,6 +488,9 @@
                                 <th class="text-left p-4 font-semibold">Профиль</th>
                                 <th class="text-left p-4 font-semibold">Категория</th>
                                 <th class="text-left p-4 font-semibold">Платформы</th>
+                                <th class="text-center p-4 font-semibold w-20" title="Limit IG">IG</th>
+                                <th class="text-center p-4 font-semibold w-20" title="Limit TT">TT</th>
+                                <th class="text-center p-4 font-semibold w-20" title="Limit YT">YT</th>
                                 <th class="text-center p-4 font-semibold w-32">Активен</th>
                             </tr>
                         </thead>
@@ -516,6 +519,7 @@
                                         </datalist>
                                     </div>
                                 </td>
+                                </td>
                                 <td class="p-4">
                                     <div class="flex gap-2 flex-wrap">
                                         <span v-for="platform in (profile.platforms || [])" :key="platform" :class="['px-2 py-1 text-xs rounded font-medium',
@@ -525,6 +529,24 @@
                                             {{ platform === 'instagram' ? 'IG' : platform === 'tiktok' ? 'TT' : 'YT' }}
                                         </span>
                                     </div>
+                                </td>
+                                <td class="p-4 text-center">
+                                    <input type="number" min="0" max="50" v-model.number="profile.instagramLimit"
+                                        placeholder="-"
+                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                        title="Instagram лимит (пусто = глобальный)">
+                                </td>
+                                <td class="p-4 text-center">
+                                    <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit"
+                                        placeholder="-"
+                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                        title="TikTok лимит (пусто = глобальный)">
+                                </td>
+                                <td class="p-4 text-center">
+                                    <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit"
+                                        placeholder="-"
+                                        class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
+                                        title="YouTube лимит (пусто = глобальный)">
                                 </td>
                                 <td class="p-4 text-center">
                                     <label class="inline-flex items-center cursor-pointer">
