@@ -43,14 +43,32 @@ class ContentScheduler:
     async def generate_schedule(self, videos: List[Dict[str, Any]], 
                                 profiles: List[SocialProfile], 
                                 occupied_slots: Dict[str, List[datetime]]) -> List[Dict[str, Any]]:
-        # Filter profiles: enabled AND has connected platforms
-        active_profiles = [p for p in profiles if p.enabled and p.platforms and len(p.platforms) > 0]
+        # 1. Filter active profiles (Enabled + Has at least one valid platform)
+        active_profiles = []
+        skipped_reasons = {"disabled": 0, "no_platforms": 0}
+        
+        for p in profiles:
+            if not p.enabled:
+                skipped_reasons["disabled"] += 1
+                continue
+                
+            # Filter empty strings or nulls from platforms
+            valid_platforms = [pl for pl in (p.platforms or []) if pl and pl.strip()]
+            
+            if not valid_platforms:
+                skipped_reasons["no_platforms"] += 1
+                # logger.debug(f"[Scheduler] Skipping {p.username}: No valid platforms configured")
+                continue
+                
+            # Update profile with cleaned platforms (temporary for this run)
+            p.platforms = valid_platforms
+            active_profiles.append(p)
         
         if not active_profiles:
-            logger.warning("[Scheduler] No active profiles with connected platforms found!")
+            logger.warning(f"[Scheduler] No active profiles found! (Total: {len(profiles)}, Disabled: {skipped_reasons['disabled']}, No Platforms: {skipped_reasons['no_platforms']})")
             return []
         
-        logger.info(f"[Scheduler] Active profiles with platforms: {len(active_profiles)}/{len(profiles)}")
+        logger.info(f"[Scheduler] Active profiles: {len(active_profiles)} (Skipped: {skipped_reasons['disabled']} disabled, {skipped_reasons['no_platforms']} no platforms)")
         
         schedule = []
         
