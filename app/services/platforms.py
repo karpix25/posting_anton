@@ -43,7 +43,7 @@ class UploadPostClient:
 
     async def get_scheduled_posts(self) -> List[Dict[str, Any]]:
         """Fetch list of pending scheduled posts from Upload Post API."""
-        async with httpx.AsyncClient(timeout=120.0) as client:  # 2 minutes for schedule fetching
+        async with httpx.AsyncClient(timeout=600.0) as client:  # 10 minutes for schedule fetching
             try:
                 response = await client.get(SCHEDULE_API_URL, headers=self.headers)
                 if response.status_code == 200:
@@ -82,7 +82,7 @@ class UploadPostClient:
             'platform[]': platform,
             'video': video_url,
             'title': title or caption,  # Fallback title
-            'async_upload': True  # ✅ CRITICAL: Must be boolean True, not string 'true'
+            'async_upload': 'true'  # ✅ Changed to string 'true' to ensure lowercase in form-data
         }
 
         # Add scheduled_date in ISO format

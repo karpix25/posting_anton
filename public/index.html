@@ -1,1301 +1,1937 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ContentFlow - Automation Dashboard</title>
+  <meta charset="UTF-8">
+  <title>Панель управления (v1.1)</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Hide number input arrows */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      appearance: none;
+      margin: 0;
+    }
 
-    <!-- Vue 3 -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    input[type=number] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    /* Accessibility: Reduce motion for users who prefer it */
+    @media (prefers-reduced-motion: reduce) {
 
-    <!-- Inter Font -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
 
-    <style>
-        :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-card: rgba(51, 65, 85, 0.6);
-            --accent-primary: #3b82f6;
-            --accent-secondary: #8b5cf6;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-        }
-
-        /* Glassmorphism */
-        .glass-card {
-            background: var(--bg-card);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-
-        /* Gradient Backgrounds */
-        .gradient-blue {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-        }
-
-        .gradient-purple {
-            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
-        }
-
-        .gradient-pink {
-            background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
-        }
-
-        /* Smooth transitions */
-        * {
-            transition: all 0.2s ease;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                animation-duration: 0.01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-            }
-        }
-
-        /* Button Hover Effects */
-        .btn-primary {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            padding: 0.75rem 1.5rem;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            border: none;
-            color: white;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.75rem 1.5rem;
-            border-radius: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        /* Navigation */
-        .nav-link {
-            padding: 0.75rem 1.25rem;
-            border-radius: 8px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            cursor: pointer;
-        }
-
-        .nav-link:hover {
-            color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-link.active {
-            color: var(--accent-primary);
-            background: rgba(59, 130, 246, 0.1);
-        }
-
-        /* KPI Cards */
-        .kpi-card {
-            padding: 1.5rem;
-            border-radius: 16px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .kpi-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.1), transparent);
-            pointer-events: none;
-        }
-
-        .kpi-card:hover {
-            transform: scale(1.02);
-        }
-
-        /* Number Animation */
-        .kpi-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            line-height: 1;
-            margin: 0.5rem 0;
-        }
-
-        /* Activity Feed */
-        .activity-item {
-            padding: 1rem;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.03);
-            border-left: 3px solid transparent;
-        }
-
-        .activity-item:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
-
-        .activity-item.success {
-            border-left-color: var(--success);
-        }
-
-        .activity-item.warning {
-            border-left-color: var(--warning);
-        }
-
-        /* Focus states */
-        button:focus-visible,
-        input:focus-visible {
-            outline: 2px solid var(--accent-primary);
-            outline-offset: 2px;
-        }
-    </style>
+    /* Improved focus states */
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
+    }
+  </style>
 </head>
 
-<body>
-    <div id="app">
-        <!-- Top Navigation -->
-        <nav class="glass-card" style="margin: 1rem; padding: 1rem 2rem;">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center gap-8">
-                    <div class="flex items-center gap-2">
-                        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                            <rect width="32" height="32" rx="8" fill="url(#gradient1)" />
-                            <path d="M16 8L24 16L16 24L8 16L16 8Z" fill="white" opacity="0.9" />
-                            <defs>
-                                <linearGradient id="gradient1" x1="0" y1="0" x2="32" y2="32">
-                                    <stop offset="0%" stop-color="#3b82f6" />
-                                    <stop offset="100%" stop-color="#8b5cf6" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        <span class="text-xl font-bold">ContentFlow</span>
-                    </div>
+<body class="bg-gray-100 text-gray-800">
+  <div id="app" class="min-h-screen p-8">
 
-                    <div class="flex gap-2">
-                        <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
-                            :class="['nav-link', { active: currentTab === tab.id }]">
-                            {{ tab.name }}
-                        </button>
-                    </div>
-                </div>
+    <!-- Header -->
+    <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
+      <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
+      <div class="flex items-center gap-4">
+        <!-- Real-time Status Indicator -->
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold transition-colors"
+          :class="realtime.connected ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-amber-100 text-amber-700 border border-amber-200'">
+          <span class="relative flex h-3 w-3">
+            <span v-if="realtime.connected"
+              class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3"
+              :class="realtime.connected ? 'bg-green-500' : 'bg-amber-500'"></span>
+          </span>
+          {{ realtime.connected ? 'Online' : 'Connecting...' }}
+        </div>
 
-                <div class="flex items-center gap-4">
-                    <button @click="saveConfig" class="btn-primary" aria-label="Save all configuration changes">
-                        💾 Save Config
-                    </button>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main style="padding: 0 1rem 2rem 1rem; max-width: 1400px; margin: 0 auto;">
-
-            <!-- DASHBOARD TAB -->
-            <div v-if="currentTab === 'dashboard'">
-                <h1 class="text-3xl font-bold mb-6" style="margin-left: 0.5rem;">Dashboard</h1>
-
-                <!-- KPI Cards -->
-                <div class="grid grid-cols-3 gap-6 mb-8">
-                    <!-- Video Count -->
-                    <div class="kpi-card gradient-blue">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="text-sm opacity-80 mb-1">📹 Video Count</div>
-                                <div class="kpi-number">{{ stats?.totalVideos || 0 }}</div>
-                                <div class="text-sm opacity-70 mt-2">+12% from last week</div>
-                            </div>
-                            <div class="text-4xl opacity-20">📹</div>
-                        </div>
-                    </div>
-
-                    <!-- Active Profiles -->
-                    <div class="kpi-card gradient-purple">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="text-sm opacity-80 mb-1">👥 Active Profiles</div>
-                                <div class="kpi-number">{{ config.profiles?.length || 0 }}</div>
-                                <div class="text-sm opacity-70 mt-2">Across 3 platforms</div>
-                            </div>
-                            <div class="text-4xl opacity-20">👥</div>
-                        </div>
-                    </div>
-
-                    <!-- Published Posts -->
-                    <div class="kpi-card gradient-pink">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="text-sm opacity-80 mb-1">✅ Published</div>
-                                <div class="kpi-number">{{ stats?.publishedCount || 0 }}</div>
-                                <div class="text-sm opacity-70 mt-2">+20% this month</div>
-                            </div>
-                            <div class="text-4xl opacity-20">✅</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Activity Feed & Quick Actions -->
-                <div class="grid grid-cols-3 gap-6">
-                    <!-- Activity Feed (2 columns) -->
-                    <div class="col-span-2 glass-card p-6">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-xl font-semibold">Recent Activity</h2>
-                            <button class="text-sm" style="color: var(--accent-primary)">View All →</button>
-                        </div>
-
-                        <div class="space-y-3">
-                            <div class="activity-item success">
-                                <div class="flex items-start gap-3">
-                                    <div class="text-2xl">✅</div>
-                                    <div class="flex-1">
-                                        <div class="font-medium">Posted to Instagram</div>
-                                        <div class="text-sm" style="color: var(--text-secondary)">@beauty_account - 2
-                                            minutes ago</div>
-                                    </div>
-                                    <div class="text-xs" style="color: var(--text-secondary)">14:32</div>
-                                </div>
-                            </div>
-
-                            <div class="activity-item warning">
-                                <div class="flex items-start gap-3">
-                                    <div class="text-2xl">⏰</div>
-                                    <div class="flex-1">
-                                        <div class="font-medium">Scheduled for tomorrow</div>
-                                        <div class="text-sm" style="color: var(--text-secondary)">@tiktok_profile - 15
-                                            minutes ago</div>
-                                    </div>
-                                    <div class="text-xs" style="color: var(--text-secondary)">14:17</div>
-                                </div>
-                            </div>
-
-                            <div class="activity-item success">
-                                <div class="flex items-start gap-3">
-                                    <div class="text-2xl">📤</div>
-                                    <div class="flex-1">
-                                        <div class="font-medium">Video uploaded to queue</div>
-                                        <div class="text-sm" style="color: var(--text-secondary)">PayWorld brand - 1
-                                            hour ago</div>
-                                    </div>
-                                    <div class="text-xs" style="color: var(--text-secondary)">13:15</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Quick Actions (1 column) -->
-                    <div class="glass-card p-6">
-                        <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
-                        <div class="space-y-3">
-                            <button @click="triggerRun(false)" class="btn-primary w-full"
-                                aria-label="Run full automation cycle">
-                                ▶️ Run Automation
-                            </button>
-                            <button @click="triggerRun(true)" class="btn-secondary w-full"
-                                aria-label="Test run with one post per platform">
-                                🧪 Test Run (1 post)
-                            </button>
-                            <button @click="triggerCleanup" class="btn-secondary w-full"
-                                style="border-color: var(--error); color: var(--error);"
-                                aria-label="Delete all scheduled posts">
-                                🗑️ Cleanup Queue
-                            </button>
-                            <button @click="loadStats(true)" class="btn-secondary w-full"
-                                aria-label="Refresh statistics">
-                                🔄 Refresh Stats
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PUBLISHING STATS WIDGET -->
-                <div v-if="publishingStats" class="mt-6 mb-8 glass-card p-6"
-                    style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-xl font-bold flex items-center gap-2">
-                            📊 Общая статистика публикаций
-                        </h3>
-                        <button @click="loadPublishingStats" class="btn-secondary py-1 px-3 text-sm">
-                            🔄 Обновить
-                        </button>
-                    </div>
-
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                            <div class="text-xs opacity-70 mb-1">Ожидается постов</div>
-                            <div class="text-2xl font-bold text-blue-400">{{ publishingStats.total_expected_posts || 0
-                                }}</div>
-                        </div>
-                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                            <div class="text-xs opacity-70 mb-1">Всего создано</div>
-                            <div class="text-2xl font-bold text-purple-400">{{ publishingStats.total_actual_posts || 0
-                                }}</div>
-                        </div>
-                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                            <div class="text-xs opacity-70 mb-1">Успешно</div>
-                            <div class="text-2xl font-bold text-green-400">{{ publishingStats.posts_by_status?.success
-                                || 0 }}</div>
-                        </div>
-                        <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                            <div class="text-xs opacity-70 mb-1">Успешность</div>
-                            <div class="text-2xl font-bold text-cyan-400">{{ publishingStats.avg_success_rate || 0 }}%
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Status Breakdown -->
-                        <div class="bg-gray-800/30 p-4 rounded-xl border border-gray-700">
-                            <div class="text-sm font-semibold opacity-80 mb-3 border-b border-gray-700 pb-2">По статусу:
-                            </div>
-                            <div class="space-y-2 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-amber-400">⏳ В очереди:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_status?.queued || 0 }}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-blue-400">🔄 Обработка:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_status?.processing || 0
-                                        }}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-red-400">❌ Ошибки:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_status?.failed || 0 }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Platform Breakdown -->
-                        <div class="bg-gray-800/30 p-4 rounded-xl border border-gray-700">
-                            <div class="text-sm font-semibold opacity-80 mb-3 border-b border-gray-700 pb-2">По
-                                платформам:</div>
-                            <div class="space-y-2 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-pink-400">📸 Instagram:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.instagram || 0
-                                        }}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-cyan-400">🎵 TikTok:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.tiktok || 0 }}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-red-400">📹 YouTube:</span>
-                                    <span class="font-bold">{{ publishingStats.posts_by_platform?.youtube || 0 }}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ERROR LOG WIDGET -->
-                <div v-if="errorStats.length > 0" class="glass-card p-6 border-red-900/50"
-                    style="background: rgba(40, 10, 10, 0.4);">
-                    <h3 class="text-xl font-bold mb-6 text-red-500 flex items-center gap-2">
-                        <span>⚠️ Журнал Ошибок (7 дней)</span>
-                        <button @click="loadErrors" class="btn-secondary py-1 px-3 text-xs ml-auto">
-                            🔄 Обновить
-                        </button>
-                    </h3>
-
-                    <div class="space-y-4">
-                        <div v-for="day in errorStats" :key="day.date"
-                            class="border border-red-900/30 rounded-lg overflow-hidden">
-                            <!-- Day Header -->
-                            <div class="bg-red-900/20 px-4 py-3 font-bold flex justify-between items-center">
-                                <span class="text-gray-200">{{ day.date }}</span>
-                                <span
-                                    class="bg-red-500/20 text-red-300 text-xs px-2 py-1 rounded-full font-bold border border-red-500/30">
-                                    Всего: {{ day.total }}
-                                </span>
-                            </div>
-
-                            <!-- Error list -->
-                            <div class="divide-y divide-red-900/20 bg-black/20">
-                                <div v-for="(err, idx) in day.errors" :key="idx"
-                                    class="px-4 py-3 flex justify-between items-center hover:bg-red-900/10 transition-colors">
-                                    <div class="flex items-center gap-3">
-                                        <span class="text-red-400 font-bold w-8 text-right">{{ err.count }}x</span>
-                                        <span class="text-gray-300 font-medium text-sm">{{ err.type }}</span>
-                                    </div>
-                                    <div class="w-32 bg-gray-800 rounded-full h-1.5 hidden sm:block">
-                                        <div class="bg-red-500 h-1.5 rounded-full"
-                                            :style="{ width: Math.min(100, (err.count / day.total) * 100) + '%' }">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-
-            <!-- STATS (ANALYTICS) PAGE -->
-            <div v-if="currentTab === 'stats'">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold">Аналитика и Статистика</h1>
-                    <button @click="loadStats(true)" aria-label="Обновить статистику" class="btn-secondary"
-                        style="padding: 0.5rem 1rem;">
-                        🔄 Обновить
-                    </button>
-                </div>
-
-                <!-- View Mode Switcher -->
-                <div class="glass-card p-4 mb-6">
-                    <div class="flex gap-3">
-                        <button @click="statsViewMode = 'category'"
-                            :class="['px-4 py-2 rounded-lg font-medium transition-all', 
-                                     statsViewMode === 'category' ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600']">
-                            По категориям
-                        </button>
-                        <button @click="statsViewMode = 'author'"
-                            :class="['px-4 py-2 rounded-lg font-medium transition-all',
-                                     statsViewMode === 'author' ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600']">
-                            По авторам
-                        </button>
-                        <button @click="statsViewMode = 'brand'"
-                            :class="['px-4 py-2 rounded-lg font-medium transition-all',
-                                     statsViewMode === 'brand' ? 'bg-blue-500 text-white' : 'bg-gray-700 hover:bg-gray-600']">
-                            По брендам
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Analytics Table -->
-                <div class="glass-card overflow-hidden">
-                    <table class="w-full">
-                        <thead
-                            style="background: rgba(59, 130, 246, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-                            <tr>
-                                <th class="text-left p-4 font-semibold">{{ statsHeader }}</th>
-                                <th class="text-left p-4 font-semibold">Видео</th>
-                                <th class="text-left p-4 font-semibold">Профили</th>
-                                <th class="text-left p-4 font-semibold">Опубликовано</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="item in currentStatsList" :key="item.name"
-                                class="border-b border-gray-700 hover:bg-gray-800 transition-colors">
-                                <td class="p-4 font-medium">{{ item.name }}</td>
-                                <td class="p-4" style="color: var(--text-secondary)">{{ item.count }}</td>
-                                <td class="p-4">
-                                    <div class="flex gap-1 flex-wrap">
-                                        <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
-                                            class="px-2 py-1 text-xs rounded"
-                                            style="background: rgba(59, 130, 246, 0.2); color: var(--accent-primary)">
-                                            @{{ profile }}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="p-4 font-semibold" style="color: var(--success)">
-                                    {{ getPublishedCount(item.name) }}
-                                </td>
-                            </tr>
-                            <tr v-if="currentStatsList.length === 0">
-                                <td colspan="4" class="p-8 text-center" style="color: var(--text-secondary)">
-                                    Нет данных для отображения
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-
-            <!-- PROFILES PAGE -->
-            <div v-if="currentTab === 'profiles'">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold">Управление профилями</h1>
-                    <div class="flex gap-3">
-                        <button @click="loadConfig" class="btn-secondary">
-                            🔄 Обновить
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Profiles Table -->
-
-                <!-- BULK ACTIONS TOOLBAR -->
-                <div v-if="selectedProfiles.length > 0"
-                    class="glass-card mb-4 p-4 flex justify-between items-center sticky top-4 z-10"
-                    style="background: rgba(59, 130, 246, 0.2); border: 1px solid var(--accent-primary);">
-
-                    <div class="font-bold">
-                        Выбрано: {{ selectedProfiles.length }}
-                    </div>
-
-                    <div class="flex items-center gap-4">
-                        <div class="flex items-center gap-2">
-                            <span class="text-sm opacity-80">Категория:</span>
-                            <select v-model="bulkThemeKey"
-                                class="p-2 rounded bg-gray-900 border border-gray-600 text-white">
-                                <option value="">Выберите...</option>
-                                <option v-for="t in availableThemes" :key="t" :value="t">{{ t }}</option>
-                            </select>
-                            <button @click="applyBulkCategory" class="btn-primary py-1 px-3 text-sm">
-                                Применить
-                            </button>
-                        </div>
-
-                        <div class="h-8 w-px bg-white/20 mx-2"></div>
-
-                        <div class="flex gap-2">
-                            <button @click="toggleBulkEnabled(true)"
-                                class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm font-bold">
-                                Включить
-                            </button>
-                            <button @click="toggleBulkEnabled(false)"
-                                class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm font-bold">
-                                Выключить
-                            </button>
-                        </div>
-
-                        <button @click="selectedProfiles = []"
-                            class="ml-4 text-sm underline opacity-70 hover:opacity-100">
-                            Сброс
-                        </button>
-                    </div>
-                </div>
-
-                <div class="glass-card overflow-hidden">
-                    <table class="w-full">
-                        <thead
-                            style="background: rgba(59, 130, 246, 0.1); border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-                            <tr>
-                                <th class="p-4 w-10">
-                                    <input type="checkbox" @change="selectAll($event.target.checked)"
-                                        :checked="config.profiles.length > 0 && selectedProfiles.length === config.profiles.length"
-                                        class="w-5 h-5 rounded cursor-pointer">
-                                </th>
-                                <th class="text-left p-4 font-semibold w-12">Статус</th>
-                                <th class="text-left p-4 font-semibold">Профиль</th>
-                                <th class="text-left p-4 font-semibold">Категория</th>
-                                <th class="text-left p-4 font-semibold">Платформы</th>
-                                <th class="text-center p-4 font-semibold w-20" title="Limit IG">IG</th>
-                                <th class="text-center p-4 font-semibold w-20" title="Limit TT">TT</th>
-                                <th class="text-center p-4 font-semibold w-20" title="Limit YT">YT</th>
-                                <th class="text-center p-4 font-semibold w-32">Активен</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <template v-for="group in groupedProfiles" :key="group.name">
-                                <!-- Group Header -->
-                                <tr class="bg-gray-800/80 hover:bg-gray-700 cursor-pointer transition-colors"
-                                    @click="toggleGroup(group.name)">
-                                    <td class="p-4 text-center">
-                                        <!-- Group Checkbox -->
-                                        <input type="checkbox" :checked="isGroupSelected(group.profiles)"
-                                            @click.stop="toggleGroupSelection(group.profiles, $event.target.checked)"
-                                            class="w-5 h-5 rounded cursor-pointer accent-blue-500">
-                                    </td>
-                                    <td colspan="8" class="p-4 font-bold text-lg text-blue-200">
-                                        <div class="flex items-center gap-2">
-                                            <span>{{ isGroupExpanded(group.name) ? '▼' : '▶' }}</span>
-                                            <span>{{ group.name }}</span>
-                                            <span
-                                                class="text-sm font-normal text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded-full">
-                                                {{ group.profiles.length }}
-                                            </span>
-                                        </div>
-                                    </td>
-                                </tr>
-
-                                <!-- Group Profiles (Rows) -->
-                                <tr v-if="isGroupExpanded(group.name)" v-for="(profile, idx) in group.profiles"
-                                    :key="profile.username"
-                                    class="border-b border-gray-700 hover:bg-gray-800 transition-colors"
-                                    :class="{ 'opacity-50': profile.enabled === false, 'bg-blue-900/20': selectedProfiles.includes(profile.username) }">
-                                    <td class="p-4 text-center pb-8 align-middle">
-                                        <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
-                                            @change="toggleSelection(profile.username)"
-                                            class="w-5 h-5 rounded cursor-pointer">
-                                    </td>
-                                    <td class="p-4 text-center text-xl">
-                                        {{ profile.enabled !== false ? '🟢' : '⚫' }}
-                                    </td>
-                                    <td class="p-4 font-medium">{{ profile.username || 'Без имени' }}</td>
-                                    <td class="p-4">
-                                        <div class="relative">
-                                            <input v-model="profile.theme_key" list="themes-list"
-                                                class="px-2 py-1 rounded border-0 text-sm w-full"
-                                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)"
-                                                placeholder="Название категории">
-                                            <datalist id="themes-list">
-                                                <option v-for="theme in availableThemes" :key="theme" :value="theme">
-                                                </option>
-                                            </datalist>
-                                        </div>
-                                    </td>
-                                    <td class="p-4">
-                                        <div class="flex gap-2 flex-wrap">
-                                            <span v-for="platform in (profile.platforms || [])" :key="platform" :class="['px-2 py-1 text-xs rounded font-medium',
-                                                    platform === 'instagram' ? 'bg-pink-500/20 text-pink-400' :
-                                                    platform === 'tiktok' ? 'bg-cyan-500/20 text-cyan-400' :
-                                                    'bg-red-500/20 text-red-400']">
-                                                {{ platform === 'instagram' ? 'IG' : platform === 'tiktok' ? 'TT' : 'YT'
-                                                }}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td class="p-4 text-center">
-                                        <input type="number" min="0" max="50" v-model.number="profile.instagramLimit"
-                                            placeholder="-"
-                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                            title="Instagram лимит (пусто = глобальный)">
-                                    </td>
-                                    <td class="p-4 text-center">
-                                        <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit"
-                                            placeholder="-"
-                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                            title="TikTok лимит (пусто = глобальный)">
-                                    </td>
-                                    <td class="p-4 text-center">
-                                        <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit"
-                                            placeholder="-"
-                                            class="w-12 bg-transparent border-b border-gray-600 focus:border-blue-500 text-center text-sm"
-                                            title="YouTube лимит (пусто = глобальный)">
-                                    </td>
-                                    <td class="p-4 text-center">
-                                        <label class="inline-flex items-center cursor-pointer">
-                                            <input type="checkbox" :checked="profile.enabled !== false"
-                                                @change="profile.enabled = !profile.enabled; saveConfig()"
-                                                class="sr-only peer">
-                                            <div class="relative w-11 h-6 rounded-full peer
-                                                bg-gray-700 peer-checked:after:translate-x-full
-                                                peer-checked:after:border-white after:content-['']
-                                                after:absolute after:top-[2px] after:start-[2px]
-                                                after:bg-white after:border-gray-300 after:border
-                                                after:rounded-full after:h-5 after:w-5 after:transition-all
-                                                peer-checked:bg-green-600"></div>
-                                        </label>
-                                    </td>
-                                </tr>
-                            </template>
-                            <tr v-if="config.profiles.length === 0">
-                                <td colspan="9" class="p-8 text-center" style="color: var(--text-secondary)">
-                                    Нет профилей. Используйте Sync для загрузки из UploadPost.
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="mt-6 text-sm" style="color: var(--text-secondary)">
-                    Всего профилей: {{ config.profiles.length }} |
-                    Активных: {{ config.profiles.filter(p => p.enabled !== false).length }}
-                </div>
-            </div>
-
-
-            <!-- SETTINGS PAGE -->
-            <div v-if="currentTab === 'settings'">
-                <h1 class="text-3xl font-bold mb-6">Настройки</h1>
-
-                <!-- Scheduler Settings -->
-                <div class="glass-card p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">⏰ Автоматическое расписание</h2>
-
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-3">
-                            <label class="inline-flex items-center cursor-pointer">
-                                <input type="checkbox" v-model="schedule.enabled" class="sr-only peer">
-                                <div class="relative w-14 h-7 rounded-full peer 
-                                    peer-focus:ring-4 peer-focus:ring-blue-800
-                                    bg-gray-700 peer-checked:after:translate-x-full 
-                                    peer-checked:after:border-white after:content-[''] 
-                                    after:absolute after:top-0.5 after:start-[4px] 
-                                    after:bg-white after:border-gray-300 after:border 
-                                    after:rounded-full after:h-6 after:w-6 after:transition-all
-                                    peer-checked:bg-blue-600"></div>
-                            </label>
-                            <span class="text-lg font-medium">{{ schedule.enabled ? 'Включено' : 'Выключено' }}</span>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">
-                                Время запуска ({{ schedule.timezone }})
-                            </label>
-                            <input type="time" v-model="schedule.dailyRunTime" class="p-3 rounded-lg border-0 text-lg"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-
-                        <button @click="saveSchedule" class="btn-primary">
-                            💾 Сохранить расписание
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Platform Limits -->
-                <div class="glass-card p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">📊 Лимиты платформ (за день)</h2>
-
-                    <div class="grid grid-cols-3 gap-4">
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">Instagram</label>
-                            <input type="number" v-model.number="config.limits.instagram" min="0"
-                                class="w-full p-3 rounded-lg border-0"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">TikTok</label>
-                            <input type="number" v-model.number="config.limits.tiktok" min="0"
-                                class="w-full p-3 rounded-lg border-0"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">YouTube</label>
-                            <input type="number" v-model.number="config.limits.youtube" min="0"
-                                class="w-full p-3 rounded-lg border-0"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Days to Generate -->
-                <div class="glass-card p-6">
-                    <h2 class="text-xl font-semibold mb-4">📅 Планирование</h2>
-
-                    <div>
-                        <label class="block text-sm mb-2" style="color: var(--text-secondary)">
-                            На сколько дней вперёд планировать?
-                        </label>
-                        <input type="number" v-model.number="config.daysToGenerate" min="1" max="30" autocomplete="off"
-                            class="w-full p-3 rounded-lg border-0"
-                            style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)" placeholder="1">
-                        <p class="text-xs mt-2" style="color: var(--text-secondary)">
-                            1 = только сегодня. 7 = неделя вперёд.
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PROFILES PAGE (simplified for now) -->
-
-
-            <div v-if="currentTab === 'clients'">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold">AI Клиенты и Промты</h1>
-                    <button @click="addClient" aria-label="Добавить нового клиента" class="btn-primary">
-                        + Добавить клиента
-                    </button>
-                </div>
-
-                <div v-for="(client, idx) in config.clients" :key="idx" class="glass-card p-6 mb-4">
-                    <div class="grid grid-cols-3 gap-4 mb-4">
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">Имя клиента
-                                (бренд)</label>
-                            <input v-model="client.name" class="w-full p-3 rounded-lg border-0"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">Regex папки</label>
-                            <input v-model="client.regex" class="w-full p-3 rounded-lg border-0 font-mono text-sm"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)">
-                        </div>
-                        <div>
-                            <label class="block text-sm mb-2" style="color: var(--text-secondary)">Квота
-                                (видео/месяц)</label>
-                            <input v-model.number="client.quota" type="number" min="0"
-                                class="w-full p-3 rounded-lg border-0"
-                                style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)"
-                                placeholder="30">
-                            <div v-if="client.quota" class="mt-3">
-                                <div class="text-sm mb-2" style="color: var(--text-secondary)">
-                                    <span class="font-semibold" style="color: var(--text-primary)">{{
-                                        getClientPublished(client) }}</span> / {{ client.quota }}
-                                    опубликовано
-                                    <span class="ml-2" style="color: var(--success)">(осталось: {{
-                                        getClientRemaining(client) }})</span>
-                                </div>
-                                <div class="w-full rounded-full h-2 overflow-hidden"
-                                    style="background: rgba(255, 255, 255, 0.1)">
-                                    <div class="h-full transition-all"
-                                        :style="{ width: getClientProgress(client) + '%', background: 'var(--accent-primary)' }">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <label class="block text-sm mb-2" style="color: var(--text-secondary)">AI Системный
-                            промт</label>
-                        <textarea v-model="client.prompt" rows="4"
-                            class="w-full p-3 rounded-lg border-0 font-mono text-sm"
-                            style="background: rgba(255, 255, 255, 0.05); color: var(--text-primary)"></textarea>
-                    </div>
-                    <div class="text-right">
-                        <button @click="removeClient(idx)" class="text-sm hover:underline" style="color: var(--error)">
-                            Удалить клиента
-                        </button>
-                    </div>
-                </div>
-
-                <div v-if="config.clients.length === 0" class="glass-card p-8 text-center">
-                    <p style="color: var(--text-secondary)">Нет клиентов. Добавьте первого клиента.</p>
-                </div>
-            </div>
-
-            <div v-if="currentTab === 'logs'">
-                <div class="flex justify-between items-center mb-6">
-                    <h1 class="text-3xl font-bold">📋 Логи системы</h1>
-                    <div class="flex gap-3 items-center">
-                        <label class="flex items-center gap-2 text-sm">
-                            <input type="checkbox" v-model="logsAutoRefresh" class="rounded">
-                            <span>Автообновление (3 сек)</span>
-                        </label>
-                        <button @click="loadLogs" aria-label="Обновить логи системы" class="btn-secondary">
-                            🔄 Обновить
-                        </button>
-                    </div>
-                </div>
-
-                <div v-if="logsLoading" class="glass-card p-8 text-center">
-                    <span style="color: var(--text-secondary)">Загрузка логов...</span>
-                </div>
-
-                <div v-else class="glass-card p-4 overflow-auto font-mono text-xs"
-                    style="max-height: 600px; background: #000; color: #00ff00;">
-                    <div v-for="(line, idx) in logs" :key="idx" class="hover:bg-gray-900 px-2 py-1">
-                        {{ line }}
-                    </div>
-                    <div v-if="logs.length === 0" class="p-8 text-center" style="color: #666">
-                        Логов пока нет
-                    </div>
-                </div>
-            </div>
-        </main>
+        <button @click="saveConfig" aria-label="Сохранить все изменения конфигурации"
+          class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow focus-visible:ring-2 focus-visible:ring-green-300">
+          Сохранить изменения
+        </button>
+      </div>
     </div>
 
-    <script>
-        const { createApp } = Vue;
+    <!-- Main Content -->
+    <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-lg overflow-hidden flex">
 
-        createApp({
+      <!-- Sidebar / Tabs -->
+      <div class="w-64 bg-gray-50 border-r p-4 space-y-2">
+        <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+          :class="['w-full text-left px-4 py-2 rounded', currentTab === tab.id ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-200']">
+          {{ tab.name }}
+        </button>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="flex-1 p-8">
+        <div v-if="loading" class="text-center text-gray-500">Загрузка настроек...</div>
+
+        <div v-else>
+
+          <!-- DASHBOARD TAB -->
+          <div v-if="currentTab === 'dashboard'">
+            <h2 class="text-2xl font-bold mb-4">Статус</h2>
+            <div class="grid grid-cols-3 gap-4 mb-8">
+              <div class="bg-blue-50 p-4 rounded border border-blue-100">
+                <div class="text-sm text-gray-500">Следующий запуск</div>
+                <div class="text-lg font-mono">{{ formatCron(config.cronSchedule) }}</div>
+              </div>
+              <div class="bg-purple-50 p-4 rounded border border-purple-100">
+                <div class="text-sm text-gray-500">Активные профили</div>
+                <div class="text-lg font-bold">{{ config.profiles?.length || 0 }}</div>
+              </div>
+              <div class="bg-indigo-50 p-4 rounded border border-indigo-100 flex flex-col justify-between">
+                <div>
+                  <div class="text-sm text-gray-500">Видео на диске</div>
+                  <div class="text-lg font-bold" v-if="stats">{{ stats.totalVideos }}</div>
+                  <div class="text-lg font-bold text-gray-400" v-else>--</div>
+                </div>
+                <button @click="loadStats" aria-label="Синхронизировать статистику видео"
+                  class="mt-2 text-xs bg-indigo-200 hover:bg-indigo-300 px-2 py-1 rounded text-indigo-800 self-start focus-visible:ring-2 focus-visible:ring-indigo-500">
+                  🔄 Sync
+                </button>
+              </div>
+            </div>
+
+            <!-- Today Stats Cards -->
+            <div class="flex gap-4 flex-wrap">
+              <!-- Date Card -->
+              <div
+                class="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-slate-500 mb-1">📅 Дата (МСК)</div>
+                <div class="text-xl font-bold text-slate-700">{{ todayStats.date || '--' }}</div>
+                <div class="text-xs text-slate-400 mt-1">{{ todayStats.time_msk || '--:--' }}</div>
+              </div>
+
+              <!-- Success Posts -->
+              <div
+                class="bg-gradient-to-br from-green-50 to-emerald-100 border border-green-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-green-600 mb-1">✅ Опубликовано</div>
+                <div class="text-2xl font-bold text-green-700">{{ todayStats.success_count || 0 }}</div>
+                <div class="text-xs text-green-500 mt-1">за сегодня</div>
+              </div>
+
+              <!-- Active Profiles -->
+              <div
+                class="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-blue-600 mb-1">👤 Профилей</div>
+                <div class="text-2xl font-bold text-blue-700">{{ todayStats.profiles_count || 0 }}</div>
+                <div class="text-xs text-blue-500 mt-1">активных</div>
+              </div>
+
+              <!-- Queued Posts -->
+              <div
+                class="bg-gradient-to-br from-amber-50 to-orange-100 border border-amber-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-amber-600 mb-1">⏳ В очереди</div>
+                <div class="text-2xl font-bold text-amber-700">{{ todayStats.queued_count || 0 }}</div>
+                <div class="text-xs text-amber-500 mt-1">ожидают</div>
+              </div>
+
+              <!-- Failed Posts -->
+              <div v-if="todayStats.failed_count > 0"
+                class="bg-gradient-to-br from-red-50 to-rose-100 border border-red-200 p-4 rounded-lg shadow-sm min-w-[140px]">
+                <div class="text-sm text-red-600 mb-1">❌ Ошибки</div>
+                <div class="text-2xl font-bold text-red-700">{{ todayStats.failed_count }}</div>
+                <div class="text-xs text-red-500 mt-1">за сегодня</div>
+              </div>
+            </div>
+
+            <!-- Publishing Statistics Widget -->
+            <div v-if="publishingStats"
+              class="mt-6 bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-lg p-6 shadow-sm">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-indigo-900">📊 Общая статистика публикаций</h3>
+                <button @click="loadPublishingStats"
+                  class="text-xs bg-indigo-200 hover:bg-indigo-300 px-3 py-1 rounded text-indigo-800">
+                  🔄 Обновить
+                </button>
+              </div>
+
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs text-gray-600 mb-1">Ожидается постов</div>
+                  <div class="text-2xl font-bold text-indigo-700">{{ publishingStats.total_expected_posts || 0 }}</div>
+                </div>
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs text-gray-600 mb-1">Всего создано</div>
+                  <div class="text-2xl font-bold text-purple-700">{{ publishingStats.total_actual_posts || 0 }}</div>
+                </div>
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs text-gray-600 mb-1">Успешно</div>
+                  <div class="text-2xl font-bold text-green-700">{{ publishingStats.posts_by_status?.success || 0 }}
+                  </div>
+                </div>
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs text-gray-600 mb-1">Успешность</div>
+                  <div class="text-2xl font-bold text-blue-700">{{ publishingStats.avg_success_rate || 0 }}%</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-4">
+                <!-- Status Breakdown -->
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs font-semibold text-gray-700 mb-2">По статусу:</div>
+                  <div class="space-y-1 text-sm">
+                    <div class="flex justify-between">
+                      <span class="text-amber-600">⏳ В очереди:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_status?.queued || 0 }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-blue-600">🔄 Обработка:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_status?.processing || 0 }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-red-600">❌ Ошибки:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_status?.failed || 0 }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Platform Breakdown -->
+                <div class="bg-white/60 p-3 rounded">
+                  <div class="text-xs font-semibold text-gray-700 mb-2">По платформам:</div>
+                  <div class="space-y-1 text-sm">
+                    <div class="flex justify-between">
+                      <span class="text-pink-600">📸 Instagram:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_platform?.instagram || 0 }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-blue-600">🎵 TikTok:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_platform?.tiktok || 0 }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-red-600">📹 YouTube:</span>
+                      <span class="font-bold">{{ publishingStats.posts_by_platform?.youtube || 0 }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button @click="triggerRun(false)"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold">
+              Запустить автоматизацию
+            </button>
+            <button @click="triggerRun(true)"
+              class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded text-lg font-semibold"
+              title="Only 1 post per platform (Safe Mode)">
+              🧪 Тестовый запуск (1 пост)
+            </button>
+            <button @click="triggerCleanup"
+              class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded text-lg font-semibold"
+              title="Удалить все запланированные посты">
+              🗑️ Сброс
+            </button>
+
+            <!-- GROUPED ERRORS BY DATE & TYPE -->
+            <div v-if="errorStats.length > 0" class="mt-8 col-span-full w-full">
+              <h3 class="text-xl font-bold mb-4 text-red-600 flex items-center gap-2">
+                <span>⚠️ Журнал Ошибок (7 дней)</span>
+              </h3>
+
+              <div class="space-y-6">
+                <div v-for="day in errorStats" :key="day.date"
+                  class="border border-gray-200 rounded-lg overflow-hidden">
+                  <!-- Day Header -->
+                  <div class="bg-gray-100 px-4 py-2 font-bold flex justify-between items-center">
+                    <span class="text-gray-700">{{ day.date }}</span>
+                    <span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">
+                      Всего: {{ day.total }}
+                    </span>
+                  </div>
+
+                  <!-- Error Types List -->
+                  <div class="divide-y divide-gray-100 bg-white">
+                    <div v-for="(err, idx) in day.errors" :key="idx"
+                      class="px-4 py-3 flex justify-between items-center hover:bg-red-50 transition-colors">
+                      <div class="flex items-center gap-3">
+                        <span class="text-red-500 font-bold w-6 text-right">{{ err.count }}x</span>
+                        <span class="text-gray-800 font-medium">{{ err.type }}</span>
+                      </div>
+                      <!-- Progress bar visualization -->
+                      <div class="w-32 bg-gray-100 rounded-full h-1.5 hidden sm:block">
+                        <div class="bg-red-400 h-1.5 rounded-full"
+                          :style="{ width: Math.min(100, (err.count / day.total) * 100) + '%' }"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STATS TAB -->
+        <div v-if="currentTab === 'stats'">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
+            <button @click="loadStats(true)" aria-label="Обновить статистику"
+              class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 focus-visible:ring-2 focus-visible:ring-blue-500">🔄
+              Обновить</button>
+          </div>
+
+          <div v-if="statsLoading" class="text-center py-8 text-gray-500">Сканирование Яндекс Диска...</div>
+          <div v-else>
+            <!-- Overview Cards -->
+            <div class="grid grid-cols-2 gap-6 mb-8">
+              <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 text-center">
+                <div class="text-gray-500 mb-1">Всего доступно видео</div>
+                <div class="text-4xl font-bold text-blue-700">{{ stats.totalVideos }}</div>
+                <div class="text-xs text-blue-400 mt-2">Готовы к публикации (Yandex Disk)</div>
+              </div>
+              <div class="bg-green-50 p-6 rounded-lg border border-green-100 text-center">
+                <div class="text-gray-500 mb-1">Опубликовано и удалено</div>
+                <div class="text-4xl font-bold text-green-700">{{ stats.publishedCount }}</div>
+                <div class="text-xs text-green-400 mt-2">За всё время</div>
+              </div>
+            </div>
+
+            <!-- Statistics Summary Cards -->
+            <div v-if="statsSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Опубликовано</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.published_total }}</div>
+              </div>
+              <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Удалено</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.deleted_total }}</div>
+              </div>
+              <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">Instagram</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.instagram }}</div>
+              </div>
+              <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white shadow-lg">
+                <div class="text-sm opacity-90">TikTok + YouTube</div>
+                <div class="text-3xl font-bold mt-2">{{ statsSummary.by_platform.tiktok +
+                  statsSummary.by_platform.youtube }}</div>
+              </div>
+            </div>
+
+            <!-- Categories Breakdown -->
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="text-xl font-bold">Разбивка по {{ statsViewMode === 'category' ? 'Категориям' : (statsViewMode
+                === 'brand' ? 'Брендам' : 'Авторам') }}
+              </h3>
+
+              <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
+                <button @click="statsViewMode = 'category'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'category' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Темам
+                </button>
+                <button @click="statsViewMode = 'author'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Авторам
+                </button>
+                <button @click="statsViewMode = 'brand'"
+                  :class="['px-3 py-1 rounded-md transition', statsViewMode === 'brand' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600 hover:text-gray-800']">
+                  По Брендам
+                </button>
+              </div>
+            </div>
+            <div class="bg-white border rounded-lg overflow-hidden">
+              <table class="w-full border-collapse mt-6">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th v-if="statsViewMode === 'author'" class="text-left p-3 border-b w-8"></th>
+                    <th class="text-left p-3 border-b">{{ statsHeader }}</th>
+                    <th class="text-left p-3 border-b">Профили</th>
+                    <th class="text-right p-3 border-b w-32">На Диске</th>
+                    <th class="text-right p-3 border-b w-32">Опубликовано</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="item in currentStatsList" :key="item.name">
+                    <tr class="border-b hover:bg-gray-50">
+                      <td v-if="statsViewMode === 'author'" class="p-3 text-center">
+                        <button @click="toggleAuthorExpand(item.name)"
+                          class="text-blue-600 hover:text-blue-800 font-bold text-lg"
+                          :title="expandedAuthors.includes(item.name) ? 'Свернуть' : 'Развернуть бренды'">
+                          {{ expandedAuthors.includes(item.name) ? '▼' : '▶' }}
+                        </button>
+                      </td>
+                      <td class="p-3 capitalize">{{ item.name }}</td>
+                      <td class="p-3">
+                        <div class="flex gap-2 flex-wrap">
+                          <span v-for="profile in getProfilesForCategory(item.name)" :key="profile"
+                            class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
+                            {{ profile }}
+                          </span>
+                          <span
+                            v-if="!getProfilesForCategory(item.name) || getProfilesForCategory(item.name).length === 0"
+                            class="text-gray-400 text-sm italic">
+                            Нет профилей
+                          </span>
+                        </div>
+                      </td>
+                      <td class="p-3 text-right font-semibold">{{ item.count.toLocaleString() }}</td>
+                      <td class="p-3 text-right font-bold text-green-600">{{ getPublishedCount(item.name) }}</td>
+                    </tr>
+                    <tr v-if="statsViewMode === 'author' && expandedAuthors.includes(item.name)" class="bg-blue-50">
+                      <td :colspan="5" class="p-0">
+                        <div class="px-8 py-3">
+                          <div class="text-xs font-semibold text-gray-600 mb-2">Разбивка по брендам:</div>
+                          <table class="w-full text-sm">
+                            <thead>
+                              <tr class="text-xs text-gray-500">
+                                <th class="text-left py-1">Бренд</th>
+                                <th class="text-right py-1">Количество</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="(count, brand) in getAuthorBrands(item.name)" :key="brand"
+                                class="border-t border-blue-100">
+                                <td class="py-2 capitalize">{{ brand }}</td>
+                                <td class="py-2 text-right font-semibold">{{ count }}</td>
+                              </tr>
+                              <tr
+                                v-if="!getAuthorBrands(item.name) || Object.keys(getAuthorBrands(item.name)).length === 0">
+                                <td colspan="2" class="py-2 text-center text-gray-400 italic">Нет данных</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                  <tr v-if="currentStatsList.length === 0">
+                    <td :colspan="statsViewMode === 'author' ? 5 : 4" class="p-4 text-center text-gray-400">Категории не
+                      найдены.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SETTINGS TAB -->
+        <div v-if="currentTab === 'settings'">
+          <h2 class="text-2xl font-bold mb-4">Общие настройки</h2>
+
+          <!-- Schedule Settings -->
+          <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded">
+            <h3 class="text-lg font-bold mb-3">⏰ Расписание автоматизации</h3>
+
+            <div class="mb-4">
+              <label class="flex items-center cursor-pointer">
+                <input type="checkbox" v-model="schedule.enabled" class="mr-2 w-5 h-5">
+                <span class="font-semibold">Включить автоматический запуск</span>
+              </label>
+              <p class="text-xs text-gray-600 mt-1 ml-7">Автоматизация будет запускаться каждый день в указанное время
+              </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block mb-2 font-semibold">Время запуска</label>
+                <input type="time" v-model="schedule.dailyRunTime" class="w-full border p-2 rounded"
+                  :disabled="!schedule.enabled">
+                <p class="text-xs text-gray-500 mt-1">Формат: HH:MM (24-часовой)</p>
+              </div>
+
+              <div>
+                <label class="block mb-2 font-semibold">Часовой пояс</label>
+                <select v-model="schedule.timezone" class="w-full border p-2 rounded" :disabled="!schedule.enabled">
+                  <option value="Europe/Moscow">Москва (МСК, UTC+3)</option>
+                  <option value="Europe/Kiev">Киев (UTC+2)</option>
+                  <option value="Asia/Yekaterinburg">Екатеринбург (UTC+5)</option>
+                  <option value="Asia/Novosibirsk">Новосибирск (UTC+7)</option>
+                  <option value="UTC">UTC (UTC+0)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-4 flex justify-between items-center">
+              <div class="text-sm text-gray-600">
+                <span v-if="schedule.enabled" class="text-green-600 font-semibold">✓ Активно</span>
+                <span v-else class="text-gray-400">○ Отключено</span>
+                <span v-if="schedule.enabled"> • Запуск: {{ schedule.dailyRunTime }} ({{ schedule.timezone }})</span>
+              </div>
+              <button @click="saveSchedule"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-semibold">
+                💾 Сохранить расписание
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label class="block mb-2 font-semibold">Папки Яндекс Диска (через запятую)</label>
+            <input v-model="foldersInput" @input="updateFolders" class="w-full border p-2 rounded">
+          </div>
+
+          <div class="mb-4">
+            <label class="block mb-2 font-semibold">На сколько дней планировать вперед?</label>
+            <input type="number" min="1" max="30" v-model.number="config.daysToGenerate" autocomplete="off"
+              class="w-full border p-2 rounded" placeholder="1">
+            <p class="text-xs text-gray-500 mt-1">1 = только сегодня. 7 = неделя.</p>
+          </div>
+
+          <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (постов в день на профиль)</h3>
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label>Instagram</label>
+              <input type="number" v-model="config.limits.instagram" class="w-full border p-2 rounded">
+            </div>
+            <div>
+              <label>TikTok</label>
+              <input type="number" v-model="config.limits.tiktok" class="w-full border p-2 rounded">
+            </div>
+            <div>
+              <label>YouTube</label>
+              <input type="number" v-model="config.limits.youtube" class="w-full border p-2 rounded">
+            </div>
+          </div>
+        </div>
+
+        <!-- PROFILES TAB -->
+        <div v-if="currentTab === 'profiles'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Социальные профили</h2>
+            <div class="space-x-2">
+              <button @click="syncProfiles" aria-label="Синхронизировать профили с UploadPost"
+                class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 focus-visible:ring-2 focus-visible:ring-blue-500">🔄
+                Синхронизировать
+                (UploadPost)</button>
+              <button @click="fullResync" aria-label="Полный сброс и загрузка профилей заново"
+                class="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 border border-red-300 focus-visible:ring-2 focus-visible:ring-red-500">
+                ⚠️ Полный Сброс (Скачать заново)
+              </button>
+              <button @click="addProfile" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+                профиль</button>
+            </div>
+          </div>
+
+          <!-- Active Profiles -->
+          <div v-if="activeProfiles.length > 0">
+            <div class="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded">
+              <button @click="showActiveProfiles = !showActiveProfiles"
+                class="flex-1 text-left text-lg font-semibold hover:text-blue-600 flex items-center gap-2">
+                <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
+                <span class="text-xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
+              </button>
+              <div class="flex gap-2 text-sm" v-if="showActiveProfiles">
+                <button @click="expandAllGroups(true)" class="text-blue-600 hover:underline">Развернуть все</button>
+                <span class="text-gray-300">|</span>
+                <button @click="expandAllGroups(false)" class="text-blue-600 hover:underline">Свернуть все</button>
+              </div>
+            </div>
+
+            <!-- BULK ACTIONS BAR (Floating / Top) -->
+            <div v-if="selectedProfiles.length > 0"
+              class="sticky top-0 z-10 bg-blue-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
+              <div class="font-bold">
+                Выбрано профилей: {{ selectedProfiles.length }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span>Применить категорию ко всем:</span>
+                <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
+                  <option disabled value="">Выберите...</option>
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                    {{ theme }}
+                  </option>
+                </select>
+                <button @click="applyBulkCategory"
+                  class="bg-white text-blue-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                  Применить
+                </button>
+
+                <div class="border-l border-blue-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Активность:</span>
+                  <button @click="toggleBulkEnabled(true)"
+                    class="bg-green-500 hover:bg-green-600 text-white font-bold px-3 py-1 rounded text-sm">
+                    ✅ Включить
+                  </button>
+                  <button @click="toggleBulkEnabled(false)"
+                    class="bg-red-500 hover:bg-red-600 text-white font-bold px-3 py-1 rounded text-sm">
+                    ❌ Выключить
+                  </button>
+                </div>
+                <button @click="selectedProfiles = []" class="ml-4 text-sm text-blue-200 hover:text-white underline">
+                  Сбросить выделение
+                </button>
+              </div>
+            </div>
+
+            <div v-if="showActiveProfiles">
+              <div v-for="(profiles, theme) in groupedActiveProfiles" :key="theme"
+                class="mb-4 border rounded overflow-hidden">
+                <!-- Group Header -->
+                <div
+                  class="bg-blue-50 p-3 font-semibold flex justify-between items-center hover:bg-blue-100 transition-colors">
+                  <div class="flex items-center gap-3 flex-1">
+                    <input type="checkbox" :checked="profiles.every(p => selectedProfiles.includes(p.username))"
+                      @change="toggleGroupSelection(profiles, $event.target.checked)"
+                      class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
+
+                    <div @click="toggleGroup(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
+                      <span>📁 {{ theme }}</span>
+                      <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                        }}</span>
+                    </div>
+                  </div>
+                  <span @click="toggleGroup(theme)" class="text-gray-500 cursor-pointer p-2">{{ expandedGroups[theme]
+                    ? '▼' : '▶' }}</span>
+                </div>
+
+                <!-- Group Content (Table) -->
+                <div v-show="expandedGroups[theme]" class="border-t">
+                  <table class="w-full border-collapse">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th class="p-3 w-8"><input type="checkbox"
+                            @change="toggleGroupSelection(profiles, $event.target.checked)"
+                            :checked="profiles.every(p => selectedProfiles.includes(p.username))"></th>
+                        <th class="text-left p-3 w-12"></th>
+                        <th class="text-left p-3">Профиль</th>
+                        <th class="text-left p-3">Категория</th>
+                        <th class="text-left p-3">Платформы</th>
+                        <th class="text-center p-3 w-14" title="Instagram постов/день">📸 IG</th>
+                        <th class="text-center p-3 w-14" title="TikTok постов/день">🎵 TT</th>
+                        <th class="text-center p-3 w-14" title="YouTube постов/день">📹 YT</th>
+                        <th class="text-center p-3 w-20">Вкл</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
+                        :class="{'bg-blue-50': selectedProfiles.includes(profile.username)}">
+                        <td class="p-3 text-center">
+                          <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
+                            @click="handleProfileSelect($event, profile, profiles)" class="w-4 h-4 cursor-pointer">
+                        </td>
+                        <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
+                        <td class="p-2 font-medium">
+                          <input v-model="profile.username"
+                            class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
+                            placeholder="Username">
+                        </td>
+                        <td class="p-2">
+                          <select v-model="profile.theme_key"
+                            class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
+                            <option value="" class="text-gray-400">Без категории</option>
+                            <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                              {{ theme }}
+                            </option>
+                          </select>
+                        </td>
+                        <td class="p-2">
+                          <div class="flex gap-1 flex-wrap">
+                            <span v-for="platform in profile.platforms" :key="platform"
+                              class="px-2 py-0.5 text-xs rounded border" :class="{
+                                    'bg-pink-50 border-pink-200 text-pink-700': platform === 'instagram',
+                                    'bg-blue-50 border-blue-200 text-blue-700': platform === 'tiktok',
+                                    'bg-red-50 border-red-200 text-red-700': platform === 'youtube'
+                                  }">
+                              {{ platform }}
+                            </span>
+                            <span v-if="!profile.platforms || profile.platforms.length === 0"
+                              class="text-gray-400 text-xs italic">
+                              Нет платформ
+                            </span>
+                            <span v-if="!profile.platforms || profile.platforms.length === 0"
+                              class="text-gray-400 text-xs italic">
+                              Нет платформ
+                            </span>
+                          </div>
+                        </td>
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.instagramLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="Instagram лимит (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.tiktokLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="TikTok лимит (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <input type="number" min="0" max="50" v-model.number="profile.youtubeLimit" placeholder="-"
+                            class="w-12 border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-center text-sm"
+                            title="YouTube лимит (пусто = глобальный)">
+                        </td>
+                        <td class="p-2 text-center">
+                          <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" :checked="profile.enabled !== false"
+                              @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                            <div
+                              class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                            </div>
+                          </label>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Disabled Profiles -->
+          <div v-if="disabledProfiles.length > 0">
+            <button @click="showDisabledProfiles = !showDisabledProfiles"
+              class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-gray-50 hover:bg-gray-100 rounded text-gray-600">
+              <span>⚫ Деактивированные ({{ disabledProfiles.length }})</span>
+              <span class="text-2xl">{{ showDisabledProfiles ? '▼' : '▶' }}</span>
+            </button>
+
+            <!-- BULK ACTIONS BAR for Disabled Profiles -->
+            <div v-if="selectedDisabledProfiles.length > 0 && showDisabledProfiles"
+              class="sticky top-0 z-10 bg-gray-600 text-white p-4 rounded shadow-lg mb-4 flex justify-between items-center">
+              <div class="font-bold">
+                Выбрано профилей: {{ selectedDisabledProfiles.length }}
+              </div>
+              <div class="flex items-center gap-2">
+                <span>Применить категорию ко всем:</span>
+                <select v-model="bulkThemeKeyDisabled" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
+                  <option disabled value="">Выберите...</option>
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                    {{ theme }}
+                  </option>
+                </select>
+                <button @click="applyBulkCategoryDisabled"
+                  class="bg-white text-gray-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
+                  Применить
+                </button>
+
+                <div class="border-l border-gray-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Активность:</span>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox"
+                      :checked="selectedDisabledProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)"
+                      @change="toggleBulkEnabledDisabled($event.target.checked)" class="sr-only peer">
+                    <div
+                      class="relative w-11 h-6 bg-gray-800 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-400">
+                    </div>
+                    <span class="ml-2 text-sm font-medium text-gray-100"
+                      v-if="selectedDisabledProfiles.some(u => config.profiles.find(p => p.username === u)?.enabled !== false)">ВКЛ</span>
+                    <span class="ml-2 text-sm font-medium text-gray-200" v-else>ВЫКЛ</span>
+                  </label>
+                </div>
+                <button @click="selectedDisabledProfiles = []"
+                  class="ml-4 text-sm text-gray-200 hover:text-white underline">
+                  Сбросить выделение
+                </button>
+              </div>
+            </div>
+
+            <div v-if="showDisabledProfiles" class="opacity-60">
+              <div v-for="(profiles, theme) in groupedDisabledProfiles" :key="theme"
+                class="mb-4 border rounded overflow-hidden">
+                <!-- Group Header -->
+                <div
+                  class="bg-gray-50 p-3 font-semibold flex justify-between items-center hover:bg-gray-100 transition-colors">
+                  <div class="flex items-center gap-3 flex-1">
+                    <input type="checkbox" :checked="profiles.every(p => selectedDisabledProfiles.includes(p.username))"
+                      @change="toggleGroupSelectionDisabled(profiles, $event.target.checked)"
+                      class="w-5 h-5 rounded cursor-pointer" title="Выбрать всю группу">
+
+                    <div @click="toggleGroupDisabled(theme)" class="flex items-center gap-2 cursor-pointer flex-1">
+                      <span>📁 {{ theme }}</span>
+                      <span class="bg-gray-200 text-gray-800 text-xs px-2 py-1 rounded-full">{{ profiles.length
+                        }}</span>
+                    </div>
+                  </div>
+                  <span @click="toggleGroupDisabled(theme)" class="text-gray-500 cursor-pointer p-2">{{
+                    expandedGroupsDisabled[theme]
+                    ? '▼' : '▶' }}</span>
+                </div>
+
+                <!-- Group Content (Table) -->
+                <div v-show="expandedGroupsDisabled[theme]" class="border-t">
+                  <table class="w-full border-collapse">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th class="p-3 w-8"><input type="checkbox"
+                            @change="toggleGroupSelectionDisabled(profiles, $event.target.checked)"
+                            :checked="profiles.every(p => selectedDisabledProfiles.includes(p.username))"></th>
+                        <th class="text-left p-3 w-12"></th>
+                        <th class="text-left p-3">Профиль</th>
+                        <th class="text-left p-3">Категория</th>
+                        <th class="text-left p-3">Платформы</th>
+                        <th class="text-left p-3 w-20">Лимит</th>
+                        <th class="text-center p-3 w-32">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50"
+                        :class="{'bg-gray-100': selectedDisabledProfiles.includes(profile.username)}">
+                        <td class="p-3 text-center">
+                          <input type="checkbox" :checked="selectedDisabledProfiles.includes(profile.username)"
+                            @click="handleProfileSelectDisabled($event, profile, profiles)"
+                            class="w-4 h-4 cursor-pointer">
+                        </td>
+                        <td class="p-2 text-center text-xl" :title="'Деактивирован'">⚫</td>
+                        <td class="p-2 font-medium text-gray-500">{{ profile.username }}</td>
+                        <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
+                        <td class="p-2">
+                          <div class="flex gap-2">
+                            <span v-for="platform in profile.platforms" :key="platform"
+                              class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                              {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube'
+                              }}
+                            </span>
+                          </div>
+                        </td>
+                        <td class="p-2 text-gray-400 text-center">
+                          {{ profile.limit || '-' }}
+                        </td>
+                        <td class="p-2 text-center">
+                          <label class="inline-flex items-center cursor-pointer">
+                            <input type="checkbox" :checked="profile.enabled !== false"
+                              @change="toggleProfileEnabled(profile)" class="sr-only peer">
+                            <div
+                              class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600">
+                            </div>
+                          </label>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CLIENTS TAB -->
+        <div v-if="currentTab === 'clients'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Клиенты и Промты (AI)</h2>
+            <button @click="addClient" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">+ Добавить
+              клиента</button>
+          </div>
+
+          <div v-for="(client, idx) in config.clients" :key="idx" class="border p-4 rounded mb-4 bg-gray-50">
+            <div class="grid grid-cols-3 gap-4 mb-2">
+              <div>
+                <label class="text-sm text-gray-500 block">Имя клиента (бренд)</label>
+                <input v-model="client.name" class="w-full border p-2 rounded">
+              </div>
+              <div>
+                <label class="text-sm text-gray-500 block">Regex папки</label>
+                <input v-model="client.regex" class="w-full border p-2 rounded font-mono">
+              </div>
+              <div>
+                <label class="text-sm text-gray-500 block">Квота (видео/месяц)</label>
+                <input v-model.number="client.quota" type="number" min="0" class="w-full border p-2 rounded"
+                  placeholder="30">
+                <div v-if="client.quota" class="mt-2">
+                  <div class="text-xs text-gray-600 mb-1">
+                    <span class="font-semibold">{{ getClientPublished(client) }}</span> / {{ client.quota }}
+                    опубликовано
+                    <span class="text-green-600 ml-2">(осталось: {{ getClientRemaining(client) }})</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div class="bg-blue-500 h-full transition-all" :style="{ width: getClientProgress(client) + '%' }">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-500 block">AI Системный промт</label>
+              <textarea v-model="client.prompt" class="w-full border p-2 rounded h-32 font-mono text-sm"></textarea>
+            </div>
+            <div class="text-right mt-2">
+              <button @click="removeClient(idx)" class="text-red-500 text-sm hover:underline">Удалить клиента</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ANALYTICS TAB -->
+        <div v-if="currentTab === 'analytics'">
+          <div class="flex justify-between items-center mb-6">
+            <div>
+              <h2 class="text-2xl font-bold flex items-center gap-2">
+                📊 Глобальная Аналитика
+                <span v-if="analytics.loading"
+                  class="text-sm font-normal text-gray-500 animate-pulse">(Обновление...)</span>
+              </h2>
+              <div class="text-sm text-gray-500 mt-1">
+                Данные за: <span class="font-medium text-gray-700">{{ analytics.date ? new
+                  Date(analytics.date).toLocaleDateString() : 'Неизвестно' }}</span>
+              </div>
+            </div>
+
+            <button @click="refreshAnalytics"
+              class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2 shadow-sm transition-colors"
+              :disabled="analytics.loading">
+              <span v-if="analytics.loading" class="animate-spin">🔄</span>
+              <span v-else>🔄</span>
+              Обновить данные
+            </button>
+          </div>
+
+          <div v-if="!analytics.date && !analytics.loading"
+            class="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+            <div class="text-4xl mb-2">📉</div>
+            <h3 class="text-lg font-medium text-gray-600">Нет данных аналитики</h3>
+            <p class="text-gray-500 mb-4">Нажмите кнопку обновления, чтобы собрать статистику.</p>
+            <button @click="refreshAnalytics" class="text-blue-600 hover:underline">Запустить сбор данных</button>
+          </div>
+
+          <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <!-- INSTAGRAM -->
+            <div
+              class="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                <i class="fab fa-instagram"></i> 📸
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">Instagram
+              </h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-purple-100 text-sm mb-1">Фолловеры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.instagram?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-purple-100 text-sm mb-1">Охваты (Reach)</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.instagram?.reach || 0).toLocaleString() }}
+                  </div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-purple-200">
+                Активных профилей: {{ analytics.platforms.instagram?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- TIKTOK -->
+            <div
+              class="bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                🎵
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">TikTok</h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-gray-400 text-sm mb-1">Фолловеры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.tiktok?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-gray-400 text-sm mb-1">Просмотры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.tiktok?.reach || 0).toLocaleString() }}</div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-gray-500">
+                Активных профилей: {{ analytics.platforms.tiktok?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- YOUTUBE -->
+            <div
+              class="bg-gradient-to-br from-red-600 to-red-700 rounded-xl shadow-lg text-white p-6 relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-20 text-6xl">
+                ▶️
+              </div>
+              <h3 class="text-lg font-semibold uppercase tracking-wider mb-4 border-b border-white/20 pb-2">YouTube</h3>
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-red-200 text-sm mb-1">Подписчики</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.youtube?.followers || 0).toLocaleString() }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-red-200 text-sm mb-1">Просмотры</div>
+                  <div class="text-3xl font-bold">{{ (analytics.platforms.youtube?.reach || 0).toLocaleString() }}</div>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-red-200">
+                Активных профилей: {{ analytics.platforms.youtube?.profiles || 0 }}
+              </div>
+            </div>
+
+            <!-- TOTAL SUMMARY -->
+            <div class="md:col-span-3 bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+              <h3 class="text-gray-500 uppercase text-xs font-bold tracking-widest mb-4">Сводная статистика</h3>
+              <div class="flex flex-wrap gap-8 justify-around">
+                <div class="text-center">
+                  <div class="text-4xl font-bold text-gray-800">
+                    {{
+                    ((analytics.platforms.instagram?.followers || 0) +
+                    (analytics.platforms.tiktok?.followers || 0) +
+                    (analytics.platforms.youtube?.followers || 0)).toLocaleString()
+                    }}
+                  </div>
+                  <div class="text-gray-400 text-sm uppercase mt-2">Всего подписчиков</div>
+                </div>
+                <div class="text-center">
+                  <div class="text-4xl font-bold text-gray-800">
+                    {{
+                    ((analytics.platforms.instagram?.reach || 0) +
+                    (analytics.platforms.tiktok?.reach || 0) +
+                    (analytics.platforms.youtube?.reach || 0)).toLocaleString()
+                    }}
+                  </div>
+                  <div class="text-gray-400 text-sm uppercase mt-2">Общий охват / просмотры</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- DAILY HISTORY TABLE -->
+            <div class="md:col-span-3 mt-6">
+              <h3 class="text-xl font-bold mb-4">История Публикаций (30 дней)</h3>
+              <div class="bg-white border rounded-lg overflow-hidden shadow-sm">
+                <table class="w-full text-sm text-left">
+                  <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
+                    <tr>
+                      <th class="px-6 py-3">Дата</th>
+                      <th class="px-6 py-3 text-center text-green-700">Опубликовано</th>
+                      <th class="px-6 py-3 text-center text-red-700">Ошибки</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-100">
+                    <tr v-for="day in history" :key="day.date" class="hover:bg-gray-50">
+                      <td class="px-6 py-4 font-medium text-gray-900">{{ day.date }}</td>
+                      <td class="px-6 py-4 text-center">
+                        <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full font-bold">
+                          {{ day.success || 0 }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-4 text-center">
+                        <span v-if="day.failed > 0" class="bg-red-100 text-red-800 px-3 py-1 rounded-full font-bold">
+                          {{ day.failed }}
+                        </span>
+                        <span v-else class="text-gray-300">-</span>
+                      </td>
+                    </tr>
+                    <tr v-if="history.length === 0">
+                      <td colspan="3" class="px-6 py-8 text-center text-gray-500">
+                        Нет данных за последние 30 дней
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- LOGS TAB -->
+        <div v-if="currentTab === 'logs'">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">📋 Логи системы</h2>
+            <div class="flex gap-2">
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" v-model="logsAutoRefresh" class="rounded">
+                <span>Автообновление (3 сек)</span>
+              </label>
+              <button @click="loadLogs" aria-label="Обновить логи системы"
+                class="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-300">
+                🔄 Обновить
+              </button>
+            </div>
+          </div>
+
+          <div v-if="logsLoading" class="text-center text-gray-500 py-8">
+            Загрузка логов...
+          </div>
+
+          <div v-else-if="!logsSuccess" class="bg-yellow-50 border border-yellow-200 rounded p-4 mb-4">
+            <p class="text-yellow-800">⚠️ {{ logsMessage }}</p>
+            <p class="text-sm text-yellow-700 mt-2">
+              Используйте логи Docker/EasyPanel для просмотра вывода приложения.
+            </p>
+          </div>
+
+          <div v-else class="bg-gray-900 text-green-400 p-4 rounded font-mono text-xs overflow-auto"
+            style="max-height: 600px;">
+            <div v-for="(line, idx) in logs" :key="idx" class="hover:bg-gray-800">
+              {{ line }}
+            </div>
+            <div v-if="logs.length === 0" class="text-gray-500 text-center py-4">
+              Логов пока нет
+            </div>
+          </div>
+        </div>
+
+
+        <script>
+          const { createApp } = Vue;
+
+          createApp({
             data() {
-                return {
-                    currentTab: 'dashboard',
-                    tabs: [
-                        { id: 'dashboard', name: 'Дашборд' },
-                        { id: 'stats', name: 'Аналитика' },
-                        { id: 'profiles', name: 'Профили' },
-                        { id: 'settings', name: 'Настройки' },
-                        { id: 'clients', name: 'AI Клиенты' },
-                        { id: 'logs', name: '📋 Логи' }
-                    ],
-                    config: {
-                        cronSchedule: '',
-                        daysToGenerate: 1,
-                        yandexFolders: [],
-                        limits: { instagram: 0, tiktok: 0, youtube: 0 },
-                        profiles: [],
-                        clients: [],
-                        themeAliases: {}
-                    },
-                    stats: {
-                        totalVideos: 0,
-                        publishedCount: 0,
-                        byCategory: {},
-                        byAuthor: {},
-                        byBrand: {},
-                        profilesByCategory: {},
-                        profilesByAuthor: {},
-                        profilesByBrand: {}
-                    },
-                    brandStats: {},
-                    currentMonth: new Date().toISOString().substring(0, 7),
-                    statsViewMode: 'category',
-                    loading: true,
-                    logs: [],
-                    logsLoading: false,
-                    logsAutoRefresh: false,
-                    schedule: {
-                        enabled: false,
-                        timezone: 'Europe/Moscow',
-                        dailyRunTime: '00:01'
-                    },
-                    todayStats: {
-                        date: '--',
-                        time_msk: '--:--',
-                        success_count: 0
-                    },
-                    selectedProfiles: [],
-                    bulkThemeKey: '',
-                    publishingStats: null,
-                    errorStats: [],
-                    expandedGroups: {} // Format: { 'GroupName': true/false }
-                };
+              return {
+                currentTab: 'dashboard',
+                tabs: [
+                  { id: 'dashboard', name: 'Дашборд' },
+                  { id: 'stats', name: 'Аналитика' },
+                  { id: 'settings', name: 'Настройки' },
+                  { id: 'profiles', name: 'Профили' },
+                  { id: 'clients', name: 'AI Клиенты' },
+                  { id: 'logs', name: '📋 Логи' }
+                ],
+                config: {
+                  cronSchedule: '',
+                  daysToGenerate: 1, // Default for safety
+                  yandexFolders: [],
+                  limits: { instagram: 0, tiktok: 0, youtube: 0 },
+                  profiles: [],
+                  clients: []
+                },
+                stats: {
+                  totalVideos: 0,
+                  publishedCount: 0,
+                  byCategory: {},
+                  byAuthor: {},
+                  byBrand: {},
+                  byAuthorBrand: {},  // author -> brand -> count
+                  profilesByCategory: {},
+                  profilesByAuthor: {},
+                  profilesByBrand: {}
+                },
+                expandedAuthors: [],  // Track which authors are expanded
+                brandStats: {},
+                currentMonth: new Date().toISOString().substring(0, 7),
+                statsSummary: null,
+                todayStats: {
+                  date: '--',
+                  time_msk: '--:--',
+                  success_count: 0,
+                  failed_count: 0,
+                  queued_count: 0,
+                  profiles_count: 0
+                },
+                publishingStats: null, // Comprehensive publishing statistics
+                loading: true,
+                statsLoading: false,
+                statsViewMode: 'category', // 'category' or 'author'
+                foldersInput: '',
+                newThemeKey: '',
+                showActiveProfiles: true,    // Collapsible - active by default
+                showDisabledProfiles: false,  // Collapsible - collapsed by default
+                expandedGroups: {}, // For accordion view
+                expandedGroupsDisabled: {}, // For disabled profiles accordion
+                selectedProfiles: [], // List of selected usernames for bulk actions
+                logs: [],
+                logsLoading: false,
+                logsSuccess: true,
+                logsMessage: '',
+                logsAutoRefresh: false,
+                logsRefreshInterval: null,
+                selectedDisabledProfiles: [], // List of selected disabled profiles for bulk actions
+                lastSelected: null, // For Shift+Click
+                lastSelectedDisabled: null, // For Shift+Click in disabled profiles
+                bulkThemeKey: '', // Model for bulk edit input
+                bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
+                schedule: {
+                  enabled: false,
+                  timezone: 'Europe/Moscow',
+                  dailyRunTime: '00:01'
+                },
+                realtime: {
+                  connected: false,
+                  eventSource: null,
+                  reconnectTimer: null
+                },
+                autoRefreshIntervals: {
+                  today: null,
+                  dashboard: null
+                },
+                errors: [],
+                errorStats: [] // New grouped stats
+              }
             },
             async mounted() {
-                await this.loadConfig();
-                this.loadSchedule();
-                this.loadStats();
-                this.loadBrandStats();
-                this.loadPublishingStats();
+              await this.loadConfig();
+              this.loadSchedule();
+              this.loadTodayStats();
+              await this.loadPublishingStats(); // Load comprehensive publishing stats
+              // this.loadTodayStats(); // Removed duplicate
+              this.loadErrors();
+              this.fetchStatsSummary();
+              this.loadBrandStats();
+
+              this.loadGlobalAnalytics();
+              this.loadHistory(); // New History Load
+
+              // Initialize Real-Time Updates
+              this.setupSSE();
+
+              // Auto-refresh timers
+              // 1. Today Stats: every 30 seconds
+              this.autoRefreshIntervals.today = setInterval(() => {
+                this.loadTodayStats();
+                this.loadPublishingStats(); // Also refresh publishing stats
                 this.loadErrors();
-                setInterval(() => this.loadStats(), 60000);
+                // Also refresh logs if visible
+                if (this.currentTab === 'logs' && this.logsAutoRefresh) this.loadLogs();
+              }, 30000);
+
+              // 2. Dashboard General Stats: every 60 seconds
+              this.autoRefreshIntervals.dashboard = setInterval(() => this.loadStats(), 60000);
+            },
+            beforeUnmount() {
+              // Cleanup
+              if (this.realtime.eventSource) this.realtime.eventSource.close();
+              if (this.autoRefreshIntervals.today) clearInterval(this.autoRefreshIntervals.today);
+              if (this.autoRefreshIntervals.dashboard) clearInterval(this.autoRefreshIntervals.dashboard);
             },
             computed: {
-                groupedProfiles() {
-                    if (!this.config.profiles) return [];
-                    const groups = {};
+              currentStatsList() {
+                let source = {};
+                if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
+                else if (this.statsViewMode === 'brand') source = this.stats.byBrand || {};
+                else source = this.stats.byCategory || {};
 
-                    // Sort profiles by username first for consistent internal order
-                    const sortedProfiles = [...this.config.profiles].sort((a, b) =>
-                        (a.username || '').localeCompare(b.username || '')
-                    );
+                return Object.entries(source)
+                  .map(([name, count]) => ({ name, count }))
+                  .filter(item => item.name !== 'unknown') // Exclude files outside hierarchy
+                  .sort((a, b) => a.name.localeCompare(b.name));
+              },
+              statsHeader() {
+                if (this.statsViewMode === 'category') return 'Категория';
+                if (this.statsViewMode === 'brand') return 'Бренд';
+                return 'Автор';
+              },
+              activeProfiles() {
+                if (!this.config.profiles) return [];
+                return this.config.profiles.filter(p => p.enabled !== false);
+              },
+              disabledProfiles() {
+                if (!this.config.profiles) return [];
+                return this.config.profiles.filter(p => p.enabled === false);
+              },
+              groupedActiveProfiles() {
+                const groups = {};
+                this.activeProfiles.forEach(p => {
+                  // Create a consistent key
+                  const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+                  // Capitalize for display
+                  const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
 
-                    sortedProfiles.forEach(p => {
-                        const rawKey = p.theme_key ? p.theme_key.trim() : 'Без категорий';
-                        // Capitalize logic if desired, or keep raw
-                        const key = rawKey || 'Без категорий';
+                  if (!groups[displayKey]) groups[displayKey] = [];
+                  groups[displayKey].push(p);
+                });
 
-                        if (!groups[key]) groups[key] = [];
-                        groups[key].push(p);
-                    });
-
-                    // Return as array of objects for consistent sorting
-                    return Object.keys(groups).sort().map(key => ({
-                        name: key,
-                        profiles: groups[key]
-                    }));
-                },
-                currentStatsList() {
-                    let source = {};
-                    if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
-                    else if (this.statsViewMode === 'brand') source = this.stats.byBrand || {};
-                    else source = this.stats.byCategory || {};
-
-                    return Object.entries(source)
-                        .map(([name, count]) => ({ name, count }))
-                        .filter(item => item.name !== 'unknown')
-                        .sort((a, b) => a.name.localeCompare(b.name));
-                },
-                statsHeader() {
-                    if (this.statsViewMode === 'category') return 'Категория';
-                    if (this.statsViewMode === 'brand') return 'Бренд';
-                    return 'Автор';
-                },
-                availableThemes() {
-                    const fromStats = Object.keys(this.stats.byCategory || {});
-                    const fromAliases = Object.keys(this.config.themeAliases || {});
-                    // Extract themes from existing profiles too
-                    const fromProfiles = this.config.profiles.map(p => p.theme_key).filter(Boolean);
-
-                    const all = new Set([...fromStats, ...fromAliases, ...fromProfiles]);
-                    return Array.from(all).sort().filter(t => t !== 'unknown');
+                // Sort keys alphabetically
+                return Object.keys(groups).sort().reduce((acc, key) => {
+                  acc[key] = groups[key];
+                  return acc;
+                }, {});
+              },
+              groupedDisabledProfiles() {
+                const groups = {};
+                this.disabledProfiles.forEach(p => {
+                  const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+                  const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+                  if (!groups[displayKey]) groups[displayKey] = [];
+                  groups[displayKey].push(p);
+                });
+                return Object.keys(groups).sort().reduce((acc, key) => {
+                  acc[key] = groups[key];
+                  return acc;
+                }, {});
+              },
+              availableThemes() {
+                // Source strictly from config.themeAliases (which is auto-populated from Yandex Stats)
+                if (this.config && this.config.themeAliases) {
+                  return Object.keys(this.config.themeAliases).sort();
                 }
+                return [];
+              }
             },
             methods: {
-                getProfilesForCategory(categoryName) {
-                    const key = categoryName.toLowerCase().trim();
-                    if (this.statsViewMode === 'author') {
-                        return this.stats.profilesByAuthor?.[key] || [];
-                    } else if (this.statsViewMode === 'brand') {
-                        return this.stats.profilesByBrand?.[key] || [];
-                    } else {
-                        return this.stats.profilesByCategory?.[key] || [];
-                    }
-                },
-                getPublishedCount(name) {
-                    const cleanName = name.toLowerCase().replace(" ", "");
-                    let total = 0;
-                    Object.entries(this.brandStats).forEach(([key, val]) => {
-                        const [cat, br] = key.split(':');
-                        if (this.statsViewMode === 'brand') {
-                            if (br === cleanName) total += val.published_count || 0;
-                        } else if (this.statsViewMode === 'category') {
-                            if (cat === cleanName) total += val.published_count || 0;
-                        }
-                    });
-                    return total > 0 ? total : '-';
-                },
-                async loadConfig() {
-                    this.loading = true;
-                    try {
-                        const res = await fetch('/api/config');
-                        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-                        const data = await res.json();
-                        this.config = {
-                            profiles: [],
-                            clients: [],
-                            limits: { instagram: 10, tiktok: 10, youtube: 2 },
-                            yandexFolders: [],
-                            themeAliases: {},
-                            ...data
-                        };
-                        if (!this.config.profiles) this.config.profiles = [];
-                        if (!this.config.clients) this.config.clients = [];
-                        if (!this.config.limits) this.config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
-                    } catch (e) {
-                        console.error('[UI] Failed to load config:', e);
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                async saveConfig() {
-                    try {
-                        await fetch('/api/config', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.config)
-                        });
-                        alert('✅ Сохранено успешно!');
-                    } catch (e) {
-                        alert('❌ Ошибка сохранения');
-                    }
-                },
-                async loadStats(force = false) {
-                    try {
-                        const url = force ? '/api/stats?refresh=true' : '/api/stats';
-                        const res = await fetch(url);
-                        if (res.ok) {
-                            this.stats = await res.json();
-                        }
-                    } catch (e) {
-                        console.error('Failed to load stats', e);
-                    }
-                },
-                async loadSchedule() {
-                    try {
-                        const res = await fetch('/api/schedule');
-                        if (res.ok) {
-                            const data = await res.json();
-                            this.schedule = {
-                                enabled: data.enabled || false,
-                                timezone: data.timezone || 'Europe/Moscow',
-                                dailyRunTime: data.dailyRunTime || '00:01'
-                            };
-                        }
-                    } catch (e) {
-                        console.error('[UI] Failed to load schedule:', e);
-                    }
-                },
-                async saveSchedule() {
-                    try {
-                        const res = await fetch('/api/schedule', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.schedule)
-                        });
-                        if (res.ok) {
-                            alert('✅ Расписание сохранено!');
-                            await this.loadConfig();
-                        } else {
-                            const error = await res.json();
-                            alert(`❌ Ошибка: ${error.error || 'Не удалось сохранить'}`);
-                        }
-                    } catch (e) {
-                        alert('❌ Ошибка сохранения расписания');
-                    }
-                },
-                async loadBrandStats() {
-                    try {
-                        const res = await fetch(`/api/brands/stats?month=${this.currentMonth}`);
-                        if (res.ok) {
-                            const data = await res.json();
-                            this.brandStats = data.stats || {};
-                        }
-                    } catch (e) {
-                        console.error('[UI] Failed to load brand stats:', e);
-                    }
-                },
-                async triggerRun(testMode = false) {
-                    await this.saveConfig();
-                    if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
-                    try {
-                        await fetch('/api/run', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ testMode })
-                        });
-                        alert('✅ Автоматизация запущена в фоне');
-                    } catch (e) {
-                        alert('❌ Не удалось запустить процесс');
-                    }
-                },
-                async triggerCleanup() {
-                    if (!confirm('🗑️ Удалить все запланированные посты?')) return;
-                    try {
-                        const res = await fetch('/api/cleanup', { method: 'POST' });
-                        const data = await res.json();
-                        alert(data.message || '✅ Очищено!');
-                    } catch (e) {
-                        alert('❌ Ошибка очистки');
-                    }
-                },
-                async loadLogs() {
-                    this.logsLoading = true;
-                    try {
-                        const res = await fetch('/api/logs?lines=200');
-                        const data = await res.json();
-                        this.logs = data.logs || [];
-                    } catch (e) {
-                        console.error('Failed to load logs:', e);
-                    } finally {
-                        this.logsLoading = false;
-                    }
-                },
-                async loadPublishingStats() {
-                    try {
-                        const res = await fetch('/api/stats/publishing');
-                        if (res.ok) {
-                            this.publishingStats = await res.json();
-                        }
-                    } catch (e) {
-                        console.error('Failed to load publishing stats:', e);
-                    }
-                },
-                async loadErrors() {
-                    try {
-                        const res = await fetch('/api/stats/errors');
-                        if (res.ok) {
-                            const data = await res.json();
-                            if (data.grouped_errors) {
-                                this.errorStats = data.grouped_errors;
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Failed to load errors:', e);
-                    }
-                },
-                addClient() {
-                    this.config.clients.push({ name: 'New Client', regex: '', prompt: '', quota: 0 });
-                },
-                removeClient(idx) {
-                    this.config.clients.splice(idx, 1);
-                },
-                getClientPublished(client) {
-                    if (!client.name || !client.regex) return 0;
-                    const categoryMatch = client.regex.match(/([a-zA-Zа-яА-Я0-9]+)/);
-                    const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown';
-                    const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '');
-                    const key = `${category}:${brandName}`;
-                    return this.brandStats[key]?.published_count || 0;
-                },
-                getClientRemaining(client) {
-                    const quota = client.quota || 0;
-                    const published = this.getClientPublished(client);
-                    return Math.max(0, quota - published);
-                },
-                getClientProgress(client) {
-                    const quota = client.quota || 0;
-                    if (quota === 0) return 0;
-                    const published = this.getClientPublished(client);
-                    return Math.min(100, Math.round((published / quota) * 100));
-                },
-                // --- PROFILE SELECTION & BULK ACTIONS ---
-                toggleSelection(username) {
-                    const idx = this.selectedProfiles.indexOf(username);
-                    if (idx === -1) this.selectedProfiles.push(username);
-                    else this.selectedProfiles.splice(idx, 1);
-                },
-                selectAll(checked) {
-                    if (checked) {
-                        this.selectedProfiles = this.config.profiles.map(p => p.username);
-                    } else {
-                        this.selectedProfiles = [];
-                    }
-                },
-                async applyBulkCategory() {
-                    if (!this.bulkThemeKey) return alert('Выберите категорию!');
-                    let count = 0;
-                    this.config.profiles.forEach(p => {
-                        if (this.selectedProfiles.includes(p.username)) {
-                            p.theme_key = this.bulkThemeKey;
-                            count++;
-                        }
-                    });
-                    await this.saveConfig();
-                    alert(`✅ Категория "${this.bulkThemeKey}" применена к ${count} профилям`);
-                    this.selectedProfiles = [];
-                    this.bulkThemeKey = '';
-                },
-                async toggleBulkEnabled(state) {
-                    let count = 0;
-                    this.config.profiles.forEach(p => {
-                        if (this.selectedProfiles.includes(p.username)) {
-                            p.enabled = state;
-                            count++;
-                        }
-                    });
-                    await this.saveConfig();
-                    alert(`✅ ${count} профилей ${state ? 'активированы' : 'отключены'}`);
-                    this.selectedProfiles = [];
-                },
-                toggleGroup(groupName) {
-                    // Initialize if undefined (default should be true/expanded, but we check inverse)
-                    if (this.expandedGroups[groupName] === undefined) {
-                        this.expandedGroups[groupName] = false; // Toggle to closed if it was implicitly open? 
-                        // Actually let's assume default is CLOSED to save space, user clicks to OPEN?
-                        // Or default OPEN? Most users want to see everything.
-                        // Let's implement: if undefined -> set to false (collapsed). User explicitly opens.
-                        // User request: "they all go in a long list", implying they want organization.
-                        // Let's default to OPEN (true) in logic, so toggle sets to false.
-                        this.expandedGroups[groupName] = false;
-                    } else {
-                        this.expandedGroups[groupName] = !this.expandedGroups[groupName];
-                    }
-                },
-                isGroupExpanded(groupName) {
-                    // Default to TRUE (Expanded) if undefined
-                    return this.expandedGroups[groupName] !== false;
-                },
-                toggleGroupSelection(groupProfiles, checked) {
-                    groupProfiles.forEach(p => {
-                        const idx = this.selectedProfiles.indexOf(p.username);
-                        if (checked) {
-                            if (idx === -1) this.selectedProfiles.push(p.username);
-                        } else {
-                            if (idx !== -1) this.selectedProfiles.splice(idx, 1);
-                        }
-                    });
-                },
-                isGroupSelected(groupProfiles) {
-                    if (groupProfiles.length === 0) return false;
-                    return groupProfiles.every(p => this.selectedProfiles.includes(p.username));
+              setupSSE() {
+                if (this.realtime.eventSource) {
+                  this.realtime.eventSource.close();
                 }
+
+                console.log('[SSE] Connecting to /api/events/stream...');
+                const es = new EventSource('/api/events/stream');
+                this.realtime.eventSource = es;
+
+                es.onopen = () => {
+                  console.log('[SSE] Connection established');
+                  this.realtime.connected = true;
+                  if (this.realtime.reconnectTimer) {
+                    clearTimeout(this.realtime.reconnectTimer);
+                    this.realtime.reconnectTimer = null;
+                  }
+                };
+
+                es.onmessage = (e) => {
+                  try {
+                    const data = JSON.parse(e.data);
+                    console.log('[SSE] Event received:', data);
+
+                    if (data.type === 'connected') {
+                      this.realtime.connected = true;
+                    } else if (data.type === 'post_status_changed' || data.type === 'stats_updated') {
+                      // Refresh relevant parts of the UI
+                      this.loadTodayStats();
+                      this.loadErrors();
+                      this.loadHistory();
+                      if (this.currentTab === 'analytics') {
+                        this.loadBrandStats();
+                        this.fetchStatsSummary();
+                      }
+                    }
+                  } catch (err) {
+                    console.warn('[SSE] Failed to parse message:', err);
+                  }
+                };
+
+                es.onerror = () => {
+                  console.log('[SSE] Connection lost, reconnecting in 5s...');
+                  this.realtime.connected = false;
+                  es.close();
+
+                  if (!this.realtime.reconnectTimer) {
+                    this.realtime.reconnectTimer = setTimeout(() => {
+                      this.realtime.reconnectTimer = null;
+                      this.setupSSE();
+                    }, 5000);
+                  }
+                };
+              },
+              getProfilesForCategory(categoryName) {
+                // Get profiles based on current view mode
+                const key = categoryName.toLowerCase().trim();
+
+                if (this.statsViewMode === 'author') {
+                  return this.stats.profilesByAuthor?.[key] || [];
+                } else if (this.statsViewMode === 'brand') {
+                  return this.stats.profilesByBrand?.[key] || [];
+                } else {
+                  // category mode
+                  return this.stats.profilesByCategory?.[key] || [];
+                }
+              },
+              toggleAuthorExpand(authorName) {
+                const index = this.expandedAuthors.indexOf(authorName);
+                if (index > -1) {
+                  this.expandedAuthors.splice(index, 1);
+                } else {
+                  this.expandedAuthors.push(authorName);
+                }
+              },
+              getAuthorBrands(authorName) {
+                return this.stats.byAuthorBrand?.[authorName] || {};
+              },
+              getPublishedCount(name) {
+                // Try to find matching brand stat
+                // name is the Brand Name or Category Name from Yandex scan
+                const cleanName = name.toLowerCase().replace(" ", "");
+
+                // Search in this.brandStats (which is Keyed by "category:brand")
+                // If we are in 'brand' mode, we need to sum up all stats where brand == name
+                // If we are in 'category' mode, we sum up all stats where category == name
+
+                let total = 0;
+                Object.entries(this.brandStats).forEach(([key, val]) => {
+                  const [cat, br] = key.split(':');
+                  if (this.statsViewMode === 'brand') {
+                    if (br === cleanName) total += val.published_count || 0;
+                  } else if (this.statsViewMode === 'category') {
+                    if (cat === cleanName) total += val.published_count || 0;
+                  }
+                });
+                return total > 0 ? total : '-';
+              },
+              async loadTodayStats() {
+                try {
+                  const res = await fetch('/api/stats/today');
+                  if (res.ok) {
+                    this.todayStats = await res.json();
+                  }
+                } catch (e) {
+                  console.error('Failed to load today stats:', e);
+                }
+              },
+              async loadPublishingStats() {
+                try {
+                  const res = await fetch('/api/stats/publishing');
+                  if (res.ok) {
+                    this.publishingStats = await res.json();
+                    console.log('[Publishing Stats] Loaded:', this.publishingStats);
+                  }
+                } catch (e) {
+                  console.error('Failed to load publishing stats:', e);
+                }
+              },
+              async loadStats() {
+                this.statsLoading = true;
+                try {
+                  const res = await fetch('/api/stats');
+                  if (res.ok) {
+                    this.stats = await res.json();
+
+                    // Auto-persist found folders as themes
+                    let changed = false;
+                    if (!this.config.themeAliases) this.config.themeAliases = {};
+
+                    const foundFolders = Object.keys(this.stats.byCategory || {});
+                    foundFolders.forEach(folder => {
+                      // Use exact folder name as key
+                      // If not exists, add it.
+                      // We don't delete old ones automatically to preserve history? 
+                      // User said "upsert or add new". Cleaning old ones isn't explicitly requested but safe to keep.
+                      if (!this.config.themeAliases[folder]) {
+                        this.config.themeAliases[folder] = [folder]; // Default alias is itself
+                        changed = true;
+                      }
+                    });
+
+                    if (changed) {
+                      this.saveConfig();
+                      // No alert needed, just silent save
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to load stats', e);
+                } finally {
+                  this.statsLoading = false;
+                }
+              },
+              async fetchStatsSummary() {
+                try {
+                  const res = await fetch('/api/stats/summary');
+                  const data = await res.json();
+                  if (data.success) {
+                    this.statsSummary = data.stats;
+                  }
+                } catch (error) {
+                  console.error('Failed to fetch stats summary:', error);
+                }
+              },
+              async loadErrors() {
+                try {
+                  const res = await fetch('/api/stats/errors'); // uses default 7 days group
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.grouped_errors) {
+                      this.errorStats = data.grouped_errors;
+                    } else if (data.errors) {
+                      // Fallback if old API
+                      this.errors = data.errors;
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to load errors:', e);
+                }
+              },
+              async loadConfig() {
+                this.loading = true;
+                try {
+                  const res = await fetch('/api/config');
+                  if (!res.ok) {
+                    throw new Error(`Server returned ${res.status}`);
+                  }
+                  const data = await res.json();
+                  // Ensure structure and merge with defaults
+                  this.config = {
+                    profiles: [],
+                    clients: [],
+                    limits: { instagram: 10, tiktok: 10, youtube: 2 },
+                    yandexFolders: [],
+                    ...this.config, // Keep existing if any? No, we want server data.
+                    ...data // Overwrite with server data
+                  };
+
+                  // Explicitly ensure deep objects if missing from server data
+                  if (!this.config.profiles) this.config.profiles = [];
+                  if (!this.config.clients) this.config.clients = [];
+                  if (!this.config.limits) this.config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
+
+                  this.foldersInput = (this.config.yandexFolders || []).join(', ');
+                } catch (e) {
+                  console.error('[UI] Failed to load config:', e);
+                  // alert('Failed to load config (using defaults)');
+                  // Keep default config structure
+                } finally {
+                  this.loading = false;
+                }
+              },
+              async saveConfig() {
+                try {
+                  await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.config)
+                  });
+                  alert('Сохранено успешно!');
+                } catch (e) {
+                  alert('Ошибка сохранения');
+                }
+              },
+              async loadSchedule() {
+                try {
+                  const res = await fetch('/api/schedule');
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.schedule = {
+                      enabled: data.enabled || false,
+                      timezone: data.timezone || 'Europe/Moscow',
+                      dailyRunTime: data.dailyRunTime || '00:01'
+                    };
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to load schedule:', e);
+                }
+              },
+              async saveSchedule() {
+                try {
+                  const res = await fetch('/api/schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.schedule)
+                  });
+
+                  if (res.ok) {
+                    alert('✅ Расписание сохранено успешно!');
+                    // Reload full config to update local cronSchedule state
+                    await this.loadConfig();
+                  } else {
+                    const error = await res.json();
+                    alert(`❌ Ошибка: ${error.error || 'Не удалось сохранить'}`);
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to save schedule:', e);
+                  alert('❌ Ошибка сохранения расписания');
+                }
+              },
+              async triggerRun(testMode = false) {
+                // Ensure current state is saved before running
+                await this.saveConfig();
+
+                if (!confirm(testMode ? 'Запустить в ТЕСТОВОМ режиме (по 1 посту на платформу)?' : 'Запустить ПОЛНЫЙ цикл автоматизации?')) return;
+                try {
+                  await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ testMode })
+                  });
+                  alert('Автоматизация запущена в фоне. Проверьте логи сервера.');
+                } catch (e) {
+                  alert('Не удалось запустить процесс');
+                }
+              },
+              async syncProfiles() {
+                console.log('[UI] Sync button clicked');
+                try {
+                  const res = await fetch('/api/profiles/sync');
+                  const data = await res.json();
+                  console.log('[UI] Sync response:', data);
+
+                  if (data.success && data.profiles) {
+                    let addedCount = 0;
+
+                    data.profiles.forEach(apiProfile => {
+                      // Find existing profile by username
+                      const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
+
+                      // Get platforms from API (keys of social_accounts where value is not empty)
+                      const platforms = Object.entries(apiProfile.social_accounts || {})
+                        .filter(([_, value]) => !!value) // Filter out empty strings/nulls
+                        .map(([key]) => key);
+
+                      if (platforms.length === 0) platforms.push('instagram'); // Default fallback
+
+                      if (existingProfile) {
+                        // Update existing profile's platforms if needed (merge or overwrite)
+                        // We overwrite to ensure it reflects current state
+                        existingProfile.platforms = platforms;
+                      } else {
+                        // Add new profile
+                        this.config.profiles.push({
+                          username: apiProfile.username,
+                          theme_key: '',
+                          platforms: platforms,
+                          enabled: true
+                        });
+                        addedCount++;
+                      }
+                    });
+
+                    alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
+                    this.saveConfig();
+                  } else {
+                    console.error('[UI] Sync failed:', data.error);
+                    alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
+                  }
+                } catch (e) {
+                  console.error('[UI] Fetch error:', e);
+                  alert('Не удалось синхронизировать профили (см. консоль)');
+                }
+              },
+              async fullResync() {
+                if (!confirm("ВНИМАНИЕ! \nЭто удалит все текущие настройки категорий (Smart, Toplash и др.) для профилей.\nСписок профилей будет загружен начисто из UploadPost.\n\nВы уверены?")) return;
+
+                this.config.profiles = []; // Clear all local profiles
+                await this.syncProfiles(); // Fetch fresh
+                this.saveConfig(); // Save the new clean state
+              },
+              updateFolders() {
+                this.config.yandexFolders = this.foldersInput.split(',').map(s => s.trim()).filter(Boolean);
+              },
+              addProfile() {
+                this.config.profiles.push({
+                  username: '',
+                  theme_key: '',
+                  platforms: [] // Start with empty array, user will check boxes
+                });
+              },
+              toggleProfileEnabled(profile) {
+                // Toggle between enabled=true and enabled=false
+                profile.enabled = profile.enabled === false ? true : false;
+                this.saveConfig();
+              },
+              removeProfile(idx) {
+                this.config.profiles.splice(idx, 1);
+              },
+              toggleBulkEnabled(enable) {
+                this.selectedProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.enabled = enable;
+                  }
+                });
+                this.saveConfig();
+                this.selectedProfiles = [];
+                // No alert, just UI update
+              },
+              addClient() {
+                this.config.clients.push({ name: 'New Client', regex: '', prompt: '' });
+              },
+              removeClient(idx) {
+                this.config.clients.splice(idx, 1);
+              },
+              async loadBrandStats() {
+                try {
+                  const res = await fetch(`/api/brands/stats?month=${this.currentMonth}`);
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.brandStats = data.stats || {};
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to load brand stats:', e);
+                }
+              },
+              getClientPublished(client) {
+                if (!client.name || !client.regex) return 0;
+                const categoryMatch = client.regex.match(/([a-zA-Zа-яА-Я0-9]+)/);
+                const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown';
+                const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '');
+                const key = `${category}:${brandName}`;
+                return this.brandStats[key]?.published_count || 0;
+              },
+              getClientRemaining(client) {
+                const quota = client.quota || 0;
+                const published = this.getClientPublished(client);
+                return Math.max(0, quota - published);
+              },
+              getClientProgress(client) {
+                const quota = client.quota || 0;
+                if (quota === 0) return 0;
+                const published = this.getClientPublished(client);
+                return Math.min(100, Math.round((published / quota) * 100));
+              },
+              toggleGroupDisabled(theme) {
+                this.expandedGroupsDisabled[theme] = !this.expandedGroupsDisabled[theme];
+              },
+              toggleGroupSelectionDisabled(profiles, checked) {
+                profiles.forEach(p => {
+                  const idx = this.selectedDisabledProfiles.indexOf(p.username);
+                  if (checked && idx === -1) {
+                    this.selectedDisabledProfiles.push(p.username);
+                  } else if (!checked && idx !== -1) {
+                    this.selectedDisabledProfiles.splice(idx, 1);
+                  }
+                });
+              },
+              handleProfileSelectDisabled(event, profile, groupProfiles) {
+                const username = profile.username;
+                const idx = this.selectedDisabledProfiles.indexOf(username);
+
+                if (event.shiftKey && this.lastSelectedDisabled) {
+                  const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelectedDisabled);
+                  const currentIdx = groupProfiles.findIndex(p => p.username === username);
+                  const [start, end] = lastIdx < currentIdx ? [lastIdx, currentIdx] : [currentIdx, lastIdx];
+
+                  for (let i = start; i <= end; i++) {
+                    const u = groupProfiles[i].username;
+                    if (!this.selectedDisabledProfiles.includes(u)) {
+                      this.selectedDisabledProfiles.push(u);
+                    }
+                  }
+                } else {
+                  if (idx === -1) {
+                    this.selectedDisabledProfiles.push(username);
+                  } else {
+                    this.selectedDisabledProfiles.splice(idx, 1);
+                  }
+                }
+                this.lastSelectedDisabled = username;
+              },
+              async applyBulkCategoryDisabled() {
+                if (!this.bulkThemeKeyDisabled) return;
+                this.selectedDisabledProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.theme_key = this.bulkThemeKeyDisabled;
+                  }
+                });
+                await this.saveConfig();
+                this.bulkThemeKeyDisabled = '';
+              },
+              async toggleBulkEnabledDisabled(enabled) {
+                this.selectedDisabledProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    profile.enabled = enabled;
+                  }
+                });
+                await this.saveConfig();
+              },
+              updateAliases(key, value) {
+                const arr = value.split(',').map(s => s.trim()).filter(s => s.length > 0);
+                this.config.themeAliases[key] = arr;
+              },
+              addThemeKey() {
+                if (!this.newThemeKey) return;
+                const key = this.newThemeKey.toLowerCase().trim();
+                if (this.config.themeAliases[key]) {
+                  alert('Группа уже существует!');
+                  return;
+                }
+                this.config.themeAliases[key] = [key];
+                this.newThemeKey = '';
+              },
+              deleteThemeKey(key) {
+                if (confirm(`Удалить группу '${key}'?`)) {
+                  delete this.config.themeAliases[key];
+                }
+              },
+              deleteTheme(key) {
+                // Alias for deleteThemeKey for backward compatibility if template calls it
+                this.deleteThemeKey(key);
+              },
+              toggleGroup(key) {
+                this.expandedGroups[key] = !this.expandedGroups[key];
+              },
+              expandAllGroups(expand) {
+                const keys = Object.keys(this.groupedActiveProfiles);
+                keys.forEach(key => {
+                  this.expandedGroups[key] = expand;
+                });
+              },
+              handleProfileSelect(event, profile, groupProfiles) {
+                const username = profile.username;
+                const isSelected = this.selectedProfiles.includes(username);
+                // Standard checkbox behavior toggles value. 
+                // But since we use @click, we need to know what the NEW state will be.
+                // If it was selected, it will become unselected.
+                // Note: browser checkbox toggles visually on click immediately.
+                // We just need to sync our array.
+
+                let targetState = !isSelected;
+
+                // Use event.shiftKey to detect range selection
+                if (event.shiftKey && this.lastSelected) {
+                  const lastIdx = groupProfiles.findIndex(p => p.username === this.lastSelected);
+                  const currIdx = groupProfiles.findIndex(p => p.username === username);
+
+                  if (lastIdx !== -1 && currIdx !== -1) {
+                    const start = Math.min(lastIdx, currIdx);
+                    const end = Math.max(lastIdx, currIdx);
+
+                    const range = groupProfiles.slice(start, end + 1);
+
+                    range.forEach(p => {
+                      const idx = this.selectedProfiles.indexOf(p.username);
+                      if (targetState && idx === -1) {
+                        this.selectedProfiles.push(p.username);
+                      } else if (!targetState && idx !== -1) {
+                        this.selectedProfiles.splice(idx, 1);
+                      }
+                    });
+                  } else {
+                    this.toggleSelectionSingle(username, targetState);
+                  }
+                } else {
+                  this.toggleSelectionSingle(username, targetState);
+                }
+
+                this.lastSelected = username;
+              },
+              toggleSelectionSingle(username, state) {
+                const idx = this.selectedProfiles.indexOf(username);
+                if (state && idx === -1) {
+                  this.selectedProfiles.push(username);
+                } else if (!state && idx !== -1) {
+                  this.selectedProfiles.splice(idx, 1);
+                }
+              },
+              toggleGroupSelection(profiles, checked) {
+                if (checked) {
+                  // Add all profiles in group to selection
+                  profiles.forEach(p => {
+                    if (!this.selectedProfiles.includes(p.username)) {
+                      this.selectedProfiles.push(p.username);
+                    }
+                  });
+                } else {
+                  // Remove all profiles in group from selection
+                  profiles.forEach(p => {
+                    const idx = this.selectedProfiles.indexOf(p.username);
+                    if (idx > -1) this.selectedProfiles.splice(idx, 1);
+                  });
+                }
+              },
+              triggerCleanup() {
+                console.log('[Frontend] Cleanup button clicked');
+                if (!confirm('Вы уверены? Это удалит ВСЕ запланированные, но еще не опубликованные посты. Нажмите ОК для очистки.')) {
+                  console.log('[Frontend] Cleanup cancelled by user');
+                  return;
+                }
+
+                console.log('[Frontend] Sending cleanup request to POST /api/cleanup...');
+                fetch('/api/cleanup', { method: 'POST' })
+                  .then(response => response.json())
+                  .then(data => {
+                    console.log('[Frontend] Cleanup response:', data);
+                    alert(data.message || 'Очистка запущена!');
+                  })
+                  .catch(e => {
+                    console.error('[Frontend] Cleanup error:', e);
+                    alert('Ошибка запуска очистки');
+                  });
+              },
+              formatCron(cron) {
+                if (!cron) return 'Отключено';
+                try {
+                  const parts = cron.split(' ');
+                  if (parts.length >= 2) {
+                    const m = parts[0].padStart(2, '0');
+                    const h = parts[1].padStart(2, '0');
+                    return `${h}:${m}`;
+                  }
+                } catch (e) { }
+                return cron;
+              },
+              applyBulkCategory() {
+                if (!this.bulkThemeKey) return alert('Введите название категории!');
+                if (this.selectedProfiles.length === 0) return alert('Выберите профили!');
+
+                const category = this.bulkThemeKey.toLowerCase().trim();
+
+                let count = 0;
+                this.config.profiles.forEach(p => {
+                  if (this.selectedProfiles.includes(p.username)) {
+                    p.theme_key = category;
+                    count++;
+                  }
+                });
+
+                this.saveConfig();
+                this.selectedProfiles = []; // Clear selection
+                this.bulkThemeKey = '';
+                alert(`Успешно обновлено профилей: ${count}`);
+              },
+              async loadGlobalAnalytics() {
+                this.analytics.loading = true;
+                try {
+                  const res = await fetch('/api/analytics/global');
+                  const data = await res.json();
+                  if (data.success && data.stats) {
+                    this.analytics.date = data.stats.date;
+                    this.analytics.platforms = data.stats.platforms || {};
+                  }
+                } catch (e) {
+                  console.error('Failed to load global analytics', e);
+                } finally {
+                  this.analytics.loading = false;
+                }
+              },
+              async loadHistory() {
+                try {
+                  const res = await fetch('/api/stats/history?days=30');
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                      this.history = data.history || [];
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to load history', e);
+                }
+              },
+              async refreshAnalytics() {
+                if (!confirm('Запустить сбор аналитики для всех профилей? Это может занять время.')) return;
+                try {
+                  await fetch('/api/analytics/refresh', { method: 'POST' });
+                  alert('Сбор аналитики запущен в фоне. Обновите страницу через пару минут.');
+                } catch (e) {
+                  alert('Ошибка запуска: ' + e);
+                }
+              },
+              async loadLogs() {
+                this.logsLoading = true;
+                try {
+                  const res = await fetch('/api/logs?lines=200');
+                  const data = await res.json();
+
+                  this.logsSuccess = data.success || false;
+                  this.logsMessage = data.message || '';
+                  this.logs = data.logs || [];
+                } catch (e) {
+                  this.logsSuccess = false;
+                  this.logsMessage = e.message;
+                  this.logs = [];
+                } finally {
+                  this.logsLoading = false;
+                }
+              }
+            },
+            watch: {
+              logsAutoRefresh(newVal) {
+                if (newVal) {
+                  // Start auto-refresh
+                  this.logsRefreshInterval = setInterval(() => {
+                    if (this.currentTab === 'logs') {
+                      this.loadLogs();
+                    }
+                  }, 3000);
+                } else {
+                  // Stop auto-refresh
+                  if (this.logsRefreshInterval) {
+                    clearInterval(this.logsRefreshInterval);
+                    this.logsRefreshInterval = null;
+                  }
+                }
+              },
+              currentTab(newTab) {
+                // Load logs when entering logs tab
+                if (newTab === 'logs' && this.logs.length === 0) {
+                  this.loadLogs();
+                }
+              }
             }
-        }).mount('#app');
-    </script>>
+          }).mount('#app');
+        </script>
 </body>
 
 </html>
