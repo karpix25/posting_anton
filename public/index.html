@@ -811,7 +811,9 @@
                         success_count: 0
                     },
                     selectedProfiles: [],
-                    bulkThemeKey: ''
+                    bulkThemeKey: '',
+                    publishingStats: null,
+                    errorStats: []
                 };
             },
             async mounted() {
@@ -819,6 +821,8 @@
                 this.loadSchedule();
                 this.loadStats();
                 this.loadBrandStats();
+                this.loadPublishingStats();
+                this.loadErrors();
                 setInterval(() => this.loadStats(), 60000);
             },
             computed: {
@@ -996,6 +1000,31 @@
                         console.error('Failed to load logs:', e);
                     } finally {
                         this.logsLoading = false;
+                    } finally {
+                        this.logsLoading = false;
+                    }
+                },
+                async loadPublishingStats() {
+                    try {
+                        const res = await fetch('/api/stats/publishing');
+                        if (res.ok) {
+                            this.publishingStats = await res.json();
+                        }
+                    } catch (e) {
+                        console.error('Failed to load publishing stats:', e);
+                    }
+                },
+                async loadErrors() {
+                    try {
+                        const res = await fetch('/api/stats/errors');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.grouped_errors) {
+                                this.errorStats = data.grouped_errors;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to load errors:', e);
                     }
                 },
                 addClient() {
