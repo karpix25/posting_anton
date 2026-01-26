@@ -28,7 +28,7 @@ class YandexDiskService:
         # Check cache
         if not force_refresh and self._cache and (now - self._cache_time < self.CACHE_TTL):
             age = int(now - self._cache_time)
-            logger.info(f"[Yandex] Returning cached file list ({len(self._cache)} files, age: {age}s)")
+            logger.debug(f"[Yandex] Returning cached file list ({len(self._cache)} files, age: {age}s)")
             return self._cache
 
         limits_to_try = [limit, min(5000, limit), min(2000, limit)]
