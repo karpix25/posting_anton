@@ -48,8 +48,55 @@ async def generate_daily_schedule():
     
     active_profiles = [p for p in config.profiles if p.enabled]
     logger.info(f"[Worker] Active profiles: {len(active_profiles)}")
+    # Fetch profiles from API to validate connections
+    from app.services.platforms import upload_post_client
+    try:
+        api_profiles = await upload_post_client.get_profiles()
+        logger.info(f"[Worker] Fetched {len(api_profiles)} profiles from API for validation")
+        
+        # Build map: username -> available platforms (set)
+        valid_connections = {}
+        for p in api_profiles:
+            username = p.get('username')
+            socials = p.get('social_accounts', {}) or {}
+            # Collect platforms that are not None/Null
+            connected = {k for k, v in socials.items() if v}
+            valid_connections[username] = connected
+            
+        # Filter active_profiles
+        validated_profiles = []
+        for p in active_profiles:
+            if p.username not in valid_connections:
+                logger.warning(f"❌ [Worker] Profile '{p.username}' found in config but NOT found in Upload Post API. Skipping.")
+                continue
+                
+            connected_platforms = valid_connections[p.username]
+            
+            # Check if required platforms are connected
+            missing = []
+            for req_platform in p.platforms:
+                if req_platform == 'instagram' and 'instagram' not in connected_platforms:
+                    missing.append('instagram')
+                elif req_platform == 'tiktok' and 'tiktok' not in connected_platforms:
+                    missing.append('tiktok')
+                elif req_platform == 'youtube' and 'youtube' not in connected_platforms:
+                     missing.append('youtube')
+                # Add check for 'threads' or 'facebook' if they were in config (they are not in user logs but good to be safe)
+            
+            if missing:
+                logger.error(f"❌ [Worker] Profile '{p.username}' needs {missing} but they are NOT connected! Skipping profile.")
+                continue
+            
+            validated_profiles.append(p)
+            
+        logger.info(f"[Worker] Profiles after validation: {len(validated_profiles)} (Original: {len(active_profiles)})")
+        active_profiles = validated_profiles
+        
+    except Exception as e:
+        logger.error(f"⚠️ [Worker] Failed to validate profiles with API: {e}. Proceeding with config-based list (RISKY).")
+
     if active_profiles:
-        for p in active_profiles[:5]:  # Show first 5
+        for p in active_profiles[:5]:  # Show first 5 after validation
             logger.info(f"  - {p.username}: theme_key='{p.theme_key}', platforms={p.platforms}")
 
     # Fetch existing scheduled posts from Upload Post API to avoid conflicts

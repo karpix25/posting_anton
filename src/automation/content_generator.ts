@@ -30,7 +30,7 @@ export class ContentGenerator {
 
         if (authorName) {
             const hashtagAuthor = authorName.replace(/\s+/g, '');
-            systemPrompt += `\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by${hashtagAuthor} (для указания авторства).`;
+            systemPrompt += `\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by${hashtagAuthor} (для указания авторства) а так же имя файла.`;
         }
 
 
