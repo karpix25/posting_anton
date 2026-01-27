@@ -62,6 +62,8 @@ createApp({
             lastSelectedDisabled: null, // For Shift+Click in disabled profiles
             bulkThemeKey: '', // Model for bulk edit input
             bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
+            dbStatus: false, // Database connection status
+            publicationErrors: [], // List of recent publication errors
             schedule: {
                 enabled: false,
                 timezone: 'Europe/Moscow',
@@ -75,10 +77,17 @@ createApp({
         this.loadStats();
         this.loadTodayStats();
         this.fetchStatsSummary();
+        this.fetchStatsSummary();
         this.loadBrandStats();
+        this.checkHealth();
+        this.fetchErrors();
 
         // Auto-refresh today stats every 60 seconds
-        setInterval(() => this.loadTodayStats(), 60000);
+        setInterval(() => {
+            this.loadTodayStats();
+            this.checkHealth();
+            this.fetchErrors();
+        }, 60000);
     },
     computed: {
         currentStatsList() {
@@ -667,6 +676,34 @@ createApp({
             } finally {
                 this.logsLoading = false;
             }
+        },
+        async checkHealth() {
+            try {
+                const res = await fetch('/health');
+                this.dbStatus = res.ok;
+            } catch (e) {
+                this.dbStatus = false;
+            }
+        },
+        async fetchErrors() {
+            try {
+                // Fetch recent raw errors
+                const res = await fetch('/api/errors/recent?limit=50');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                        this.publicationErrors = data.errors || [];
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch errors", e);
+                this.publicationErrors = [];
+            }
+        },
+        formatTime(isoString) {
+            if (!isoString) return '--:--';
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         }
     },
     watch: {

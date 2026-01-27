@@ -837,6 +837,25 @@ async def get_grouped_errors(days: int = 7, session: AsyncSession = Depends(get_
         logger.error(f"Failed to fetch errors: {e}")
         return {"success": False, "errors": [], "message": str(e)}
 
+@app.get("/api/errors/recent")
+async def get_recent_errors(limit: int = 50, session: AsyncSession = Depends(get_session)):
+    """Get raw list of recent failed posts."""
+    try:
+        from sqlalchemy import desc
+        from app.models import PostingHistory
+        
+        stmt = select(PostingHistory).where(
+            PostingHistory.status == "failed"
+        ).order_by(desc(PostingHistory.posted_at)).limit(limit)
+        
+        result = await session.execute(stmt)
+        posts = result.scalars().all()
+        
+        return {"success": True, "errors": posts}
+    except Exception as e:
+        logger.error(f"Failed to fetch recent errors: {e}")
+        return {"success": False, "errors": [], "message": str(e)}
+
 @app.post("/api/cleanup")
 async def cleanup_queue(session: AsyncSession = Depends(get_session)):
     """Delete all queued (not yet published) posts."""
