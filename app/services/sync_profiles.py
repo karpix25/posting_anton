@@ -26,7 +26,13 @@ async def sync_profiles_service():
         raise Exception("API returned 0 profiles. Sync aborted for safety.")
 
     # Normalize live usernames map: lowercase -> full profile dict
-    live_map = {p.get('social_username', '').lower(): p for p in live_profiles if p.get('social_username')}
+    # KEY FIX: API returns 'username', not 'social_username'
+    live_map = {p.get('username', '').lower(): p for p in live_profiles if p.get('username')}
+    
+    if not live_map:
+        logger.error("🛑 [Sync] Parsed 0 profiles from API data! Aborting to prevent data loss.")
+        raise Exception("Parsed 0 profiles. API format might have changed.")
+
     logger.info(f"✅ [Sync] Found {len(live_map)} live profiles in API.")
 
     stats = {"total": 0, "removed": 0, "added": 0, "params_updated": 0}
