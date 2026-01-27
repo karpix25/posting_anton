@@ -79,7 +79,8 @@ async def generate_daily_schedule():
                 connected.add(plat.lower())
                 
             # Store with lowercase username for case-insensitive matching
-            valid_connections[uname.lower()] = connected
+            # VALUE is now a tuple: (Original_Username, Connected_Set)
+            valid_connections[uname.lower()] = (uname, connected)
             
         # Filter active_profiles
         validated_profiles = []
@@ -89,7 +90,14 @@ async def generate_daily_schedule():
                 logger.warning(f"❌ [Worker] Profile '{p.username}' found in config/DB but NOT found in Upload Post API. Skipping.")
                 continue
                 
-            connected_platforms = valid_connections[uname_lower]
+            # Retrieve exact API username and connections
+            api_username, connected_platforms = valid_connections[uname_lower]
+            
+            # Key Fix: Overwrite local username with exact API casing
+            # This ensures subsequent API calls use 'Pokypki-wb91' instead of 'pokypki-wb91'
+            if p.username != api_username:
+                logger.info(f"🔧 [Worker] Correcting username case: '{p.username}' -> '{api_username}'")
+                p.username = api_username
             
             # Check if required platforms are connected
             missing = []
