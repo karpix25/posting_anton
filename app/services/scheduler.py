@@ -72,32 +72,21 @@ class ContentScheduler:
         # ---------------------------------------------------------
         # OPTIMIZATION: Pre-load History into Memory
         # ---------------------------------------------------------
-        posted_history_set = set() # Set[path] (if strict) or Set[(username, path)]
+        posted_history_set = set() # Set[(username, path)]
         if check_db_duplicates and self.db_session:
             from app.models import PostingHistory
             logger.info(f"[Scheduler] Pre-loading history for {len(active_profiles)} profiles...")
             
-            if not self.config.allowVideoReuse:
-                 # GLOBAL UNIQUENESS: Fetch ALL paths regardless of user
-                 logger.info("[Scheduler] Strict Mode: Fetching GLOBAL history to prevent ANY duplicate use.")
-                 stmt = select(PostingHistory.video_path).where(
-                     PostingHistory.status != 'failed'
-                 )
-                 res = await self.db_session.execute(stmt)
-                 for row in res.all():
-                     if row[0]: posted_history_set.add(row[0])
-                 logger.info(f"[Scheduler] Loaded {len(posted_history_set)} unique video paths from history.")
-            else:
-                 # PER-PROFILE UNIQUENESS
-                 usernames = [p.username for p in active_profiles]
-                 stmt = select(PostingHistory.profile_username, PostingHistory.video_path).where(
-                    PostingHistory.profile_username.in_(usernames),
-                    PostingHistory.status != 'failed'
-                 )
-                 res = await self.db_session.execute(stmt)
-                 for row in res.all():
-                     posted_history_set.add((row[0], row[1]))
-                 logger.info(f"[Scheduler] Loaded {len(posted_history_set)} history records for active profiles.")
+            usernames = [p.username for p in active_profiles]
+            stmt = select(PostingHistory.profile_username, PostingHistory.video_path).where(
+                PostingHistory.profile_username.in_(usernames),
+                PostingHistory.status != 'failed'
+            )
+            res = await self.db_session.execute(stmt)
+            for row in res.all():
+                posted_history_set.add((row[0], row[1]))
+            
+            logger.info(f"[Scheduler] Loaded {len(posted_history_set)} history records into memory.")
         # ---------------------------------------------------------
 
         logger.info(f"[Scheduler] Active profiles: {len(active_profiles)} (Skipped: {skipped_reasons['disabled']} disabled)")
@@ -239,14 +228,8 @@ class ContentScheduler:
 
                         # 2. Check Database History (NOW O(1) from Memory)
                         if check_db_duplicates:
-                            if not self.config.allowVideoReuse:
-                                # Strict Global Check
-                                if vid_path in posted_history_set:
-                                    continue
-                            else:
-                                # Per-Profile Check
-                                if (profile.username, vid_path) in posted_history_set:
-                                    continue # NEXT video for this profile
+                            if (profile.username, vid_path) in posted_history_set:
+                                continue # NEXT video for this profile
 
                         video_for_slot = v
                         break
