@@ -57,34 +57,48 @@ async def generate_daily_schedule():
         # Build map: username -> available platforms (set)
         valid_connections = {}
         for p in api_profiles:
-            username = p.get('username')
+            uname = p.get('username')
+            if not uname:
+                continue
+            
             socials = p.get('social_accounts', {}) or {}
-            # Collect platforms that are not None/Null
-            connected = {k for k, v in socials.items() if v}
-            valid_connections[username] = connected
+            # A platform is connected if value is truthy (usually a dict or non-empty string)
+            # and if it is a dict, it should not have reauth_required=True
+            connected = set()
+            for plat, val in socials.items():
+                if not val:
+                    continue
+                
+                # If it's a dict, check for reauth_required
+                if isinstance(val, dict):
+                    if val.get('reauth_required') is True:
+                        logger.warning(f"⚠️ [Worker] Profile '{uname}' platform '{plat}' requires re-authentication. Skipping.")
+                        continue
+                
+                connected.add(plat.lower())
+                
+            # Store with lowercase username for case-insensitive matching
+            valid_connections[uname.lower()] = connected
             
         # Filter active_profiles
         validated_profiles = []
         for p in active_profiles:
-            if p.username not in valid_connections:
-                logger.warning(f"❌ [Worker] Profile '{p.username}' found in config but NOT found in Upload Post API. Skipping.")
+            uname_lower = p.username.lower()
+            if uname_lower not in valid_connections:
+                logger.warning(f"❌ [Worker] Profile '{p.username}' found in config/DB but NOT found in Upload Post API. Skipping.")
                 continue
                 
-            connected_platforms = valid_connections[p.username]
+            connected_platforms = valid_connections[uname_lower]
             
             # Check if required platforms are connected
             missing = []
             for req_platform in p.platforms:
-                if req_platform == 'instagram' and 'instagram' not in connected_platforms:
-                    missing.append('instagram')
-                elif req_platform == 'tiktok' and 'tiktok' not in connected_platforms:
-                    missing.append('tiktok')
-                elif req_platform == 'youtube' and 'youtube' not in connected_platforms:
-                     missing.append('youtube')
-                # Add check for 'threads' or 'facebook' if they were in config (they are not in user logs but good to be safe)
+                # Platforms in config are usually 'instagram', 'tiktok', 'youtube' (lowercase)
+                if req_platform.lower() not in connected_platforms:
+                    missing.append(req_platform)
             
             if missing:
-                logger.error(f"❌ [Worker] Profile '{p.username}' needs {missing} but they are NOT connected! Skipping profile.")
+                logger.error(f"❌ [Worker] Profile '{p.username}' needs {missing} but they are NOT connected! (Available: {list(connected_platforms)})")
                 continue
             
             validated_profiles.append(p)

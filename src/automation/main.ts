@@ -110,13 +110,17 @@ async function main() {
                         }
 
                         const detectedPlatforms = Object.entries(apiProfile.social_accounts || {})
-                            .filter(([_, val]) => !!val) // Filter out empty credentials
+                            .filter(([_, val]) => {
+                                if (!val) return false;
+                                if (typeof val === 'object' && (val as any).reauth_required === true) return false;
+                                return true;
+                            })
                             .map(([key]) => key as 'instagram' | 'tiktok' | 'youtube');
 
                         config.profiles.push({
                             username: apiProfile.username,
                             theme_key: theme || apiProfile.username.toLowerCase(),
-                            platforms: detectedPlatforms.length > 0 ? detectedPlatforms : ['instagram'],
+                            platforms: detectedPlatforms, // Use actually detected platforms
                             enabled: true, // New profiles enabled by default
                             last_posted: {}
                         });
@@ -124,10 +128,15 @@ async function main() {
                     } else {
                         // UPDATE existing profile: update platforms, preserve user edits
                         const detectedPlatforms = Object.entries(apiProfile.social_accounts || {})
-                            .filter(([_, val]) => !!val) // Filter out empty credentials
+                            .filter(([_, val]) => {
+                                if (!val) return false;
+                                if (typeof val === 'object' && (val as any).reauth_required === true) return false;
+                                return true;
+                            })
                             .map(([key]) => key as 'instagram' | 'tiktok' | 'youtube');
 
                         if (JSON.stringify(exists.platforms) !== JSON.stringify(detectedPlatforms)) {
+                            console.log(`[Main] Updating platforms for ${exists.username}: ${exists.platforms} -> ${detectedPlatforms}`);
                             exists.platforms = detectedPlatforms;
                             addedCount++; // Count as change to trigger save
                         }
