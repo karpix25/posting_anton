@@ -446,46 +446,50 @@ class ContentScheduler:
     def extract_brand(self, path: str) -> str:
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
         
-        # Strategy 1: Search for known client names/regex matches in the path
-        # This is more robust than fixed indices
+        # 1. Identify the specific "Brand Folder" part based on structure
+        brand_part = None
+        
+        # Strategy A: Anchor by "Video"/"Видео" (User structure: Video/Editor/Category/Brand)
+        v_idx = -1
+        for i, p in enumerate(parts):
+            if p.lower() in ["video", "видео"]:
+                v_idx = i
+                break
+        
+        if v_idx != -1 and v_idx + 3 < len(parts):
+             # Extract raw folder name, stripping casual comments like "Brand (comment)"
+             brand_part = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
+             # Sanity check: if it looks like a filename, abort
+             if "." in brand_part:
+                 brand_part = None
+
+        # Strategy B: Fallback to Parent Folder (parts[-2])
+        # Only use if Strategy A failed
+        if not brand_part and len(parts) >= 2:
+            brand_part = parts[-2]
+
+        if not brand_part:
+            return "unknown"
+
+        # 2. Match the identifying part against known Clients
+        normalized_part = self.normalize(brand_part)
+        
         for client in self.config.clients:
-            normalized_client = self.normalize(client.name)
+            # Check 1: Exact Name Match
+            if self.normalize(client.name) == normalized_part:
+                return self.normalize(client.name)
             
-            # Check for exact name match in path parts
-            for p in parts:
-                if self.normalize(p) == normalized_client:
-                    return normalized_client
-                    
-            # Check regex if available
-            import re
+            # Check 2: Regex Match (Strictly on the folder name)
             if client.regex:
+                import re
                 try:
-                    # USER REQUEST: Check regex against individual PARTS (folders), not the whole path string
-                    # This ensures we match a specific folder name, not a substring spanning multiple folders
-                    for p in parts:
-                        if re.search(client.regex, p, re.IGNORECASE):
-                            return normalized_client
+                    if re.search(client.regex, brand_part, re.IGNORECASE):
+                        return self.normalize(client.name)
                 except:
                     pass
-
-        # Strategy 2: Fallback to positional (Index 3 after 'video')
-        # /Video/Author/Category/Brand/file
-        try:
-            v_idx = -1
-            for i, p in enumerate(parts):
-                if p.lower() in ["video", "видео"]:
-                    v_idx = i
-                    break
-            
-            if v_idx != -1 and v_idx + 3 < len(parts):
-                 raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
-                 # If the extracted part looks like a filename (has dot), abort positional
-                 if "." in raw:
-                     return "unknown"
-                 return self.normalize(raw)
-        except:
-             pass
-        return "unknown"
+        
+        # 3. If no client matched, return the raw normalized part as the brand key
+        return normalized_part
 
     def normalize(self, text: str) -> str:
         return text.lower().replace("ё", "е").replace(" ", "").strip()
