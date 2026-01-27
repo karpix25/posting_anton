@@ -43,7 +43,8 @@ class ContentScheduler:
     async def generate_schedule(self, videos: List[Dict[str, Any]], 
                                 profiles: List[SocialProfile], 
                                 occupied_slots: Dict[str, List[datetime]],
-                                existing_counts: Optional[Dict[str, Dict[str, Dict[str, int]]]] = None) -> List[Dict[str, Any]]:
+                                existing_counts: Optional[Dict[str, Dict[str, Dict[str, int]]]] = None,
+                                check_db_duplicates: bool = True) -> List[Dict[str, Any]]:
         # 1. Filter active profiles (Enabled + Has at least one valid platform)
         active_profiles = []
         skipped_reasons = {"disabled": 0, "no_platforms": 0}
@@ -246,7 +247,34 @@ class ContentScheduler:
                     
                     if not video_for_slot:
                         continue
-                        
+
+                    # ---------------------------------------------------------
+                    # CRITICAL FIX: "Scheduler Amnesia" Prevention
+                    # Check database history if we have EVER posted this video to this user
+                    # ---------------------------------------------------------
+                    if check_db_duplicates and self.db_session:
+                         vid_path = video_for_slot.get("path")
+                         # Check strict dupes (same video path + same profile)
+                         # We allow re-posting if status was 'failed', but usually cleaner to just skip
+                         # if we want strict uniqueness.
+                         # Let's check status != 'failed' just in case we want to retry failed ones?
+                         # Or just check existence. User wants NO duplicates. So existence is safer.
+                         
+                         from app.models import PostingHistory
+                         stmt_check = select(PostingHistory.id).where(
+                             PostingHistory.profile_username == profile.username,
+                             PostingHistory.video_path == vid_path,
+                             PostingHistory.status != 'failed' # Retry failed allowed? Maybe no.
+                             # If user says "10 times 1 video", those were likely 'queued' or 'processing'.
+                             # So we must exclude those too. effectively exclude everything except maybe very old failed?
+                             # Simplest: Exclude everything.
+                         ).limit(1)
+                         
+                         res_check = await self.db_session.execute(stmt_check)
+                         if res_check.scalar_one_or_none():
+                             # logger.info(f"[Scheduler] Skipping duplicate: {vid_path} for {profile.username}")
+                             continue
+
                     # Find Time Slot
                     base_time = self.get_random_time_window(current_day_start, current_day_end)
                     candidate_time = self.find_safe_slot(profile_slots[profile.username], base_time, current_day_start, current_day_end)
