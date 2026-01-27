@@ -37,8 +37,9 @@ async def generate_daily_schedule():
     
     try:
         # Force refresh for scheduler to get latest files
-        all_videos = await yandex_service.list_files(limit=100000, force_refresh=True)
-        logger.info(f"[Worker] Fetched {len(all_videos)} total videos from Yandex")
+        # Optimization: Pass folders to only fetch and process what we need
+        all_videos = await yandex_service.list_files(limit=100000, force_refresh=True, folders=folders)
+        logger.info(f"[Worker] Fetched {len(all_videos)} relevant videos from Yandex (Filtered by {folders})")
     except Exception as e:
         logger.error(f"Failed to list files: {e}")
         all_videos = []
@@ -155,14 +156,16 @@ async def generate_daily_schedule():
                     logger.warning(f"[Worker] Failed to parse date '{scheduled_date_str}': {parse_err}")
         
         total_occupied = sum(len(v) for v in occupied_slots.values())
-        logger.info(f"[Worker] Found {total_occupied} existing scheduled posts. Syncing counts...")
+        logger.info(f"[Worker] Found {total_occupied} existing scheduled posts across {len(occupied_slots)} profiles.")
     except Exception as e:
         logger.warning(f"[Worker] Failed to fetch scheduled posts: {e} - continuing with empty slots")
+
+    logger.info("[Worker] 🏁 Starting scheduler generation...")
 
     async for session in get_session():
         scheduler = ContentScheduler(config, session)
         schedule = await scheduler.generate_schedule(all_videos, config.profiles, occupied_slots, existing_counts)
-        logger.info(f"Generated {len(schedule)} posts.")
+        logger.info(f"✅ [Worker] Generated {len(schedule)} new posts to schedule.")
         
         for post in schedule:
             video = post["video"]

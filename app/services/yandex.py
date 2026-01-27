@@ -18,9 +18,10 @@ class YandexDiskService:
         async with yadisk.AsyncClient(token=self.token) as client:
             return await client.check_token()
 
-    async def list_files(self, limit: int = 100000, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    async def list_files(self, limit: int = 100000, force_refresh: bool = False, 
+                   folders: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        List video files with in-memory caching and robust retry logic.
+        List video files with in-memory caching and optional path filtering.
         """
         import time
         now = time.time()
@@ -50,18 +51,41 @@ class YandexDiskService:
                     )
                     
                     files = []
+                    logger.info("[Yandex] Starting stream processing...")
+                    processed_count = 0
+                    
                     async for item in items_gen:
+                        processed_count += 1
+                        path = item.path
+                        
+                        # Apply early path filtering if folders provided
+                        if folders:
+                            match = False
+                            for f in folders:
+                                if path.startswith(f):
+                                    match = True
+                                    break
+                            if not match:
+                                continue
+
                         files.append({
                             "name": item.name,
-                            "path": item.path,
-                            "url": item.path,
+                            "path": path,
+                            "url": path,
                             "md5": item.md5,
                             "size": item.size,
                             "created": item.created.isoformat() if item.created else None
                         })
+                        
+                        if len(files) % 5000 == 0 and len(files) > 0:
+                            logger.info(f"[Yandex] ... matched {len(files)} files (scanned {processed_count})")
                     
-                    logger.info(f"[Yandex] Fetched {len(files)} files.")
-                    files.sort(key=lambda x: x["name"])
+                    logger.info(f"[Yandex] Finished fetch: Scanned {processed_count} files, Matched {len(files)} after filtering.")
+                    
+                    if files:
+                        logger.info(f"[Yandex] Sorting {len(files)} files...")
+                        files.sort(key=lambda x: x["name"])
+                        logger.info("[Yandex] Sort complete.")
                     
                     # Update Cache
                     self._cache = files

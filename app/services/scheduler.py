@@ -59,30 +59,40 @@ class ContentScheduler:
             
             if not valid_platforms:
                 skipped_reasons["no_platforms"] += 1
-                # logger.debug(f"[Scheduler] Skipping {p.username}: No valid platforms configured")
                 continue
                 
-            # Update profile with cleaned platforms (temporary for this run)
+            # Update profile with cleaned platforms
             p.platforms = valid_platforms
             active_profiles.append(p)
         
         if not active_profiles:
-            logger.warning(f"[Scheduler] No active profiles found! (Total: {len(profiles)}, Disabled: {skipped_reasons['disabled']}, No Platforms: {skipped_reasons['no_platforms']})")
+            logger.warning(f"[Scheduler] No active profiles found!")
             return []
         
-        logger.info(f"[Scheduler] Active profiles: {len(active_profiles)} (Skipped: {skipped_reasons['disabled']} disabled, {skipped_reasons['no_platforms']} no platforms)")
+        # ---------------------------------------------------------
+        # OPTIMIZATION: Pre-load History into Memory
+        # ---------------------------------------------------------
+        posted_history_set = set() # Set[(username, path)]
+        if check_db_duplicates and self.db_session and active_profiles:
+            from app.models import PostingHistory
+            logger.info(f"[Scheduler] Pre-loading history for {len(active_profiles)} profiles...")
+            
+            usernames = [p.username for p in active_profiles]
+            stmt = select(PostingHistory.profile_username, PostingHistory.video_path).where(
+                PostingHistory.profile_username.in_(usernames),
+                PostingHistory.status != 'failed'
+            )
+            res = await self.db_session.execute(stmt)
+            for row in res.all():
+                posted_history_set.add((row[0], row[1]))
+            
+            logger.info(f"[Scheduler] Loaded {len(posted_history_set)} history records into memory.")
+        # ---------------------------------------------------------
+
+        logger.info(f"[Scheduler] Active profiles: {len(active_profiles)} (Skipped: {skipped_reasons['disabled']} disabled)")
         
         schedule = []
-        
-        # Helper to extract metadata from path
-        # Assuming simple extraction for now, mirroring the complex regex logic from TS if needed
-        # We'll implement basic extraction here
-        
         videos_by_theme = self.group_videos_by_theme(videos)
-        logger.info(f"[Scheduler] Videos grouped by {len(videos_by_theme)} themes: {list(videos_by_theme.keys())}")
-        for theme, brands in videos_by_theme.items():
-            total = sum(len(v) for v in brands.values())
-            logger.info(f"  - Theme '{theme}': {total} videos across {len(brands)} brands: {list(brands.keys())[:10]}")  # Show first 10 brands
         
         profile_slots: Dict[str, List[datetime]] = occupied_slots.copy()
         for p in active_profiles:
@@ -97,97 +107,55 @@ class ContentScheduler:
             end_hour = self.config.schedule.end_hour
             
         now_msk = datetime.now(MSK)
-        start_date = now_msk.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=None)  # Make naive for compatibility
-        days_to_generate = self.config.daysToGenerate or 7
-        logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()} (Window: {start_hour}:00 - {end_hour}:00)")
+        start_date = now_msk.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=None)
+        days_to_generate = self.config.daysToGenerate or 1
+        
+        logger.info(f"[Scheduler] Window: {start_hour}:00 - {end_hour}:00, Days: {days_to_generate}")
 
         for day_index in range(days_to_generate):
             current_day_start = start_date + timedelta(days=day_index)
-            
-            # If today, ensuring we don't start in the past
-            now_msk_naive = now_msk.replace(tzinfo=None)  # Make naive for comparison
+            now_msk_naive = now_msk.replace(tzinfo=None)
             if day_index == 0 and current_day_start < now_msk_naive:
                 current_day_start = now_msk_naive + timedelta(minutes=10)
             
             current_day_end = current_day_start.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-            
             if current_day_start >= current_day_end:
-                logger.info(f"[Scheduler] Skipping day {day_index} - already past end time (start={current_day_start}, end={current_day_end})")
                 continue
 
             daily_profiles = active_profiles.copy()
             random.shuffle(daily_profiles)
             
-            # Track profile publish counts per day (Pre-fill with existing counts if available)
             profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
             
             date_key = current_day_start.strftime("%Y-%m-%d")
             if existing_counts and date_key in existing_counts:
-                logger.info(f"[Scheduler] Found existing posts for {date_key}, syncing counters...")
                 for p_user, p_counts in existing_counts[date_key].items():
                     if p_user in profile_counts:
                          for pl, count in p_counts.items():
                              if pl in profile_counts[p_user]:
                                  profile_counts[p_user][pl] = count
-                
-                # Debug log for first profile
-                first_p = list(existing_counts[date_key].keys())[0] if existing_counts[date_key] else None
-                if first_p and first_p in profile_counts:
-                     logger.info(f"   (Debug) {first_p} starts with: {profile_counts[first_p]}")
 
             # Determine max iterations
-            # We must consider both global limits AND profile-specific overrides
-            # Otherwise, if global=10 but profile=20, we stop at 10.
-            
-            global_max = max(
-                self.config.limits.instagram, 
-                self.config.limits.tiktok, 
-                self.config.limits.youtube
-            )
-            
+            global_max = max(self.config.limits.instagram, self.config.limits.tiktok, self.config.limits.youtube)
             profiles_max = 0
             for p in active_profiles:
-                # Check all platform limits for this profile
-                p_limits = [
-                    p.instagramLimit or 0,
-                    p.tiktokLimit or 0,
-                    p.youtubeLimit or 0
-                ]
-                if p.limit: # Backwards comaptibility
-                    p_limits.append(p.limit)
-                    
-                if p_limits:
-                    profiles_max = max(profiles_max, max(p_limits))
+                p_limits = [p.instagramLimit or 0, p.tiktokLimit or 0, p.youtubeLimit or 0]
+                if p.limit: p_limits.append(p.limit)
+                if p_limits: profiles_max = max(profiles_max, max(p_limits))
             
-            # The loop must run enough times to satisfy the HIGHEST requirement
-            max_limit = max(global_max, profiles_max)
-            
-            # Safety cap just in case (e.g. 50)
-            max_limit = min(max_limit, 50)
-            
-            logger.info(f"[Scheduler] Max iterations: {max_limit} (Global max: {global_max}, Profiles max: {profiles_max})")
+            max_limit = min(max(global_max, profiles_max), 50)
+            logger.info(f"[Scheduler] Day {day_index}: Iterating {max_limit} passes for {len(daily_profiles)} profiles")
             
             last_brand_used_per_theme: Dict[str, str] = {}
             
             def get_profile_limit(profile: SocialProfile, platform: str) -> int:
-                """Get limit for profile+platform with fallback to global config"""
-                # Check platform-specific limit
-                platform_limit = None
-                if platform == 'instagram':
-                    platform_limit = profile.instagramLimit
-                elif platform == 'tiktok':
-                    platform_limit = profile.tiktokLimit
-                elif platform == 'youtube':
-                    platform_limit = profile.youtubeLimit
+                if platform == 'instagram': platform_limit = profile.instagramLimit
+                elif platform == 'tiktok': platform_limit = profile.tiktokLimit
+                elif platform == 'youtube': platform_limit = profile.youtubeLimit
+                else: platform_limit = None
                 
-                # Fallback chain:
-                # 1. Platform-specific limit (if set)
-                # 2. Deprecated profile.limit (backwards compat)
-                # 3. Global config limit
-                if platform_limit is not None and platform_limit > 0:
-                     return platform_limit
-                if profile.limit is not None and profile.limit > 0:
-                     return profile.limit
+                if platform_limit is not None and platform_limit > 0: return platform_limit
+                if profile.limit is not None and profile.limit > 0: return profile.limit
                 return getattr(self.config.limits, platform, 1)
 
             for pass_idx in range(max_limit):
@@ -195,8 +163,7 @@ class ContentScheduler:
                     # Check needs
                     needs_post = False
                     for pl in profile.platforms:
-                        limit = get_profile_limit(profile, pl)
-                        if profile_counts[profile.username].get(pl, 0) < limit:
+                        if profile_counts[profile.username].get(pl, 0) < get_profile_limit(profile, pl):
                             needs_post = True
                             break
                     if not needs_post:
@@ -205,7 +172,6 @@ class ContentScheduler:
                     # Select Video
                     canonical_theme = self.normalize_theme_key(profile.theme_key)
                     theme_brands = videos_by_theme.get(canonical_theme, {})
-                    
                     if not theme_brands:
                         continue
 
@@ -213,108 +179,74 @@ class ContentScheduler:
                     if not available_brands:
                          continue
                          
-                    # Brand Selection
-                    last_brand = last_brand_used_per_theme.get(canonical_theme)
-                    selected_brand = await self.select_brand_by_quota(canonical_theme, available_brands, last_brand)
+                    selected_brand = await self.select_brand_by_quota(canonical_theme, available_brands, last_brand_used_per_theme.get(canonical_theme))
                     last_brand_used_per_theme[canonical_theme] = selected_brand
                     
                     brand_videos = theme_brands[selected_brand]
                     video_for_slot = None
                     
-                    # USER REQ: Randomize file selection within brand
-                    # brand_videos contains videos from ALL authors for this brand (Aggregated)
-                    # We shuffle to mix authors and avoid "clumping" of similar videos from one author
+                    # USER REQ: Randomize and avoid clumps
                     available_brand_videos = [v for v in brand_videos]
                     random.shuffle(available_brand_videos)
 
-                    for i, v in enumerate(available_brand_videos):
+                    for v in available_brand_videos:
                         vid_id = v.get("md5") or v.get("path")
+                        vid_path = v.get("path")
                         
-                        # Check availability based on config
-                        is_available = False
+                        # 1. Check uniqueness (MD5/Path)
+                        is_unique = False
                         if self.config.allowVideoReuse:
-                            # Reuse allowed: check if this profile has used it
                             if (vid_id, profile.username) not in self.used_video_profile_pairs:
-                                is_available = True
+                                is_unique = True
                         else:
-                            # Strict global uniqueness
                             if vid_id not in self.used_video_md5s:
-                                is_available = True
+                                is_unique = True
+                        
+                        if not is_unique:
+                            continue
 
-                        if is_available:
-                            video_for_slot = v
-                            # DO NOT remove from original list here - wait until slot is confirmed!
-                            # This fixes the "video burning" bug.
-                            break
+                        # 2. Check Database History (NOW O(1) from Memory)
+                        if check_db_duplicates:
+                            if (profile.username, vid_path) in posted_history_set:
+                                continue # NEXT video for this profile
+
+                        video_for_slot = v
+                        break
                     
                     if not video_for_slot:
                         continue
-
-                    # ---------------------------------------------------------
-                    # CRITICAL FIX: "Scheduler Amnesia" Prevention
-                    # Check database history if we have EVER posted this video to this user
-                    # ---------------------------------------------------------
-                    if check_db_duplicates and self.db_session:
-                         vid_path = video_for_slot.get("path")
-                         # Check strict dupes (same video path + same profile)
-                         # We allow re-posting if status was 'failed', but usually cleaner to just skip
-                         # if we want strict uniqueness.
-                         # Let's check status != 'failed' just in case we want to retry failed ones?
-                         # Or just check existence. User wants NO duplicates. So existence is safer.
-                         
-                         from app.models import PostingHistory
-                         stmt_check = select(PostingHistory.id).where(
-                             PostingHistory.profile_username == profile.username,
-                             PostingHistory.video_path == vid_path,
-                             PostingHistory.status != 'failed' # Retry failed allowed? Maybe no.
-                             # If user says "10 times 1 video", those were likely 'queued' or 'processing'.
-                             # So we must exclude those too. effectively exclude everything except maybe very old failed?
-                             # Simplest: Exclude everything.
-                         ).limit(1)
-                         
-                         res_check = await self.db_session.execute(stmt_check)
-                         if res_check.scalar_one_or_none():
-                             # logger.info(f"[Scheduler] Skipping duplicate: {vid_path} for {profile.username}")
-                             continue
 
                     # Find Time Slot
                     base_time = self.get_random_time_window(current_day_start, current_day_end)
                     candidate_time = self.find_safe_slot(profile_slots[profile.username], base_time, current_day_start, current_day_end)
                     
                     if not candidate_time:
-                         # Slot conflict - video is NOT burned, just skipped for this iteration
-                         # It remains in available_brand_videos for other profiles (or next pass)
-                         continue
+                        continue
 
-                    # SUCCESS - Now mark as used
+                    # SUCCESS - Mark as used
                     vid_id = video_for_slot.get("md5") or video_for_slot.get("path")
-                    
                     if self.config.allowVideoReuse:
                         self.used_video_profile_pairs.add((vid_id, profile.username))
                     else:
                         self.used_video_md5s.add(vid_id)
-                        # Remove from the ORIGINAL list to prevent re-picking by others (optimization)
                         if video_for_slot in theme_brands[selected_brand]:
                             theme_brands[selected_brand].remove(video_for_slot)
 
                     profile_slots[profile.username].append(candidate_time)
 
-                    # Create Schedule Items for each platform
+                    # Create Schedule Items
                     for pl_idx, pl in enumerate(profile.platforms):
-                        limit = get_profile_limit(profile, pl)  # Use new platform-specific limits
-                        if profile_counts[profile.username].get(pl, 0) < limit:
+                        if profile_counts[profile.username].get(pl, 0) < get_profile_limit(profile, pl):
                             publish_time = candidate_time
                             if pl_idx > 0:
-                                delay = random.randint(2, 5)
-                                publish_time += timedelta(minutes=delay)
+                                publish_time += timedelta(minutes=random.randint(2, 5))
                             
-                            # Convert candidate_time (naive MSK) to aware MSK, then to UTC
                             aware_msk = candidate_time.replace(tzinfo=MSK)
                             utc_time = aware_msk.astimezone(timezone.utc)
                             
                             schedule.append({
                                 "video": video_for_slot,
-                                "profile": profile, # Pydantic model
+                                "profile": profile,
                                 "platform": pl,
                                 "publish_at": utc_time.isoformat()
                             })
