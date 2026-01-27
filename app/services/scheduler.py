@@ -203,7 +203,7 @@ class ContentScheduler:
                         continue
 
                     # Select Video
-                    canonical_theme = self.normalize_theme(profile.theme_key)
+                    canonical_theme = self.normalize_theme_key(profile.theme_key)
                     theme_brands = videos_by_theme.get(canonical_theme, {})
                     
                     if not theme_brands:
