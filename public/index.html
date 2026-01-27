@@ -118,25 +118,61 @@
                             </div>
                         </div>
 
-                        <!-- Recent Errors Section -->
+                        <!-- Failed Posts Toggle -->
                         <div v-if="publicationErrors.length > 0"
-                            class="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg">
-                            <h3 class="text-lg font-bold text-red-700 mb-2">⚠️ Ошибки публикации (последние 24ч)</h3>
-                            <div class="max-h-40 overflow-y-auto text-sm">
-                                <div v-for="err in publicationErrors" :key="err.id"
-                                    class="border-b border-red-100 py-1 last:border-0">
-                                    <span class="font-mono text-red-500 text-xs">{{ formatTime(err.posted_at) }}</span>
-                                    <span class="font-bold text-gray-700 mx-2">{{ err.profile_username }}</span>
-                                    <span class="text-red-600">{{ err.meta.error || 'Unknown error' }}</span>
+                            class="mb-8 bg-red-50 border border-red-200 rounded-lg overflow-hidden transition-all duration-300">
+                            <!-- Header / Toggle -->
+                            <div @click="showErrors = !showErrors"
+                                class="p-4 flex items-center justify-between cursor-pointer hover:bg-red-100/50 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="bg-red-100 text-red-600 rounded-full p-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                                            viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-lg font-bold text-red-800">Обнаружены ошибки ({{
+                                            publicationErrors.length }})</h3>
+                                        <p class="text-xs text-red-600">Нажмите, чтобы развернуть список проблем</p>
+                                    </div>
+                                </div>
+                                <div class="transform transition-transform duration-300"
+                                    :class="{ 'rotate-180': showErrors }">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-400" fill="none"
+                                        viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <!-- Content -->
+                            <div v-if="showErrors" class="border-t border-red-100 bg-white">
+                                <div class="max-h-60 overflow-y-auto">
+                                    <div v-for="err in publicationErrors" :key="err.id"
+                                        class="p-3 border-b border-red-50 flex items-start gap-3 hover:bg-red-50/30 transition-colors text-sm last:border-0">
+                                        <span class="font-mono text-red-400 text-xs mt-1 whitespace-nowrap">{{
+                                            formatTime(err.posted_at) }}</span>
+                                        <div class="flex-1">
+                                            <div class="font-bold text-gray-800 flex items-center gap-2">
+                                                {{ err.profile_username }}
+                                                <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">{{
+                                                    err.platform }}</span>
+                                            </div>
+                                            <div class="text-red-600 mt-1">{{ err.meta.error || 'Unknown error' }}</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Action Buttons -->
                         <div class="flex gap-4">
-                            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg
-                            font-semibold">
-                            Запустить автоматизацию
+                            <button @click="triggerRun(false)"
+                                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-lg font-semibold shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300 active:scale-95">
+                                Запустить автоматизацию
                             </button>
                             <button @click="triggerRun(true)"
                                 class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded text-lg font-semibold"

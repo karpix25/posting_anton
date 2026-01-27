@@ -64,6 +64,7 @@ createApp({
             bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
             dbStatus: false, // Database connection status
             publicationErrors: [], // List of recent publication errors
+            showErrors: false, // Toggle state for errors accordion
             schedule: {
                 enabled: false,
                 timezone: 'Europe/Moscow',
