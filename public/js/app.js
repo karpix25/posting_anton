@@ -705,6 +705,9 @@ createApp({
             if (!isoString) return '--:--';
             const date = new Date(isoString);
             return date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        },
+        toggleErrors() {
+            this.showErrors = !this.showErrors;
         }
     },
     watch: {

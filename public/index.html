@@ -97,7 +97,7 @@
                             <div
                                 class="bg-gradient-to-br from-blue-50 to-indigo-100 border border-blue-200 p-4 rounded-lg shadow-sm min-w-[140px]">
                                 <div class="text-sm text-blue-600 mb-1">👤 Профилей</div>
-                                <div class="text-2xl font-bold text-blue-700">{{ todayStats.profiles_count || 0 }}</div>
+                                <div class="text-2xl font-bold text-blue-700">{{ activeProfiles.length || 0 }}</div>
                                 <div class="text-xs text-blue-500 mt-1">активных</div>
                             </div>
 
@@ -122,8 +122,8 @@
                         <div v-if="publicationErrors.length > 0"
                             class="mb-8 bg-red-50 border border-red-200 rounded-lg overflow-hidden transition-all duration-300">
                             <!-- Header / Toggle -->
-                            <div @click="showErrors = !showErrors"
-                                class="p-4 flex items-center justify-between cursor-pointer hover:bg-red-100/50 transition-colors">
+                            <div @click="toggleErrors"
+                                class="p-4 flex items-center justify-between cursor-pointer hover:bg-red-100/50 transition-colors select-none">
                                 <div class="flex items-center gap-3">
                                     <div class="bg-red-100 text-red-600 rounded-full p-2">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
