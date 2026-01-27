@@ -222,6 +222,8 @@ class ContentScheduler:
                     video_for_slot = None
                     
                     # USER REQ: Randomize file selection within brand
+                    # brand_videos contains videos from ALL authors for this brand (Aggregated)
+                    # We shuffle to mix authors and avoid "clumping" of similar videos from one author
                     available_brand_videos = [v for v in brand_videos]
                     random.shuffle(available_brand_videos)
 
@@ -458,8 +460,11 @@ class ContentScheduler:
             import re
             if client.regex:
                 try:
-                    if re.search(client.regex, path, re.IGNORECASE):
-                        return normalized_client
+                    # USER REQUEST: Check regex against individual PARTS (folders), not the whole path string
+                    # This ensures we match a specific folder name, not a substring spanning multiple folders
+                    for p in parts:
+                        if re.search(client.regex, p, re.IGNORECASE):
+                            return normalized_client
                 except:
                     pass
 
