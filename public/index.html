@@ -1626,42 +1626,14 @@
                             async syncProfiles() {
                                 console.log('[UI] Sync button clicked');
                                 try {
-                                    const res = await fetch('/api/profiles/sync');
+                                    const res = await fetch('/api/profiles/sync', { method: 'POST' });
                                     const data = await res.json();
                                     console.log('[UI] Sync response:', data);
 
-                                    if (data.success && data.profiles) {
-                                        let addedCount = 0;
-
-                                        data.profiles.forEach(apiProfile => {
-                                            // Find existing profile by username
-                                            const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
-
-                                            // Get platforms from API (keys of social_accounts where value is not empty)
-                                            const platforms = Object.entries(apiProfile.social_accounts || {})
-                                                .filter(([_, value]) => !!value) // Filter out empty strings/nulls
-                                                .map(([key]) => key);
-
-                                            if (platforms.length === 0) platforms.push('instagram'); // Default fallback
-
-                                            if (existingProfile) {
-                                                // Update existing profile's platforms if needed (merge or overwrite)
-                                                // We overwrite to ensure it reflects current state
-                                                existingProfile.platforms = platforms;
-                                            } else {
-                                                // Add new profile
-                                                this.config.profiles.push({
-                                                    username: apiProfile.username,
-                                                    theme_key: '',
-                                                    platforms: platforms,
-                                                    enabled: true
-                                                });
-                                                addedCount++;
-                                            }
-                                        });
-
-                                        alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
-                                        this.saveConfig();
+                                    if (data.success && data.stats) {
+                                        const s = data.stats;
+                                        alert(`✅ Синхронизация завершена!\n\nВсего профилей: ${s.total}\n➕ Добавлено: ${s.added}\n➖ Удалено: ${s.removed}\n🔧 Обновлено: ${s.params_updated}`);
+                                        await this.loadConfig(); // Reload fresh config from DB
                                     } else {
                                         console.error('[UI] Sync failed:', data.error);
                                         alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));

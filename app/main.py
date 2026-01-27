@@ -127,33 +127,13 @@ async def update_config(config_data: Dict[str, Any], session: AsyncSession = Dep
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/profiles/sync")
-async def sync_profiles():
-    import httpx
-    logger.info("[API] /api/profiles/sync requested")
-    api_key = settings.UPLOAD_POST_API_KEY
-    if not api_key:
-         logger.error("UPLOAD_POST_API_KEY is missing")
-         return {"success": False, "error": "UPLOAD_POST_API_KEY not configured"}
-
-    url = "https://api.upload-post.com/api/uploadposts/users"
-    headers = {"Authorization": f"Apikey {api_key}"}
-    
+@app.post("/api/profiles/sync")
+async def sync_profiles_endpoint():
+    """Trigger safe synchronization of profiles with API."""
+    from app.services.sync_profiles import sync_profiles_service
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers, timeout=200.0)
-            
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("success"):
-                profiles = data.get("profiles", [])
-                logger.info(f"[API] Sync success. Found {len(profiles)} profiles.")
-                return {"success": True, "profiles": profiles}
-            else:
-                return {"success": False, "error": data.get("message", "Unknown error")}
-        else:
-            return {"success": False, "error": f"UploadPost returned {resp.status_code}"}
-            
+        stats = await sync_profiles_service()
+        return {"success": True, "stats": stats}
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         return {"success": False, "error": str(e)}
