@@ -50,15 +50,6 @@
         <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
             <h1 class="text-3xl font-bold text-blue-600 flex items-center gap-3">
                 🚀 Автоматизация Контента
-                <span v-if="dbStatus"
-                    class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200"
-                    title="Database Connected">
-                    🟢 DB OK
-                </span>
-                <span v-else class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded border border-red-200"
-                    title="Database Disconnected">
-                    🔴 DB Error
-                </span>
             </h1>
             <div class="flex items-center gap-4">
                 <!-- Real-time Status Indicator -->
@@ -122,39 +113,6 @@
                                 </button>
                             </div>
                         </div>
-                        <!-- Failed Posts Toggle -->
-                        <div v-if="publicationErrors.length > 0"
-                            class="mb-8 bg-red-50 border border-red-200 rounded-lg overflow-hidden transition-all duration-300">
-                            <div @click="toggleErrors"
-                                class="p-4 flex items-center justify-between cursor-pointer hover:bg-red-100/50 transition-colors select-none">
-                                <div class="flex items-center gap-3">
-                                    <div class="bg-red-100 text-red-600 rounded-full p-2">⚠️</div>
-                                    <div>
-                                        <h3 class="text-lg font-bold text-red-800">Обнаружены ошибки ({{
-                                            publicationErrors.length }})</h3>
-                                        <p class="text-xs text-red-600">Нажмите, чтобы развернуть список</p>
-                                    </div>
-                                </div>
-                                <div class="transform transition-transform duration-300"
-                                    :class="{ 'rotate-180': showErrors }">▼</div>
-                            </div>
-
-                            <div v-if="showErrors" class="border-t border-red-100 bg-white">
-                                <div class="max-h-60 overflow-y-auto">
-                                    <div v-for="err in publicationErrors" :key="err.id"
-                                        class="p-3 border-b border-red-50 flex items-start gap-3 hover:bg-red-50/30 text-sm">
-                                        <span class="font-mono text-red-400 text-xs mt-1 whitespace-nowrap">{{
-                                            formatTime(err.posted_at)
-                                            }}</span>
-                                        <div class="flex-1">
-                                            <div class="font-bold text-gray-800">{{ err.profile_username }}</div>
-                                            <div class="text-red-600 mt-1">{{ err.meta.error || 'Unknown error' }}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Today Stats Cards -->
                         <div class="flex gap-4 flex-wrap">
                             <!-- Date Card -->
