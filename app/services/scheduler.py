@@ -407,41 +407,40 @@ class ContentScheduler:
         return brands[(idx + 1) % len(brands)]
 
     def extract_theme(self, path: str) -> str:
-        # Simplified port of extractTheme from main.ts/scheduler.ts
-        # Logic: /ВИДЕО/Author/Category/Brand/file.mp4
+        # User structure: Video / Editor / Category / Brand
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
         
-        # Strategy 1: Search for known theme aliases in path
-        aliases = self.config.themeAliases or {}
-        for canonical, list_ in aliases.items():
-            # Check canonical first
-            norm_canonical = self.normalize(canonical)
-            for p in parts:
-                if self.normalize(p) == norm_canonical:
-                    return canonical
-            
-            # Check aliases
-            for alias in list_:
-                norm_alias = self.normalize(alias)
-                for p in parts:
-                    if self.normalize(p) == norm_alias:
-                        return canonical
+        # 1. Identify "Category Folder" by position
+        theme_part = None
+        v_idx = -1
+        for i, p in enumerate(parts):
+            if p.lower() in ["video", "видео"]:
+                v_idx = i
+                break
+        
+        if v_idx != -1 and v_idx + 2 < len(parts):
+             theme_part = parts[v_idx + 2].split("(")[0].strip()
+        
+        # Fallback to parent of brand if positional video anchor not found
+        if not theme_part and len(parts) >= 3:
+            theme_part = parts[-3]
 
-        # Strategy 2: Positional
-        try:
-            # Find index of "video"
-            v_idx = -1
-            for i, p in enumerate(parts):
-                if p.lower() in ["video", "видео"]:
-                    v_idx = i
-                    break
-            
-            if v_idx != -1 and v_idx + 2 < len(parts):
-                 raw = parts[v_idx + 2].split("(")[0].strip() # remove comments like (old)
-                 return self.normalize_theme(raw)
-        except:
-            pass
-        return "unknown"
+        if not theme_part:
+            return "unknown"
+
+        # 2. Normalize and check Aliases strictly on this folder name
+        raw_normalized = self.normalize(theme_part)
+        aliases = self.config.themeAliases or {}
+        
+        for canonical, list_ in aliases.items():
+            if raw_normalized == self.normalize(canonical): 
+                return canonical
+            for a in list_:
+                if self.normalize(a) == raw_normalized: 
+                    return canonical
+        
+        return self.normalize_theme_key(theme_part)
+
 
     def extract_brand(self, path: str) -> str:
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]

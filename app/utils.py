@@ -6,57 +6,55 @@ def normalize(text: str) -> str:
 
 def extract_brand(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
-    try:
-        v_idx = -1
-        for i, p in enumerate(parts):
-            if p.lower() in ["video", "видео"]:
-                v_idx = i
-                break
+    # User structure: Video / Editor / Category / Brand
+    v_idx = -1
+    for i, p in enumerate(parts):
+        if p.lower() in ["video", "видео"]:
+            v_idx = i
+            break
+    
+    brand_raw = None
+    if v_idx != -1 and v_idx + 3 < len(parts):
+        brand_raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
+        if "." in brand_raw: brand_raw = None
+    
+    if not brand_raw and len(parts) >= 2:
+        brand_raw = parts[-2]
         
-        if v_idx != -1 and v_idx + 3 < len(parts):
-                raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
-                # Filter out file extensions
-                if any(raw.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
-                    return "unknown"
-                return normalize(raw)
-    except:
-            pass
-    return "unknown"
+    return normalize(brand_raw) if brand_raw else "unknown"
 
 def extract_author(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
-    try:
-        v_idx = -1
-        for i, p in enumerate(parts):
-            if p.lower() in ["video", "видео"]:
-                v_idx = i
-                break
-        
-        if v_idx != -1 and v_idx + 1 < len(parts):
-                author = parts[v_idx + 1].strip()
-                # Filter out file extensions
-                if any(author.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
-                    return "unknown"
-                return author
-    except:
-            pass
+    v_idx = -1
+    for i, p in enumerate(parts):
+        if p.lower() in ["video", "видео"]:
+            v_idx = i
+            break
+    
+    if v_idx != -1 and v_idx + 1 < len(parts):
+        author = parts[v_idx + 1].split("*")[0].split("(")[0].strip()
+        if any(author.lower().endswith(ext) for ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']):
+            return "unknown"
+        return author
     return "unknown"
 
 def extract_theme(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
-    try:
-        v_idx = -1
-        for i, p in enumerate(parts):
-            if p.lower() in ["video", "видео"]:
-                v_idx = i
-                break
+    v_idx = -1
+    for i, p in enumerate(parts):
+        if p.lower() in ["video", "видео"]:
+            v_idx = i
+            break
+    
+    theme_raw = None
+    if v_idx != -1 and v_idx + 2 < len(parts):
+        theme_raw = parts[v_idx + 2].split("*")[0].split("(")[0].strip()
+    
+    if not theme_raw and len(parts) >= 3:
+        theme_raw = parts[-3]
         
-        if v_idx != -1 and v_idx + 2 < len(parts):
-                raw = parts[v_idx + 2].split("(")[0].strip()
-                return normalize_theme_key(raw)
-    except:
-        pass
-    return "unknown"
+    return normalize_theme_key(theme_raw) if theme_raw else "unknown"
+
 
 def normalize_theme_key(text: str) -> str:
     raw = normalize(text)
