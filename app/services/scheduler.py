@@ -493,7 +493,7 @@ class ContentScheduler:
     def normalize(self, text: str) -> str:
         return text.lower().replace("ё", "е").replace(" ", "").strip()
 
-    def normalize_theme(self, text: str) -> str:
+    def normalize_theme_key(self, text: str) -> str:
         raw = self.normalize(text)
         aliases = self.config.themeAliases or {}
         for canonical, list_ in aliases.items():
