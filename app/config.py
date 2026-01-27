@@ -93,5 +93,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        from dotenv import load_dotenv
+        load_dotenv()
 
 settings = Settings()
