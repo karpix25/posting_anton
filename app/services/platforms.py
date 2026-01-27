@@ -48,8 +48,17 @@ class UploadPostClient:
                 response = await client.get(SCHEDULE_API_URL, headers=self.headers)
                 if response.status_code == 200:
                     data = response.json()
-                    logger.info(f"[UploadPost] Fetched {len(data)} scheduled posts")
-                    return data
+                    # User docs said array, but debug shows {'scheduled_posts': []}
+                    # Handle both cases for robustness
+                    if isinstance(data, dict):
+                        posts = data.get('scheduled_posts', [])
+                    elif isinstance(data, list):
+                        posts = data
+                    else:
+                        posts = []
+                        
+                    logger.info(f"[UploadPost] Fetched {len(posts)} scheduled posts")
+                    return posts
                 else:
                     logger.warning(f"[UploadPost] Schedule fetch returned {response.status_code}")
                     return []

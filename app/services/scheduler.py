@@ -158,7 +158,28 @@ class ContentScheduler:
                 if profile.limit is not None and profile.limit > 0: return profile.limit
                 return getattr(self.config.limits, platform, 1)
 
-            for pass_idx in range(max_limit):
+            # Fixed: Use while loop with safety cap to ensure targets are met
+            target_limit = max(global_max, profiles_max)
+            max_passes = min(max(target_limit * 3, 50), 100)
+            
+            logger.info(f"[Scheduler] Day {day_index}: Target {target_limit} posts/profile. Max passes: {max_passes}")
+
+            pass_idx = 0
+            while pass_idx < max_passes:
+                pass_idx += 1
+                
+                # Check if we still have work to do
+                pending_profiles = 0
+                for p in daily_profiles:
+                     for pl in p.platforms:
+                         if profile_counts[p.username].get(pl, 0) < get_profile_limit(p, pl):
+                             pending_profiles += 1
+                             break
+                
+                if pending_profiles == 0:
+                     logger.info(f"[Scheduler] All profiles satisfied after {pass_idx} passes.")
+                     break
+
                 for profile in daily_profiles:
                     # Check needs
                     needs_post = False
