@@ -285,7 +285,13 @@ class ContentScheduler:
             
             # Skip brands without AI client configured
             if not has_ai_client(self.config.clients, brand):
-                skipped_brands.add(brand)
+                if brand not in skipped_brands:
+                    # Log ONCE per brand to avoid flooding
+                    skipped_brands.add(brand)
+                    logger.warning(f"[Scheduler] ⚠️ SKIPPING videos for brand '{brand}' (category '{theme}') - No AI Client configured matching this name/regex!")
+                    # Debug: List available clients
+                    available_clients = [c.name for c in self.config.clients]
+                    logger.debug(f"[Scheduler] Available AI Clients: {available_clients}")
                 continue
             
             if theme not in groups: groups[theme] = {}

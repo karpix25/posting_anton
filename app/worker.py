@@ -172,7 +172,8 @@ async def generate_daily_schedule():
 
     async for session in get_session():
         scheduler = ContentScheduler(config, session)
-        schedule = await scheduler.generate_schedule(all_videos, config.profiles, occupied_slots, existing_counts)
+        # Use active_profiles (already validated against API) instead of config.profiles
+        schedule = await scheduler.generate_schedule(all_videos, active_profiles, occupied_slots, existing_counts)
         logger.info(f"✅ [Worker] Generated {len(schedule)} new posts to schedule.")
         
         for post in schedule:

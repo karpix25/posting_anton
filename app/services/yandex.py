@@ -60,9 +60,13 @@ class YandexDiskService:
                         
                         # Apply early path filtering if folders provided
                         if folders:
+                            # Normalize path for comparison (remove disk:, strip slashes, lowercase)
+                            path_norm = path.replace("disk:", "").strip("/").lower()
                             match = False
                             for f in folders:
-                                if path.startswith(f):
+                                # Normalize folder for comparison
+                                f_norm = f.replace("disk:", "").strip("/").lower()
+                                if path_norm.startswith(f_norm):
                                     match = True
                                     break
                             if not match:
