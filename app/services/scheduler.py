@@ -450,50 +450,62 @@ class ContentScheduler:
     def extract_brand(self, path: str) -> str:
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
         
-        # 1. Identify the specific "Brand Folder" part based on structure
-        brand_part = None
-        
-        # Strategy A: Anchor by "Video"/"Видео" (User structure: Video/Editor/Category/Brand)
+        # 1. Anchor by "Video"/"Видео" folder
         v_idx = -1
         for i, p in enumerate(parts):
             if p.lower() in ["video", "видео"]:
                 v_idx = i
                 break
         
-        if v_idx != -1 and v_idx + 3 < len(parts):
-             # Extract raw folder name, stripping casual comments like "Brand (comment)"
-             brand_part = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
-             # Sanity check: if it looks like a filename, abort
-             if "." in brand_part:
-                 brand_part = None
-
-        # Strategy B: Fallback to Parent Folder (parts[-2])
-        # Only use if Strategy A failed
-        if not brand_part and len(parts) >= 2:
-            brand_part = parts[-2]
-
-        if not brand_part:
-            return "unknown"
-
-        # 2. Match the identifying part against known Clients
-        normalized_part = self.normalize(brand_part)
+        # If anchor found, we only look at specific positions relative to it
+        # Structure A: Video/Author/Category/Brand/... (Brand is at v_idx + 3)
+        # Structure B: Video/Author/Brand/...          (Brand is at v_idx + 2)
         
-        for client in self.config.clients:
-            # Check 1: Exact Name Match
-            if self.normalize(client.name) == normalized_part:
-                return self.normalize(client.name)
+        candidate_parts = []
+        if v_idx != -1:
+            # Check 3rd folder first (most specific)
+            if v_idx + 3 < len(parts):
+                candidate_parts.append(parts[v_idx + 3])
+            # Check 2nd folder next (fallback)
+            if v_idx + 2 < len(parts):
+                candidate_parts.append(parts[v_idx + 2])
+        
+        # Also include parent folder as a fallback if structure extraction fails entirely
+        if not candidate_parts and len(parts) >= 2:
+             candidate_parts.append(parts[-2])
+
+        # 2. Match candidates against known Clients
+        # We prioritize the structure-based candidates
+        
+        for candidate in candidate_parts:
+            # Clean candidate
+            clean_candidate = candidate.split("*")[0].split("(")[0].strip()
+            if "." in clean_candidate: # Skip files
+                continue
+                
+            normalized_candidate = self.normalize(clean_candidate)
             
-            # Check 2: Regex Match (Strictly on the folder name)
-            if client.regex:
-                import re
-                try:
-                    if re.search(client.regex, brand_part, re.IGNORECASE):
-                        return self.normalize(client.name)
-                except:
-                    pass
+            for client in self.config.clients:
+                # Check 1: Exact Name Match
+                if self.normalize(client.name) == normalized_candidate:
+                    return self.normalize(client.name)
+                
+                # Check 2: Regex Match
+                if client.regex:
+                    import re
+                    try:
+                        if re.search(client.regex, clean_candidate, re.IGNORECASE):
+                            return self.normalize(client.name)
+                    except:
+                        pass
         
-        # 3. If no client matched, return the raw normalized part as the brand key
-        return normalized_part
+        # 3. If no client matched, return the most likely brand folder (prefer 3rd level, then 2nd)
+        # warning: this might return "Category" name if no brand matched, 
+        # but that's better than returning a subfolder file name.
+        if candidate_parts:
+             return self.normalize(candidate_parts[0].split("*")[0].split("(")[0].strip())
+             
+        return "unknown"
 
     def normalize(self, text: str) -> str:
         return text.lower().replace("ё", "е").replace(" ", "").strip()
