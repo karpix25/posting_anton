@@ -1238,7 +1238,13 @@
                                     dashboard: null
                                 },
                                 errors: [],
-                                errorStats: [] // New grouped stats
+                                errorStats: [], // New grouped stats
+                                analytics: {
+                                    loading: false,
+                                    date: '',
+                                    platforms: {}
+                                },
+                                history: [] // Added missing history array initialization
                             }
                         },
                         async mounted() {
