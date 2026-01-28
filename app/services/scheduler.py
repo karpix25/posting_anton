@@ -158,50 +158,63 @@ class ContentScheduler:
                 if profile.limit is not None and profile.limit > 0: return profile.limit
                 return getattr(self.config.limits, platform, 1)
 
-            # Fixed: Use while loop with safety cap to ensure targets are met
-            target_limit = max(global_max, profiles_max)
-            max_passes = min(max(target_limit * 3, 50), 100)
-            
-            logger.info(f"[Scheduler] Day {day_index}: Target {target_limit} posts/profile. Max passes: {max_passes}")
+            # Track planned counts dynamically for this run
+            planned_counts = {} # brand -> count
 
-            pass_idx = 0
-            while pass_idx < max_passes:
-                pass_idx += 1
+            # Fixed: Process profiles SEQUENTIALLY (fill one profile's quota, then move to next)
+            # This avoids round-robin overhead and ensures we don't skip profiles just because pass count is exhausted.
+            for profile in daily_profiles:
+                # 1. Determine Quota for this profile
+                needed_posts = {}
+                total_needed = 0
                 
-                # Check if we still have work to do
-                pending_profiles = 0
-                for p in daily_profiles:
-                     for pl in p.platforms:
-                         if profile_counts[p.username].get(pl, 0) < get_profile_limit(p, pl):
-                             pending_profiles += 1
-                             break
+                for pl in profile.platforms:
+                    limit = get_profile_limit(profile, pl)
+                    current_count = profile_counts[profile.username].get(pl, 0)
+                    if current_count < limit:
+                        needed = limit - current_count
+                        needed_posts[pl] = needed
+                        total_needed += needed
                 
-                if pending_profiles == 0:
-                     logger.info(f"[Scheduler] All profiles satisfied after {pass_idx} passes.")
-                     break
-
-                for profile in daily_profiles:
-                    # Check needs
-                    needs_post = False
-                    for pl in profile.platforms:
-                        if profile_counts[profile.username].get(pl, 0) < get_profile_limit(profile, pl):
-                            needs_post = True
+                if total_needed == 0:
+                    continue
+                    
+                # 2. Try to fill quota
+                # We loop until we satisfy needs or run out of content/slots for this profile
+                attempts = 0
+                max_profile_attempts = total_needed * 5 # Safety break
+                
+                while total_needed > 0 and attempts < max_profile_attempts:
+                    attempts += 1
+                    
+                    # Select platform that needs posts
+                    target_pl = None
+                    for pl, needed in needed_posts.items():
+                        if needed > 0:
+                            target_pl = pl
                             break
-                    if not needs_post:
-                        continue
+                    
+                    if not target_pl:
+                         break # Should not happen if total_needed > 0
 
                     # Select Video
                     canonical_theme = self.normalize_theme_key(profile.theme_key)
                     theme_brands = videos_by_theme.get(canonical_theme, {})
                     if not theme_brands:
-                        continue
-
+                        break # No videos for this theme
+                    
                     available_brands = [b for b, v_list in theme_brands.items() if len(v_list) > 0]
                     if not available_brands:
-                         continue
+                         break # No brands available
                          
-                    selected_brand = await self.select_brand_by_quota(canonical_theme, available_brands, last_brand_used_per_theme.get(canonical_theme))
+                    selected_brand = await self.select_brand_by_quota(
+                        canonical_theme, 
+                        available_brands, 
+                        last_brand_used_per_theme.get(canonical_theme),
+                        planned_counts
+                    )
                     last_brand_used_per_theme[canonical_theme] = selected_brand
+                    planned_counts[selected_brand] = planned_counts.get(selected_brand, 0) + 1
                     
                     brand_videos = theme_brands[selected_brand]
                     video_for_slot = None
@@ -235,6 +248,9 @@ class ContentScheduler:
                         break
                     
                     if not video_for_slot:
+                        # If we couldn't find a video for this brand, maybe try next iteration (which will pick another brand)
+                        # But we should be careful not to infinite loop.
+                        # For now, just continue loop, attempts will break us out if we are stuck.
                         continue
 
                     # Find Time Slot
@@ -242,7 +258,8 @@ class ContentScheduler:
                     candidate_time = self.find_safe_slot(profile_slots[profile.username], base_time, current_day_start, current_day_end)
                     
                     if not candidate_time:
-                        continue
+                         # Slot conflict, retry loop
+                         continue
 
                     # SUCCESS - Mark as used
                     vid_id = video_for_slot.get("md5") or video_for_slot.get("path")
@@ -255,23 +272,46 @@ class ContentScheduler:
 
                     profile_slots[profile.username].append(candidate_time)
 
-                    # Create Schedule Items
-                    for pl_idx, pl in enumerate(profile.platforms):
-                        if profile_counts[profile.username].get(pl, 0) < get_profile_limit(profile, pl):
-                            publish_time = candidate_time
-                            if pl_idx > 0:
-                                publish_time += timedelta(minutes=random.randint(2, 5))
+                    # Create Schedule Items - JUST FOR ONE PLATFORM or ALL?
+                    # Original logic: added for ALL platforms if needed.
+                    # Current logic: We are iterating needed_posts.
+                    # Requirement: Usually we post same video to all needed platforms at once.
+                    
+                    added_platforms = []
+                    # Add for MAIN target platform
+                    publish_time = candidate_time
+                    
+                    # Also try to add for OTHER platforms if they need posts too
+                    # This simulates "Post same video to Reels, TikTok, Shorts simultanously"
+                    platforms_to_post = [target_pl]
+                    for other_pl in needed_posts:
+                        if other_pl != target_pl and needed_posts[other_pl] > 0:
+                            platforms_to_post.append(other_pl)
                             
-                            aware_msk = candidate_time.replace(tzinfo=MSK)
-                            utc_time = aware_msk.astimezone(timezone.utc)
-                            
-                            schedule.append({
-                                "video": video_for_slot,
-                                "profile": profile,
-                                "platform": pl,
-                                "publish_at": utc_time.isoformat()
-                            })
-                            profile_counts[profile.username][pl] += 1
+                    base_aware_msk = candidate_time.replace(tzinfo=MSK)
+                    
+                    for i, pl in enumerate(platforms_to_post):
+                         # Jitter for other platforms
+                         pl_time = base_aware_msk
+                         if i > 0:
+                             pl_time += timedelta(minutes=random.randint(2, 5))
+                         
+                         utc_time = pl_time.astimezone(timezone.utc)
+                         
+                         schedule.append({
+                            "video": video_for_slot,
+                            "profile": profile,
+                            "platform": pl,
+                            "publish_at": utc_time.isoformat()
+                         })
+                         
+                         profile_counts[profile.username][pl] += 1
+                         needed_posts[pl] -= 1
+                         total_needed -= 1
+                         added_platforms.append(pl)
+                    
+                    # If we successfully added posts, we continue to next iteration of while loop
+                    # until quota is 0.
 
         return schedule
 
@@ -324,15 +364,12 @@ class ContentScheduler:
         
         return groups
 
-    async def select_brand_by_quota(self, category: str, available_brands: List[str], last_brand: Optional[str]) -> str:
+    async def select_brand_by_quota(self, category: str, available_brands: List[str], last_brand: Optional[str], planned_counts: Dict[str, int]) -> str:
         # Check Quotas from DB
         if not self.db_session:
             return self.round_robin(available_brands, last_brand)
             
         current_month = datetime.now().strftime("%Y-%m")
-        # Query DB for stats
-        # For performance, we should load all stats for the category once outside the loop?
-        # But here we do query per selection. It's fine for batch job.
         
         result = await self.db_session.execute(
             select(BrandStats).where(
@@ -349,12 +386,21 @@ class ContentScheduler:
         for brand in available_brands:
             quota = quotas.get(brand, 0)
             published = stats_map[brand].published_count if brand in stats_map else 0
-            weights[brand] = max(0, quota - published)
             
-        # Sort by weight desc
+            # Key fix: subtract what we have ALREADY planned in this run
+            already_planned = planned_counts.get(brand, 0)
+            
+            weights[brand] = max(0, quota - published - already_planned)
+            
+        # Sort by weight desc (Highest need first)
         sorted_brands = sorted(available_brands, key=lambda b: weights.get(b, 0), reverse=True)
         
+        # If we have a clear winner with need > 0
         if weights.get(sorted_brands[0], 0) > 0:
+            # If top 2 have same weight, try to rotate if possible to avoid clumps
+            if len(sorted_brands) > 1 and weights[sorted_brands[0]] == weights[sorted_brands[1]]:
+                 if last_brand == sorted_brands[0]:
+                     return sorted_brands[1]
             return sorted_brands[0]
             
         return self.round_robin(available_brands, last_brand)
