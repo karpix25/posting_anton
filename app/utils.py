@@ -47,9 +47,6 @@ def extract_theme(path: str) -> str:
     if v_idx != -1 and v_idx + 2 < len(parts):
         theme_raw = parts[v_idx + 2].split("*")[0].split("(")[0].strip()
     
-    if not theme_raw and len(parts) >= 3:
-        theme_raw = parts[-3]
-        
     return normalize_theme_key(theme_raw) if theme_raw else "unknown"
 
 
