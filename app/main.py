@@ -465,34 +465,79 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
         }
 
 @app.get("/api/stats/publishing")
-async def get_publishing_stats(session: AsyncSession = Depends(get_session)):
-    """Get comprehensive publishing statistics for all posts."""
+async def get_publishing_stats(
+    date_from: Optional[str] = None, 
+    date_to: Optional[str] = None,
+    session: AsyncSession = Depends(get_session)
+):
+    """Get comprehensive publishing statistics for all posts with optional date filtering."""
     try:
-        from sqlalchemy import func
+        from sqlalchemy import func, and_
         from app.models import PostingHistory
         from app.services.config_db import get_db_config
+        from datetime import datetime, timezone, timedelta
         
         # Get total profiles count
         config = await get_db_config(session)
         total_profiles = len(config.profiles)
         active_profiles = len([p for p in config.profiles if p.enabled])
         
+        # Date filtering conditions
+        # We assume dates come as YYYY-MM-DD strings in local time (or user intent)
+        # DB stores naive UTC (usually). If using naive, we compare directly or ensuring consistency.
+        filters = []
+        if date_from:
+            try:
+                dt_from = datetime.fromisoformat(date_from)
+                filters.append(PostingHistory.posted_at >= dt_from)
+            except ValueError:
+                pass # Ignore invalid dates
+        
+        if date_to:
+            try:
+                # Add one day to include the end date fully if it's just a date
+                dt_to = datetime.fromisoformat(date_to) + timedelta(days=1)
+                filters.append(PostingHistory.posted_at < dt_to)
+            except ValueError:
+                pass
+
         # Count posts by status
         status_counts = {}
         for status in ["queued", "processing", "success", "failed"]:
-            stmt = select(func.count(PostingHistory.id)).where(PostingHistory.status == status)
+            stmt = select(func.count(PostingHistory.id)).where(
+                PostingHistory.status == status,
+                *filters
+            )
             result = await session.execute(stmt)
             status_counts[status] = result.scalar() or 0
         
         # Count posts by platform
         platform_counts = {}
         for platform in ["instagram", "tiktok", "youtube"]:
-            stmt = select(func.count(PostingHistory.id)).where(PostingHistory.platform == platform)
+            stmt = select(func.count(PostingHistory.id)).where(
+                PostingHistory.platform == platform,
+                *filters
+            )
             result = await session.execute(stmt)
             platform_counts[platform] = result.scalar() or 0
         
         # Calculate total expected posts (approximation based on active profiles and platform limits)
+        # Expected is trickier with date range. 
+        # If date range is set, we can estimate: (days in range) * (daily limit).
+        # If no date range, use config.daysToGenerate (future buffer).
         total_expected = 0
+        
+        if date_from and date_to:
+             try:
+                d1 = datetime.fromisoformat(date_from)
+                d2 = datetime.fromisoformat(date_to)
+                delta = (d2 - d1).days + 1
+                days_factor = max(1, delta)
+             except:
+                days_factor = config.daysToGenerate
+        else:
+             days_factor = config.daysToGenerate
+
         for profile in config.profiles:
             if profile.enabled:
                 for platform in profile.platforms:
@@ -504,7 +549,7 @@ async def get_publishing_stats(session: AsyncSession = Depends(get_session)):
                         limit = profile.youtubeLimit or config.limits.youtube
                     else:
                         limit = 0
-                    total_expected += limit * config.daysToGenerate
+                    total_expected += limit * days_factor
         
         total_posts = sum(status_counts.values())
         success_rate = (status_counts["success"] / total_posts * 100) if total_posts > 0 else 0
