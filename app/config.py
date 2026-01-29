@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings
 
 class SocialProfile(BaseModel):
@@ -19,6 +19,13 @@ class SocialProfile(BaseModel):
     # Kept for backwards compatibility
     limit: Optional[int] = None
     last_posted: Optional[Dict[str, str]] = {}
+
+    @field_validator('instagramLimit', 'tiktokLimit', 'youtubeLimit', 'limit', mode='before')
+    @classmethod
+    def empty_string_to_none(cls, v):
+        if v == "":
+            return None
+        return v
 
 class ClientConfig(BaseModel):
     name: str

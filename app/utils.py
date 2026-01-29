@@ -18,9 +18,6 @@ def extract_brand(path: str) -> str:
         brand_raw = parts[v_idx + 3].split("*")[0].split("(")[0].strip()
         if "." in brand_raw: brand_raw = None
     
-    if not brand_raw and len(parts) >= 2:
-        brand_raw = parts[-2]
-        
     return normalize(brand_raw) if brand_raw else "unknown"
 
 def extract_author(path: str) -> str:
