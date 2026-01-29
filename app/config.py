@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 
 class SocialProfile(BaseModel):
     username: str
-    theme_key: str
+    theme_key: Optional[str] = None
     platforms: List[str]
     enabled: bool = True
     
