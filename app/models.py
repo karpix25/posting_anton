@@ -61,3 +61,54 @@ class DailyAnalytics(SQLModel, table=True):
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+class SocialProfile(SQLModel, table=True):
+    __tablename__ = "social_profiles_db"  # suffix _db to avoid conflict with Pydantic model
+    
+    username: str = Field(primary_key=True)
+    theme_key: Optional[str] = Field(default=None, index=True)
+    enabled: bool = Field(default=True)
+    
+    # Stores ["instagram", "tiktok"] as JSON
+    platforms: Dict[str, Any] = Field(default=[], sa_column=Column(JSONB)) 
+    
+    # Limits
+    instagram_limit: Optional[int] = Field(default=None)
+    tiktok_limit: Optional[int] = Field(default=None)
+    youtube_limit: Optional[int] = Field(default=None)
+    
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AIClient(SQLModel, table=True):
+    __tablename__ = "ai_clients_db"
+    
+    name: str = Field(primary_key=True)
+    prompt: Optional[str] = None
+    regex: Optional[str] = None
+    
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AppSettings(SQLModel, table=True):
+    __tablename__ = "app_settings"
+    
+    id: int = Field(default=1, primary_key=True) # Singleton
+    
+    cron_schedule: Optional[str] = Field(default="1 0 * * *")
+    days_to_generate: int = Field(default=1)
+    
+    # Array of strings
+    yandex_folders: Dict[str, Any] = Field(default=[], sa_column=Column(JSONB))
+    
+    # Global limits: {"instagram": 10, ...}
+    global_limits: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    
+    # Structure features
+    theme_aliases: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    brand_quotas: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    
+    # Schedule Meta
+    schedule_enabled: bool = Field(default=False)
+    schedule_timezone: str = Field(default="Europe/Moscow")
+    schedule_time: str = Field(default="00:00")
+    
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
