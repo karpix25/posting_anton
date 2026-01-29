@@ -1,18 +1,17 @@
 
 import logging
-from sqlalchemy import select
+from datetime import datetime
+from sqlalchemy import select, delete
 from app.database import async_session_maker
-from app.models import SystemConfig
+from app.models import SocialProfile
 from app.services.platforms import upload_post_client
-from app.services.config_db import CONFIG_KEY
 
 logger = logging.getLogger(__name__)
 
 async def sync_profiles_service():
     """
-    Synchronizes local DB profiles with the external API.
+    Synchronizes local RElational DB profiles with the external API.
     Refuses to delete all profiles if API returns 0 (safety mechanism).
-    Returns a dict with statistics: { "total": int, "removed": int, "added": int, "params_updated": int }
     """
     logger.info("📡 [Sync] Fetching LIVE profiles from API...")
     try:
@@ -25,85 +24,109 @@ async def sync_profiles_service():
         logger.error("🛑 [Sync] API returned 0 profiles! Aborting sync to prevent data loss.")
         raise Exception("API returned 0 profiles. Sync aborted for safety.")
 
-    # Normalize live usernames map: lowercase -> full profile dict
-    # KEY FIX: API returns 'username', not 'social_username'
-    live_map = {p.get('username', '').lower(): p for p in live_profiles if p.get('username')}
+    # 1. Filter & Normalize from API
+    # Only keep profiles with at least one connected social account
+    valid_lives = {}
     
-    if not live_map:
-        logger.error("🛑 [Sync] Parsed 0 profiles from API data! Aborting to prevent data loss.")
-        raise Exception("Parsed 0 profiles. API format might have changed.")
+    for p in live_profiles:
+        raw_uname = p.get('username')
+        if not raw_uname: continue
+        
+        # Check connected accounts
+        socials = p.get('social_accounts', {})
+        active_platforms = []
+        
+        # UploadPost returns dict: {"instagram": {...}, "tiktok": ""}
+        # If value is truthy (dict with data), it's connected.
+        for platform, details in socials.items():
+            if details: 
+                active_platforms.append(platform)
+        
+        if not active_platforms:
+            # Skip profile with no connected accounts
+            continue
+            
+        uname_key = raw_uname.lower().strip()
+        valid_lives[uname_key] = {
+            "username": raw_uname, # Preserve case from API
+            "platforms": active_platforms
+        }
 
-    logger.info(f"✅ [Sync] Found {len(live_map)} live profiles in API.")
+    if not valid_lives:
+        logger.warning("🛑 [Sync] No profiles with active social accounts found! Aborting.")
+        # Raise exception or just return? If user really deleted all connections, we should theoretically sync that.
+        # But '0' is suspicious. Let's block.
+        raise Exception("No active profiles found (with connected social accounts).")
+
+    logger.info(f"✅ [Sync] Found {len(valid_lives)} valid profiles (with social accounts).")
 
     stats = {"total": 0, "removed": 0, "added": 0, "params_updated": 0}
 
     async with async_session_maker() as session:
-        logger.info("💾 [Sync] Fetching System Config from DB...")
-        stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
+        # 2. Fetch Existing DB Profiles
+        stmt = select(SocialProfile)
         result = await session.execute(stmt)
-        config_record = result.scalar_one_or_none()
-
-        if not config_record:
-            raise Exception("No system configuration found in DB.")
-
-        config_data = config_record.value
-        db_profiles = config_data.get('profiles', [])
+        db_profiles = result.scalars().all()
+        db_map = {p.username.lower().strip(): p for p in db_profiles}
         
-        logger.info(f"📋 [Sync] Found {len(db_profiles)} profiles in DB config.")
+        logger.info(f"📋 [Sync] Found {len(db_profiles)} profiles in Local DB.")
         
-        new_db_profiles = []
-        existing_usernames = set()
-
-        # 1. Retain only valid profiles (Remove Dead Souls)
-        for p in db_profiles:
-            uname = p.get('username', '')
-            uname_lower = uname.lower()
+        # 3. Sync Logic
+        
+        # A. Update or Add
+        for key, api_data in valid_lives.items():
+            correct_uname = api_data["username"]
+            detected_platforms = api_data["platforms"]
             
-            if uname_lower in live_map:
-                # Update casing to match API exactly
-                api_p = live_map[uname_lower]
-                correct_uname = api_p.get('social_username')
+            if key in db_map:
+                # Update existing
+                p = db_map[key]
+                changed = False
                 
-                if p['username'] != correct_uname:
-                    p['username'] = correct_uname
-                    stats['params_updated'] += 1
+                # Check casing change (unlikely but possible)
+                if p.username != correct_uname:
+                    # PK change is hard. SQLModel doesn't support PK update easily without cascade.
+                    # Usually we treat as same user. We can just ignore casing display for now or recreate?
+                    # Let's assume username is stable enough.
+                    pass 
                 
-                new_db_profiles.append(p)
-                existing_usernames.add(uname_lower)
+                # Update platforms list if simplified
+                # We merge detected platforms with existing ones? 
+                # Or overwrite? User might have unchecked some in our UI?
+                # "Synced" implies source of truth is API.
+                # Let's overwrite platforms list with what is actually connected.
+                current_platforms = p.platforms or []
+                # Sort for comparison
+                if sorted(current_platforms) != sorted(detected_platforms):
+                   p.platforms = detected_platforms
+                   changed = True
+                   stats['params_updated'] += 1
+                
+                # Re-enable if it was disabled? No, respect user choice.
+                # Update timestamp
+                if changed:
+                    p.updated_at = datetime.utcnow()
+                
             else:
-                stats['removed'] += 1
-                if stats['removed'] <= 10:
-                    logger.info(f"   🗑️ removing dead soul: {uname}")
-
-        # 2. Add New Profiles (from API that are missing in DB)
-        # Note: We initialize them with default enabled=True and global limits
-        for uname_lower, api_p in live_map.items():
-            if uname_lower not in existing_usernames:
-                correct_uname = api_p.get('social_username')
-                new_profile = {
-                    "username": correct_uname,
-                    "enabled": True,
-                    "instagramLimit": 0,
-                    "tiktokLimit": 0,
-                    "youtubeLimit": 0,
-                    "proxy": None,
-                    "platforms": ["instagram"] # Default, usage main_config default if preferable
-                }
-                new_db_profiles.append(new_profile)
+                # Add New
+                new_p = SocialProfile(
+                    username=correct_uname,
+                    theme_key=None, # User must set theme
+                    enabled=True,
+                    platforms=detected_platforms,
+                    updated_at=datetime.utcnow()
+                )
+                session.add(new_p)
                 stats['added'] += 1
-                if stats['added'] <= 10:
-                    logger.info(f"   ✨ adding new profile: {correct_uname}")
+        
+        # B. Remove Missing (Dead Souls or Disconnected)
+        for key, p in db_map.items():
+            if key not in valid_lives:
+                await session.delete(p)
+                stats['removed'] += 1
 
-        stats['total'] = len(new_db_profiles)
-
-        if stats['removed'] == 0 and stats['added'] == 0 and stats['params_updated'] == 0:
-            logger.info("✨ [Sync] Database is already in sync!")
-        else:
-            # Update Config
-            config_data['profiles'] = new_db_profiles
-            config_record.value = config_data
-            session.add(config_record)
-            await session.commit()
-            logger.info(f"✅ [Sync] Completed. New count: {len(new_db_profiles)}")
-
+        await session.commit()
+    
+    stats['total'] = len(valid_lives)
+    logger.info(f"✅ [Sync] Complete. Total: {stats['total']}, Added: {stats['added']}, Removed: {stats['removed']}")
     return stats
