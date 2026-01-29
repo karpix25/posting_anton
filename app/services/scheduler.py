@@ -426,9 +426,7 @@ class ContentScheduler:
         if v_idx != -1 and v_idx + 2 < len(parts):
              theme_part = parts[v_idx + 2].split("(")[0].strip()
         
-        # Fallback to parent of brand if positional video anchor not found
-        if not theme_part and len(parts) >= 3:
-            theme_part = parts[-3]
+
 
         if not theme_part:
             return "unknown"
@@ -470,9 +468,7 @@ class ContentScheduler:
             if v_idx + 2 < len(parts):
                 candidate_parts.append(parts[v_idx + 2])
         
-        # Also include parent folder as a fallback if structure extraction fails entirely
-        if not candidate_parts and len(parts) >= 2:
-             candidate_parts.append(parts[-2])
+
 
         # 2. Match candidates against known Clients
         # We prioritize the structure-based candidates
