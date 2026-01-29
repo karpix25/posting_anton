@@ -6,9 +6,10 @@ export class DatabaseService {
     private initialized: boolean = false;
 
     constructor(connectionString: string) {
+        const sslEnabled = process.env.DB_SSL !== 'false' && process.env.NODE_ENV !== 'development';
         this.pool = new Pool({
             connectionString,
-            ssl: connectionString.includes('sslmode=disable') ? false : { rejectUnauthorized: false }
+            ssl: sslEnabled ? { rejectUnauthorized: false } : false
         });
 
         // Error handling for idle clients

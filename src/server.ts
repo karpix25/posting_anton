@@ -28,7 +28,7 @@ const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const USED_HASHES_PATH = path.join(DATA_DIR, 'used_hashes.json');
 
 // Initialize database service
-const dbConnectionString = process.env.DATABASE_URL || '';
+const dbConnectionString = process.env.DATABASE_URL || 'postgres://nadaraya@localhost:5432/postgres';
 const db = new DatabaseService(dbConnectionString);
 db.init().catch(err => console.error('[Server] Failed to initialize database:', err));
 

@@ -6,7 +6,7 @@
     "start": "node dist/server.js",
     "cleanup": "node dist/scripts/cleanup.js",
     "build": "tsc",
-    "dev": "ts-node src/server.js",
+    "dev": "export NODE_ENV=development && ts-node src/server.ts",
     "schedule": "node src/scheduler.js",
     "automation": "node dist/automation/main.js"
   },
