@@ -725,9 +725,20 @@ app.get('/health', (req, res) => {
 });
 
 
+// SPA Fallback: Serve index.html for any unknown routes
+app.get('*', (req, res) => {
+    const indexPath = path.join(__dirname, '../public/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Application loading... (index.html not found)');
+    }
+});
+
 // Start Server
 const server = app.listen(PORT, () => {
     console.log(`Dashboard running at http://localhost:${PORT}`);
+    console.log(`Serving static files from: ${path.join(__dirname, '../public')}`);
 });
 
 // Initialize built-in automation scheduler
