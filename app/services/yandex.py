@@ -100,13 +100,13 @@ class YandexDiskService:
                 except Exception as e:
                     import httpx
                     last_error = e
-                    is_timeout = isinstance(e, (yadisk.exceptions.RequestTimeoutError, httpx.ReadTimeout, httpx.ConnectTimeout))
+                    is_retryable = isinstance(e, (yadisk.exceptions.RequestTimeoutError, yadisk.exceptions.InternalServerError, httpx.ReadTimeout, httpx.ConnectTimeout))
                     # yadisk wraps exceptions? check string too
-                    if "timeout" in str(e).lower() or isinstance(e, httpx.TimeoutException):
-                        is_timeout = True
+                    if "timeout" in str(e).lower() or "internalservererror" in str(e).lower() or isinstance(e, httpx.TimeoutException):
+                        is_retryable = True
                         
-                    if is_timeout and attempt < len(limits_to_try) - 1:
-                        logger.warning(f"[Yandex] Timeout with limit {current_limit}. Retrying with lower limit...")
+                    if is_retryable and attempt < len(limits_to_try) - 1:
+                        logger.warning(f"[Yandex] Retryable error ({type(e).__name__}) with limit {current_limit}. Retrying with lower limit...")
                         await asyncio.sleep(2)
                         continue
                     
