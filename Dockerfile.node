@@ -6,15 +6,23 @@ ARG GIT_SHA
 
 WORKDIR /app
 
+# 1. Install Backend Dependencies
 COPY package*.json ./
 RUN npm install
 
+# 2. Build Frontend
+COPY frontend ./frontend
+WORKDIR /app/frontend
+# Explicitly install frontend deps and build
+RUN npm install
+RUN npm run build
+WORKDIR /app
+
+# 3. Build Backend
 COPY tsconfig.json ./
-# Copy example config so it's available for build/runtime fallback
 COPY config.example.json ./config.example.json
 COPY src ./src
-COPY public ./public
-
+# Note: We do NOT copy valid old public folder here, we will replace it
 RUN npm run build
 
 # Production Stage
@@ -26,7 +34,8 @@ COPY package*.json ./
 RUN npm install --production
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/public ./public
+# Copy Frontend Build to public/
+COPY --from=builder /app/frontend/dist ./public
 COPY --from=builder /app/config.example.json ./config.example.json
 
 # Environment variables for runtime
