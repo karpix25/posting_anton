@@ -160,7 +160,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         global _files_cache, _files_cache_timestamp
         
         if refresh:
-            files = await yandex_service.list_files(limit=100000)
+            files = await yandex_service.list_files(limit=100000, force_refresh=True)
             _files_cache = files
             _files_cache_timestamp = datetime.now()
         elif _files_cache is not None:
