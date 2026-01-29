@@ -32,9 +32,16 @@ class YandexDiskService:
             logger.debug(f"[Yandex] Returning cached file list ({len(self._cache)} files, age: {age}s)")
             return self._cache
 
-        limits_to_try = [limit, min(5000, limit), min(2000, limit)]
-        # Deduplicate limits
-        limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
+        # User requested fallback steps: 100k -> 80k -> 60k
+        # We start with the requested 'limit', then add fallbacks.
+        # Ensure we don't try limits higher than the initial request if it was small.
+        possible_limits = [limit]
+        if limit >= 80000:
+            possible_limits.append(80000)
+        if limit >= 60000:
+            possible_limits.append(60000)
+            
+        limits_to_try = sorted(list(set(possible_limits)), reverse=True)
 
         # Create fresh client for this request to avoid "client closed" errors
         async with yadisk.AsyncClient(token=self.token) as client:
