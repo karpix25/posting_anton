@@ -138,37 +138,59 @@ async def sync_profiles_endpoint():
         logger.error(f"Sync failed: {e}")
         return {"success": False, "error": str(e)}
 
+# Global Cache
+_files_cache = []
+_files_cache_timestamp = None
+
 @app.get("/api/stats")
 async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):
+    global _files_cache, _files_cache_timestamp
     # This logic mimics existing server.ts /api/stats
     # It fetches ALL videos from Yandex and groups them by metadata
     
     # 1. Fetch Files
-    # Note: We should implement caching like in TS version?
-    # For now, let's just fetch live. Yandex Service logic handles internal details? 
-    # Yandex service currently fetches fresh.
-    # In production, cache this result in memory or Redis.
-    
     try:
         # Load folders from config
         config = await get_db_config(session)
-        all_videos = []
         
-        # We fetch all flat files once (wrapper handles limit)
-        # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        # We fetch all flat files once (wrapper handles limit)
-        # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        files = await yandex_service.list_files(limit=100000)
+        # Strict Manual Refresh Logic
+        # Only scan if refresh=True is explicitly requested.
+        # Otherwise, return cached data if available, or empty structure.
         
+        global _files_cache, _files_cache_timestamp
+        
+        if refresh:
+            files = await yandex_service.list_files(limit=100000)
+            _files_cache = files
+            _files_cache_timestamp = datetime.now()
+        elif _files_cache is not None:
+             files = _files_cache
+        else:
+             # Fallback if no cache and no refresh: Return empty list (don't scan)
+             # UI will show 0 videos until user clicks "Sync"
+             files = []
+
         stats = {
             "totalVideos": 0,
-            "publishedCount": 0, # TODO: fetch from DB history count?
+            "publishedCount": 0, 
             "byCategory": {},
             "byAuthor": {},
             "byBrand": {},
-            "byAuthorBrand": {},  # author -> brand -> count
+            "byAuthorBrand": {},  
             "profilesByCategory": {}
         }
+        
+        # If no files (first load without refresh), we can stop here or proceed to return zeroed stats
+        if not files and not refresh:
+             # Fill profilesByCategory even if no files
+             config = await get_db_config(session)
+             for p in config.profiles:
+                if p.theme_key:
+                    tk = p.theme_key.lower().strip()
+                    if tk not in stats["profilesByCategory"]:
+                        stats["profilesByCategory"][tk] = []
+                    stats["profilesByCategory"][tk].append(p.username)
+             return stats
         
         # Filter and Aggregate
         config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
@@ -248,24 +270,20 @@ async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = D
 async def restore_defaults(session: AsyncSession = Depends(get_session)):
     """Force restores client prompts from seed data."""
     try:
-        from app.seed_data import CLIENTS_SEED
-        config = await get_db_config(session)
+        from app.seed_data import DEFAULT_CLIENTS
+        from app.services.config_db import get_db_config, save_db_config
         
-        # Convert Pydantic to dict
+        config = await get_db_config(session)
         config_dict = config.dict()
         
-        # Inject clients
-        config_dict["clients"] = CLIENTS_SEED
+        # Replace clients
+        config_dict['clients'] = [c.dict() for c in DEFAULT_CLIENTS]
         
-        # Save back
         await save_db_config(session, config_dict)
-        logger.info(f"Force-restored {len(CLIENTS_SEED)} clients from seed.")
-        
-        return {"success": True, "message": f"Restored {len(CLIENTS_SEED)} clients", "clients": CLIENTS_SEED}
+        return {"success": True, "message": "Restored default AI clients"}
     except Exception as e:
-        logger.error(f"Failed to restore defaults: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
+        
 @app.post("/api/brands/quotas")
 async def update_brand_quota(
     payload: Dict[str, Any] = Body(...),

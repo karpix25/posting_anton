@@ -1277,7 +1277,7 @@
 
                             // 2. Dashboard General Stats: every 60 seconds
                             this.autoRefreshIntervals.dashboard = setInterval(() => {
-                                this.loadStats();
+                                // this.loadStats(); // Manual refresh only for heavy Yandex scan
                                 this.loadBrandStats();
                                 this.checkHealth();
                                 this.fetchErrors();
@@ -1454,12 +1454,18 @@
                             async loadTodayStats() {
                                 try {
                                     const res = await fetch('/api/stats/today');
-                                    if (res.ok) {
-                                        this.todayStats = await res.json();
+                                    const data = await res.json();
+                                    this.todayStats = data;
+                                    if (data.profile_usage) {
+                                        this.profileUsage = data.profile_usage;
                                     }
                                 } catch (e) {
-                                    console.error('Failed to load today stats:', e);
+                                    console.error("Failed to load today stats:", e);
                                 }
+                            },
+                            getUsage(username, platform) {
+                                if (!this.profileUsage[username]) return 0;
+                                return this.profileUsage[username][platform] || 0;
                             },
                             async loadPublishingStats() {
                                 try {
