@@ -575,6 +575,20 @@
                   Применить
                 </button>
 
+                <!-- Bulk Limits -->
+                <div class="border-l border-blue-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Лимиты:</span>
+                  <input type="number" v-model.number="bulkInstagramLimit" placeholder="IG"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит Instagram">
+                  <input type="number" v-model.number="bulkTikTokLimit" placeholder="TT"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит TikTok">
+                  <input type="number" v-model.number="bulkYoutubeLimit" placeholder="YT"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит YouTube">
+                  <button @click="applyBulkLimits"
+                    class="bg-white text-blue-600 font-bold px-3 py-1 rounded hover:bg-gray-100"
+                    title="Применить лимиты ко всем выбранным">OK</button>
+                </div>
+
                 <div class="border-l border-blue-400 pl-4 ml-2 flex items-center gap-2">
                   <span class="text-sm font-medium">Активность:</span>
                   <button @click="toggleBulkEnabled(true)"
@@ -735,6 +749,20 @@
                   class="bg-white text-gray-600 font-bold px-4 py-1 rounded hover:bg-gray-100">
                   Применить
                 </button>
+
+                <!-- Bulk Limits (Disabled) -->
+                <div class="border-l border-gray-400 pl-4 ml-2 flex items-center gap-2">
+                  <span class="text-sm font-medium">Лимиты:</span>
+                  <input type="number" v-model.number="bulkInstagramLimitDisabled" placeholder="IG"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит Instagram">
+                  <input type="number" v-model.number="bulkTikTokLimitDisabled" placeholder="TT"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит TikTok">
+                  <input type="number" v-model.number="bulkYoutubeLimitDisabled" placeholder="YT"
+                    class="w-16 p-1 rounded text-black border border-gray-300 text-center" title="Лимит YouTube">
+                  <button @click="applyBulkLimitsDisabled"
+                    class="bg-white text-gray-600 font-bold px-3 py-1 rounded hover:bg-gray-100"
+                    title="Применить лимиты ко всем выбранным">OK</button>
+                </div>
 
                 <div class="border-l border-gray-400 pl-4 ml-2 flex items-center gap-2">
                   <span class="text-sm font-medium">Активность:</span>
@@ -1184,6 +1212,12 @@
                 lastSelectedDisabled: null, // For Shift+Click in disabled profiles
                 bulkThemeKey: '', // Model for bulk edit input
                 bulkThemeKeyDisabled: '', // Model for bulk edit input (disabled profiles)
+                bulkInstagramLimit: '',
+                bulkTikTokLimit: '',
+                bulkYoutubeLimit: '',
+                bulkInstagramLimitDisabled: '',
+                bulkTikTokLimitDisabled: '',
+                bulkYoutubeLimitDisabled: '',
                 schedule: {
                   enabled: false,
                   timezone: 'Europe/Moscow',
@@ -1737,6 +1771,38 @@
                 });
                 await this.saveConfig();
                 this.bulkThemeKeyDisabled = '';
+              },
+              async applyBulkLimits() {
+                let changed = false;
+                this.selectedProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    if (this.bulkInstagramLimit !== '') { profile.instagramLimit = this.bulkInstagramLimit; changed = true; }
+                    if (this.bulkTikTokLimit !== '') { profile.tiktokLimit = this.bulkTikTokLimit; changed = true; }
+                    if (this.bulkYoutubeLimit !== '') { profile.youtubeLimit = this.bulkYoutubeLimit; changed = true; }
+                  }
+                });
+                if (changed) {
+                  await this.saveConfig();
+                  alert('Лимиты обновлены!');
+                  // Optional: Clear inputs
+                  // this.bulkInstagramLimit = ''; this.bulkTikTokLimit = ''; this.bulkYoutubeLimit = '';
+                }
+              },
+              async applyBulkLimitsDisabled() {
+                let changed = false;
+                this.selectedDisabledProfiles.forEach(username => {
+                  const profile = this.config.profiles.find(p => p.username === username);
+                  if (profile) {
+                    if (this.bulkInstagramLimitDisabled !== '') { profile.instagramLimit = this.bulkInstagramLimitDisabled; changed = true; }
+                    if (this.bulkTikTokLimitDisabled !== '') { profile.tiktokLimit = this.bulkTikTokLimitDisabled; changed = true; }
+                    if (this.bulkYoutubeLimitDisabled !== '') { profile.youtubeLimit = this.bulkYoutubeLimitDisabled; changed = true; }
+                  }
+                });
+                if (changed) {
+                  await this.saveConfig();
+                  alert('Лимиты обновлены (для отключенных)!');
+                }
               },
               async toggleBulkEnabledDisabled(enabled) {
                 this.selectedDisabledProfiles.forEach(username => {
