@@ -15,7 +15,7 @@ const configStore = useConfigStore();
 const currentTab = ref('dashboard');
 
 const tabs = [
-    { id: 'dashboard', name: '📊 Статус', component: DashboardTab },
+    { id: 'dashboard', name: '📊 Дашборд', component: DashboardTab },
     { id: 'profiles', name: '👥 Профили', component: ProfilesTab },
     { id: 'activity', name: '⚡ Активность', component: null }, // To implement later
     { id: 'settings', name: '⚙️ Настройки', component: SettingsTab },

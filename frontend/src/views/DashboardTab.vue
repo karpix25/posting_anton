@@ -43,7 +43,7 @@ onMounted(() => {
 
 <template>
     <div>
-        <h2 class="text-2xl font-bold mb-4">Статус</h2>
+        <h2 class="text-2xl font-bold mb-4">Дашборд</h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div class="bg-blue-50 p-4 rounded border border-blue-100">
                 <div class="text-sm text-gray-500">Следующий запуск</div>
