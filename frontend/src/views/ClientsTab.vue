@@ -7,24 +7,53 @@ const configStore = useConfigStore()
 const statsStore = useStatsStore()
 
 const getClientPublished = (client) => {
-    // Logic from index.html: filter published stats by client regex/name?
-    // In index.html: return stats.byBrand[client.name.toLowerCase()] || 0
-    // We can assume 'brand' view mode logic applies here.
-    if (!statsStore.stats.byBrand) return 0
-    const key = (client.name || '').toLowerCase().trim()
-    return statsStore.stats.byBrand[key] || 0
+    try {
+        if (!client || !client.name) return 0
+        
+        // Try precise match via brandStats (Category:Brand key)
+        if (statsStore.brandStats && Object.keys(statsStore.brandStats).length > 0) {
+             const categoryMatch = (client.regex || '').match(/([a-zA-Zа-яА-Я0-9]+)/)
+             const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown'
+             const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '')
+             const key = `${category}:${brandName}`
+             
+             if (statsStore.brandStats[key]) {
+                 return statsStore.brandStats[key].published_count || 0
+             }
+        }
+        
+        // Fallback to global scan stats
+        if (statsStore.stats && statsStore.stats.byBrand) {
+            const key = client.name.toLowerCase().trim()
+            return statsStore.stats.byBrand[key] || 0
+        }
+        
+        return 0
+    } catch (e) {
+        console.warn('Error in getClientPublished', e)
+        return 0
+    }
 }
 
 const getClientRemaining = (client) => {
-    const published = getClientPublished(client)
-    return Math.max(0, (client.quota || 0) - published)
+    try {
+        const published = getClientPublished(client)
+        return Math.max(0, (client.quota || 0) - published)
+    } catch (e) { return 0 }
 }
 
 const getClientProgress = (client) => {
-    if (!client.quota) return 0
-    const published = getClientPublished(client)
-    return Math.min(100, Math.round((published / client.quota) * 100))
+    try {
+        if (!client.quota) return 0
+        const published = getClientPublished(client)
+        return Math.min(100, Math.round((published / client.quota) * 100))
+    } catch (e) { return 0 }
 }
+
+import { onMounted } from 'vue'
+onMounted(() => {
+    statsStore.loadBrandStats()
+})
 
 const addClient = async () => {
     if (!configStore.config.clients) configStore.config.clients = []

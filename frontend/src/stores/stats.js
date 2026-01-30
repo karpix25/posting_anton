@@ -74,10 +74,15 @@ export const useStatsStore = defineStore('stats', {
         },
 
         async loadBrandStats() {
-            // This corresponds to loadBrandStats in index.html which seemingly loads /api/stats/brands? or similar
-            // Need to verify exact endpoint in index.html, usually /api/stats returns everything?
-            // Let's assume /api/stats returns 'stats' object which has this data, or specific endpoints.
-            // checkHealth fetches /api/health
+            try {
+                // Default to current month if not specified
+                const res = await axios.get('/api/brands/stats')
+                if (res.data.success) {
+                    this.brandStats = res.data.stats || {}
+                }
+            } catch (e) {
+                console.error('Failed to load brand stats:', e)
+            }
         },
 
         async checkHealth() {
