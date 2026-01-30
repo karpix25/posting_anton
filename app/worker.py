@@ -473,9 +473,61 @@ async def check_cleanup(video_path: str):
         
         if all_completed and has_any_success:
             logger.info(f"✅ Cleanup: {success_count}/{total_posts} posts successful for {video_path}. Moving to archive...")
+            
             try:
-                await yandex_service.move_file(video_path, "disk:/опубликовано")
-                logger.info(f"✅ Cleanup: Archived {video_path}")
+                # 1. Determine Brand Name (Clean)
+                # Load config again to get clients (optimization: could pass config to check_cleanup)
+                from app.services.config_db import get_db_config
+                config = await get_db_config(session)
+                
+                raw_brand = extract_brand(video_path)
+                client = find_ai_client(config.clients, raw_brand)
+                
+                brand_folder_name = "Unknown"
+                if client:
+                    brand_folder_name = client.name.strip() # Use canonical name from AI Client
+                else:
+                    brand_folder_name = raw_brand.capitalize() if raw_brand != "unknown" else "Other"
+                
+                # 2. Determine Date Folder
+                from datetime import datetime
+                date_folder_name = datetime.now().strftime("%Y-%m-%d")
+                
+                # 3. Construct Destination Path
+                # Structure: disk:/опубликовано/<Brand>/<Date>
+                brand_path = f"disk:/опубликовано/{brand_folder_name}"
+                date_path = f"{brand_path}/{date_folder_name}"
+                
+                # 4. Check/Create Folders
+                # We need to ensure brand folder exists, then date folder exists.
+                # yandex_service.move_file ensures the immediate parent exists? 
+                # Let's verify yandex_service.move_file implementation or do it manually here for safety.
+                # Looking at yandex_service.move_file, it does: if not exists(dest_folder): mkdir(dest_folder).
+                # So if we pass date_path as dest_folder, it will try to create it.
+                # However, mkdir usually requires parent to exist. 
+                # Let's safe-create both levels.
+                
+                if not await yandex_service.exists("disk:/опубликовано"):
+                     # Should exist, but just in case
+                     pass 
+
+                if not await yandex_service.exists(brand_path):
+                    try:
+                        import yadisk
+                        async with yadisk.AsyncClient(token=settings.YANDEX_TOKEN) as client:
+                            await client.mkdir(brand_path)
+                            logger.info(f"[Cleanup] Created brand folder: {brand_path}")
+                    except Exception as e:
+                        logger.warning(f"[Cleanup] Failed to create brand folder {brand_path}: {e}")
+
+                # Now date path will be handled by move_file logic OR we create it explicitly
+                # yandex.py move_file implementation:
+                #   if not await client.exists(dest_folder): await client.mkdir(dest_folder)
+                # This works if parent exists. Since we just ensured brand_path exists, this should work.
+                
+                await yandex_service.move_file(video_path, date_path)
+                logger.info(f"✅ Cleanup: Archived {video_path} -> {date_path}")
+                
             except Exception as e:
                 logger.error(f"❌ Cleanup Failed for {video_path}: {e}")
         elif all_completed and not has_any_success:
