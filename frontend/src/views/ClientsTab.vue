@@ -84,15 +84,15 @@ const removeClient = async (index) => {
            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
                <div>
                    <label class="text-sm text-gray-500 block mb-1">Имя клиента (бренд)</label>
-                   <input v-model="client.name" @change="configStore.saveConfig" class="w-full border p-2 rounded">
+                   <input v-model="client.name" class="w-full border p-2 rounded">
                </div>
                 <div>
                    <label class="text-sm text-gray-500 block mb-1">Regex папки</label>
-                   <input v-model="client.regex" @change="configStore.saveConfig" class="w-full border p-2 rounded font-mono text-sm">
+                   <input v-model="client.regex" class="w-full border p-2 rounded font-mono text-sm">
                </div>
                 <div>
                    <label class="text-sm text-gray-500 block mb-1">Квота (видео/месяц)</label>
-                   <input v-model.number="client.quota" @change="configStore.saveConfig" type="number" min="0" class="w-full border p-2 rounded">
+                   <input v-model.number="client.quota" type="number" min="0" class="w-full border p-2 rounded">
                    
                    <div v-if="client.quota" class="mt-2">
                        <div class="text-xs text-gray-600 mb-1 flex justify-between">
@@ -108,7 +108,7 @@ const removeClient = async (index) => {
            
            <div class="mt-2">
                 <label class="text-sm text-gray-500 block mb-1">AI Системный промт</label>
-                <textarea v-model="client.prompt" @change="configStore.saveConfig" class="w-full border p-2 rounded h-24 font-mono text-sm"></textarea>
+                <textarea v-model="client.prompt" class="w-full border p-2 rounded h-24 font-mono text-sm"></textarea>
            </div>
            
            <div class="text-right mt-2">
