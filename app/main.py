@@ -152,111 +152,130 @@ _files_cache_timestamp = None
 @app.get("/api/stats")
 async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):
     global _files_cache, _files_cache_timestamp
-    # This logic mimics existing server.ts /api/stats
-    # It fetches ALL videos from Yandex and groups them by metadata
     
-    # 1. Fetch Files
-    try:
-        # Load folders from config
-        config = await get_db_config(session)
-        
-        # Strict Manual Refresh Logic
-        # Only scan if refresh=True is explicitly requested.
-        # Otherwise, return cached data if available, or empty structure.
-        
-        global _files_cache, _files_cache_timestamp
-        
-        if refresh:
+    # 1. Load config
+    config = await get_db_config(session)
+    
+    files = []
+    
+    # 2. Determine source of files
+    if refresh:
+        # FORCE REFRESH: Scan Yandex Disk
+        try:
             files = await yandex_service.list_files(limit=100000, force_refresh=True)
             _files_cache = files
             _files_cache_timestamp = datetime.now()
-        elif _files_cache is not None:
-             files = _files_cache
+        except Exception as e:
+            logger.error(f"Yandex Scan Failed: {e}")
+            # Fallback to DB cache if scan fails
+            if config.cached_yandex_stats and "files" in config.cached_yandex_stats:
+                files = config.cached_yandex_stats["files"]
+    else:
+        # NO REFRESH: Try memory cache -> DB cache -> Return empty
+        if _files_cache:
+            files = _files_cache
+        elif config.cached_yandex_stats and "files" in config.cached_yandex_stats:
+             files = config.cached_yandex_stats["files"]
+             # Restore memory cache
+             _files_cache = files
         else:
-             # Fallback if no cache and no refresh: Return empty list (don't scan)
-             # UI will show 0 videos until user clicks "Sync"
-             files = []
-
-        stats = {
-            "totalVideos": 0,
-            "publishedCount": 0, 
-            "byCategory": {},
-            "byAuthor": {},
-            "byBrand": {},
-            "byAuthorBrand": {},  
-            "profilesByCategory": {}
-        }
-        
-        # If no files (first load without refresh), we can stop here or proceed to return zeroed stats
-        if not files and not refresh:
-             # Fill profilesByCategory even if no files
-             config = await get_db_config(session)
-             for p in config.profiles:
-                if p.theme_key:
-                    tk = p.theme_key.lower().strip()
-                    if tk not in stats["profilesByCategory"]:
-                        stats["profilesByCategory"][tk] = []
-                    stats["profilesByCategory"][tk].append(p.username)
-             return stats
-        
-        # Filter and Aggregate
-        config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
-        
-        for f in files:
-            path = f["path"]
-            path_norm = path.replace("disk:", "").strip("/").lower()
+            files = []
             
-            # Check folder
-            in_folder = False
-            for folder in config_folders_norm:
-                if path_norm.startswith(folder):
-                    in_folder = True
-                    break
-            
-            if not in_folder: continue
-            
-            stats["totalVideos"] += 1
-            
-            theme = extract_theme(path)
-            author = extract_author(path)
-            brand = extract_brand(path)
-            
-            if theme != "unknown":
-                stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
-            
-            if author != "unknown":
-                stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
-                
-                # Track brand breakdown per author
-                if author not in stats["byAuthorBrand"]:
-                    stats["byAuthorBrand"][author] = {}
-                if brand != "unknown":
-                    stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
-                
-            if brand != "unknown":
-                stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
-
-        # Profiles mapping
-        for p in config.profiles:
+    # 3. Calculate Stats
+    stats = {
+        "totalVideos": 0,
+        "publishedCount": 0, 
+        "byCategory": {},
+        "byAuthor": {},
+        "byBrand": {},
+        "byAuthorBrand": {},  
+        "profilesByCategory": {}
+    }
+    
+    # If using cached stats object from DB directly (fast path)? 
+    # Actually, we should recalculate stats from files in case config.profiles changed, 
+    # BUT if we want persistence of "categories", we need the files list or the stats object.
+    # Let's rely on processing the 'files' list which we now cache in DB.
+    
+    if not files:
+         # Fill profilesByCategory even if no files
+         for p in config.profiles:
             if p.theme_key:
                 tk = p.theme_key.lower().strip()
                 if tk not in stats["profilesByCategory"]:
                     stats["profilesByCategory"][tk] = []
                 stats["profilesByCategory"][tk].append(p.username)
+         return stats
+    
+    # Filter and Aggregate
+    config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
+    
+    for f in files:
+        path = f["path"]
+        path_norm = path.replace("disk:", "").strip("/").lower()
         
-        return stats
+        # Check folder
+        in_folder = False
+        for folder in config_folders_norm:
+            if path_norm.startswith(folder):
+                in_folder = True
+                break
+        
+        if not in_folder: continue
+        
+        stats["totalVideos"] += 1
+        
+        theme = extract_theme(path)
+        author = extract_author(path)
+        brand = extract_brand(path)
+        
+        if theme != "unknown":
+            stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
+        
+        if author != "unknown":
+            stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
+            
+            # Track brand breakdown per author
+            if author not in stats["byAuthorBrand"]:
+                stats["byAuthorBrand"][author] = {}
+            if brand != "unknown":
+                stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
+            
+        if brand != "unknown":
+            stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
 
-    except Exception as e:
-        print(f"Stats Error: {e}")
-        # Return empty stats on error to not crash UI
-        return {
-            "totalVideos": 0,
-            "publishedCount": 0,
-            "byCategory": {},
-            "byAuthor": {},
-            "profilesByCategory": {},
-            "error": str(e)
-        }
+    # Profiles mapping
+    for p in config.profiles:
+        if p.theme_key:
+            tk = p.theme_key.lower().strip()
+            if tk not in stats["profilesByCategory"]:
+                stats["profilesByCategory"][tk] = []
+            stats["profilesByCategory"][tk].append(p.username)
+            
+    # 4. Save to DB if refreshed (and successful)
+    if refresh:
+        try:
+            # We save the FILES list to cache, so we can re-process them later even if config changes
+            # Saving entire stats object is also fine, but saving files is more flexible.
+            # Warning: Files list can be large. 
+            # If files list > 1MB, it might be heavy for DB row. 
+            # Optimization: Save only necessary paths.
+            simple_files = [{"path": f["path"]} for f in files]
+            
+            config.dict()["cached_yandex_stats"] = {"files": simple_files, "updated_at": datetime.now().isoformat()}
+            # We need to use update logic since config is Pydantic/SQLModel
+            # But get_db_config returns AppSettings model instance
+            config.cached_yandex_stats = {"files": simple_files, "updated_at": datetime.now().isoformat()}
+            
+            # Need to explicitly add to session to update? get_db_config usually returns attached instance?
+            # get_db_config -> select(AppSettings).first() -> It is attached.
+            session.add(config)
+            await session.commit()
+            logger.info("✅ Saved Yandex Disk cache to DB")
+        except Exception as e:
+            logger.error(f"Failed to save DB cache: {e}")
+
+    return stats
 
 @app.get("/api/brands/stats")
 async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = Depends(get_session)):
@@ -973,29 +992,35 @@ async def event_stream():
             while True:
                 try:
                     # Wait for new event (with shorter timeout for faster keepalive)
-                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    # Using 5 seconds to be more aggressive with keepalives
+                    event = await asyncio.wait_for(queue.get(), timeout=5.0)
                     
                     # Send event to client
-                    yield f"data: {json.dumps(event)}\n\n"
+                    data_str = json.dumps(event)
+                    yield f"data: {data_str}\n\n"
                     
                 except asyncio.TimeoutError:
                     # Send keepalive comment to prevent connection timeout
-                    yield f": keepalive\n\n"
+                    # Colon usually indicates a comment in SSE
+                    yield ": keepalive\n\n"
                     
         except asyncio.CancelledError:
-            logger.info("[SSE] Client disconnected from event stream")
+            logger.info("[SSE] Client disconnected from event stream (Cancelled)")
             event_broadcaster.unsubscribe('all', queue)
+            raise # Important to propagate cancellation
         except Exception as e:
             logger.error(f"[SSE] Error in event stream: {e}")
             event_broadcaster.unsubscribe('all', queue)
-    
+        finally:
+             event_broadcaster.unsubscribe('all', queue)
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # Disable nginx buffering
+            # "Connection": "keep-alive",  <-- REMOVED: Forbidden in HTTP/2 and causes ERR_HTTP2_PROTOCOL_ERROR
+            "X-Accel-Buffering": "no"      # Disable nginx buffering
         }
     )
 
