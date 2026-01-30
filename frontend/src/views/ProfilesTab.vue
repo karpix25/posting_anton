@@ -1,9 +1,12 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useConfigStore } from '../stores/config'
 import axios from 'axios'
 
+import { useStatsStore } from '../stores/stats'
+
 const configStore = useConfigStore()
+const statsStore = useStatsStore()
 
 // UI State
 const showActiveProfiles = ref(true)
@@ -25,10 +28,12 @@ const bulkTikTokLimitDisabled = ref('')
 const bulkYoutubeLimitDisabled = ref('')
 
 const availableThemes = computed(() => {
-    if (configStore.config.themeAliases) {
-        return Object.keys(configStore.config.themeAliases).sort()
-    }
-    return []
+    const configThemes = configStore.config.themeAliases ? Object.keys(configStore.config.themeAliases) : []
+    const yandexThemes = statsStore.stats.byCategory ? Object.keys(statsStore.stats.byCategory) : []
+    
+    // Merge and deduplicate
+    const combined = new Set([...configThemes, ...yandexThemes])
+    return Array.from(combined).sort()
 })
 
 // Grouping Logic
@@ -134,6 +139,13 @@ const applyBulkLimits = async (isDisabled = false) => {
     })
     await configStore.saveConfig()
 }
+
+onMounted(() => {
+    // Ensure we have stats for categories
+    if (!statsStore.stats.totalVideos) {
+        statsStore.loadYandexStats(false)
+    }
+})
 </script>
 
 <template>
