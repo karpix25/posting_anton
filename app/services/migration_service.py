@@ -34,8 +34,21 @@ async def run_migration(session: AsyncSession):
              await session.execute(delete(AIClient))
              existing_settings = None # Force re-migration
         else:
-             logger.info("[Migration] Relational tables already populated. Skipping migration.")
-             return
+             # Check if tables are actually populated
+             from sqlalchemy import func
+             stmt_p = select(func.count()).select_from(SocialProfile)
+             count_p = (await session.execute(stmt_p)).scalar()
+             
+             stmt_c = select(func.count()).select_from(AIClient)
+             count_c = (await session.execute(stmt_c)).scalar()
+             
+             # If settings exist but tables are empty, we FORCE migration/seeding
+             if count_p == 0 and count_c == 0:
+                 logger.warning("[Migration] ⚠️ Settings exist but tables are empty. Forcing migration from config.json...")
+                 existing_settings = None
+             else:
+                 logger.info("[Migration] Relational tables already populated. Skipping migration.")
+                 return
 
     logger.info("[Migration] Starting migration from SystemConfig JSON to Relational Tables...")
     
