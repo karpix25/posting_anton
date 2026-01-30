@@ -1012,8 +1012,31 @@ async def refresh_analytics():
     asyncio.create_task(analytics_service.fetch_and_save_daily_stats())
     return {"success": True, "message": "Analytics refresh started in background"}
 
-# Serve static files (Frontend)
-# Providing access to public directory if exists
+# Serve static files (Frontend) - SPA Configuration
 public_path = os.path.join(os.getcwd(), 'public')
-if os.path.exists(public_path):
-    app.mount("/", StaticFiles(directory=public_path, html=True), name="public")
+
+# 1. Mount assets explicitly (Vite puts JS/CSS here)
+assets_path = os.path.join(public_path, 'assets')
+if os.path.exists(assets_path):
+    app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+# 2. Serve other static root files (favicon, etc) BUT exclude index.html to avoid conflict
+# We can't easily exclude just one file with StaticFiles, so we rely on specific mounts or check existence.
+# For simplicity, we can trust the catch-all for root files if they don't match specific API routes.
+
+# 3. SPA Catch-All: Serve index.html for any other route (unless it's an API route matched above)
+from fastapi.responses import FileResponse
+
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    # Check if a static file exists for this path (e.g. favicon.ico, vite.svg)
+    file_path = os.path.join(public_path, full_path)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        return FileResponse(file_path)
+        
+    # Otherwise, return index.html for SPA routing
+    index_path = os.path.join(public_path, 'index.html')
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    
+    return {"error": "Frontend not found (index.html missing)"}

@@ -1,48 +1,68 @@
-# Build Stage
-FROM node:20-alpine AS builder
+# ---------------------------------------
+# Stage 1: Build Frontend (Vue 3 + Vite)
+# ---------------------------------------
+FROM node:20-alpine AS frontend_builder
 
-# Only accept GIT_SHA as build arg (not sensitive)
+WORKDIR /app_frontend
+
+COPY frontend/package*.json ./
+RUN npm install
+
+COPY frontend ./
+# Build output goes to /app_frontend/dist
+RUN npm run build
+
+
+# ---------------------------------------
+# Stage 2: Build Backend (Python / FastAPI)
+# ---------------------------------------
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Consume build args provided by EasyPanel
 ARG GIT_SHA
+ARG YANDEX_TOKEN
+ARG OPENAI_API_KEY
+ARG UPLOAD_POST_API_KEY
+ARG DATABASE_URL
 
-WORKDIR /app
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
+    libffi-dev \
+    libssl-dev \
+    libpq-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# 1. Install Backend Dependencies
-COPY package*.json ./
-RUN npm install
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Build Frontend
-COPY frontend ./frontend
-WORKDIR /app/frontend
-# Explicitly install frontend deps and build
-RUN npm install
-RUN npm run build
-WORKDIR /app
+# Copy Python Source Code
+# Copy 'app' package
+COPY app ./app
+# Copy 'migrations' if exists (ignore error if not exists by using wildcard or explicit copy)
+COPY migrations ./migrations 
+# Copy root scripts
+COPY *.py ./
 
-# 3. Build Backend
-COPY tsconfig.json ./
-COPY config.example.json ./config.example.json
-COPY src ./src
-# Note: We do NOT copy valid old public folder here, we will replace it
-RUN npm run build
+# ---------------------------------------
+# Integrate Frontend
+# ---------------------------------------
+# Create public directory
+RUN mkdir -p public
 
-# Production Stage
-FROM node:20-alpine
+# Copy Vue Build Artifacts from Stage 1
+COPY --from=frontend_builder /app_frontend/dist ./public
 
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm install --production
-
-COPY --from=builder /app/dist ./dist
-# Copy Frontend Build to public/
-COPY --from=builder /app/frontend/dist ./public
-COPY --from=builder /app/config.example.json ./config.example.json
-
-# Environment variables for runtime
+# ---------------------------------------
+# Runtime Config
+# ---------------------------------------
 ENV PORT=3001
-ENV DATA_DIR=/app/data
-
-# Expose default port
 EXPOSE 3001
 
-CMD ["npm", "start"]
+# Run with uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3001"]
