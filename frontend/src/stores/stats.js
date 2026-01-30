@@ -112,6 +112,21 @@ export const useStatsStore = defineStore('stats', {
             } catch (e) {
                 console.error('Failed to fetch errors:', e)
             }
+        },
+
+        async loadYandexStats(refresh = false) {
+            try {
+                // This endpoint returns generic stats including totalVideos and byCategory from Yandex scan
+                const res = await axios.get('/api/stats', { params: { refresh } })
+                if (res.data) {
+                    // Update relevant stats
+                    this.stats.totalVideos = res.data.totalVideos || 0
+                    this.stats.byCategory = res.data.byCategory || {}
+                    // We might merge other fields if needed
+                }
+            } catch (e) {
+                console.error('Failed to load Yandex stats:', e)
+            }
         }
     }
 })

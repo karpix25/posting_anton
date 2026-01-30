@@ -22,6 +22,7 @@ onMounted(() => {
   statsStore.loadHistory()
   statsStore.loadBrandStats()
   statsStore.fetchGlobalAnalytics()
+  statsStore.loadYandexStats(false)
   statsStore.checkHealth()
   statsStore.fetchErrors()
 })
@@ -99,7 +100,7 @@ const triggerCleanup = async () => {
                </div>
                <HardDrive class="text-indigo-300 w-8 h-8" />
             </div>
-             <button @click="statsStore.loadBrandStats" class="mt-2 text-xs bg-indigo-200 hover:bg-indigo-300 px-2 py-1 rounded text-indigo-800 self-start transition">
+             <button @click="statsStore.loadYandexStats(true)" class="mt-2 text-xs bg-indigo-200 hover:bg-indigo-300 px-2 py-1 rounded text-indigo-800 self-start transition">
                   Синхронизировать
              </button>
          </div>
