@@ -21,7 +21,13 @@ export const useConfigStore = defineStore('config', {
             try {
                 const response = await axios.get('/api/config')
                 if (response.data.success) {
-                    this.config = response.data.config
+                    this.config = {
+                        ...this.config,
+                        ...response.data.config,
+                        limits: response.data.config.limits || { instagram: 0, tiktok: 0, youtube: 0 },
+                        profiles: response.data.config.profiles || [],
+                        clients: response.data.config.clients || []
+                    }
                 }
             } catch (err) {
                 this.error = 'Failed to load config'

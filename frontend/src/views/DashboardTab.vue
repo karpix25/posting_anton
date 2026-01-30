@@ -2,10 +2,13 @@
 import { onMounted, computed, ref } from 'vue'
 import { useConfigStore } from '../stores/config'
 import { useStatsStore } from '../stores/stats'
-import { Clock, Users, HardDrive } from 'lucide-vue-next'
+import { Clock, Users, HardDrive, Play, FlaskConical, Trash2 } from 'lucide-vue-next'
+import axios from 'axios'
 
 const configStore = useConfigStore()
 const statsStore = useStatsStore()
+
+const isRunning = ref(false)
 
 const formatCron = (cron) => {
   // Simple cron formatter (placeholder)
@@ -26,6 +29,37 @@ onMounted(() => {
 const refreshStats = () => {
     statsStore.loadPublishingStats()
 }
+
+const triggerRun = async (testMode = false) => {
+    const modeText = testMode ? '🧪 ТЕСТОВОМ режиме (по 1 посту на платформу)' : '🚀 ПОЛНОМ цикле'
+    if (!confirm(`Запустить автоматизацию в ${modeText}?`)) return
+
+    isRunning.value = true
+    try {
+        await axios.post('/api/run', { testMode })
+        alert('✅ Автоматизация запущена! Проверьте логи для отслеживания прогресса.')
+    } catch (e) {
+        console.error(e)
+        alert('❌ Ошибка запуска: ' + (e.response?.data?.detail || e.message))
+    } finally {
+        isRunning.value = false
+    }
+}
+
+const triggerCleanup = async () => {
+    if (!confirm('🗑️ Вы уверены? Это удалит ВСЕ запланированные, но еще не опубликованные посты.')) return
+
+    isRunning.value = true
+    try {
+        const res = await axios.post('/api/cleanup')
+        alert('✅ ' + (res.data.message || 'Очередь очищена'))
+    } catch (e) {
+        console.error(e)
+        alert('❌ Ошибка очистки: ' + (e.response?.data?.detail || e.message))
+    } finally {
+        isRunning.value = false
+    }
+}
 </script>
 
 <template>
@@ -33,7 +67,7 @@ const refreshStats = () => {
     <!-- Status Section -->
     <div>
       <h2 class="text-2xl font-bold mb-4">Статус</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <!-- Next Run -->
         <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 flex items-center justify-between">
           <div>
@@ -65,6 +99,38 @@ const refreshStats = () => {
                   Синхронизировать
              </button>
          </div>
+      </div>
+
+      <!-- Actions Bar -->
+      <div class="flex flex-wrap gap-4">
+        <button 
+            @click="triggerRun(false)" 
+            :disabled="isRunning"
+            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-lg font-semibold shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+        >
+            <Play class="w-5 h-5" />
+            Запустить Сейчас
+        </button>
+        
+        <button 
+            @click="triggerRun(true)" 
+            :disabled="isRunning"
+            class="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-lg text-lg font-semibold shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            title="Запустить только по 1 посту на платформу"
+        >
+            <FlaskConical class="w-5 h-5" />
+            Тест (1 пост)
+        </button>
+        
+        <button 
+            @click="triggerCleanup" 
+            :disabled="isRunning"
+            class="bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 px-6 py-3 rounded-lg text-lg font-semibold shadow-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            title="Удалить запланированные посты"
+        >
+            <Trash2 class="w-5 h-5" />
+            Сброс
+        </button>
       </div>
     </div>
     
