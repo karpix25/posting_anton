@@ -27,7 +27,11 @@ onMounted(() => {
 })
 
 const refreshStats = () => {
+    statsStore.loadTodayStats()
     statsStore.loadPublishingStats()
+    statsStore.loadHistory()
+    statsStore.loadBrandStats()
+    statsStore.fetchGlobalAnalytics()
 }
 
 const triggerRun = async (testMode = false) => {
