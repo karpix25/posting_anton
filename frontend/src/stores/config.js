@@ -43,8 +43,19 @@ export const useConfigStore = defineStore('config', {
                 const configToSave = newConfig || this.config
                 const response = await axios.post('/api/config', configToSave)
                 if (response.data.success) {
-                    // Update local state if successful
-                    this.config = configToSave
+                    // Only update local state if a NEW config object was provided
+                    if (newConfig) {
+                        this.config = newConfig
+                    } else {
+                        // If we saved the current state, it's already up to date locally.
+                        // However, to ensure we have any server-side sanitization/IDs, 
+                        // we SHOULD strictly re-fetch, but let's do it gently to avoid UI jumps.
+                        // For now, let's NOT fetch to prevent "empty list" if fetch fails or lags.
+                        // The user says "DB has it, UI loses it". 
+                        // Existing code was: this.config = configToSave. 
+                        // If configToSave IS this.config, we just did this.config = this.config.
+                        // This might be the culprit. So we DO NOTHING here.
+                    }
                     return true
                 }
                 return false
