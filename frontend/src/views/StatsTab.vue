@@ -51,13 +51,26 @@ const getProfilesForCategory = (name) => {
     if (viewMode.value === 'brand') return statsStore.stats.profilesByBrand?.[key] || []
     return statsStore.stats.profilesByCategory?.[key] || []
 }
+const isRefreshing = ref(false)
+
+const refreshAll = async () => {
+    isRefreshing.value = true
+    await Promise.all([
+        statsStore.loadYandexStats(true), // Force refresh from Yandex
+        statsStore.loadBrandStats()
+    ])
+    isRefreshing.value = false
+}
 </script>
 
 <template>
   <div>
       <div class="flex justify-between items-center mb-6">
           <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
-          <button @click="statsStore.loadBrandStats" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">🔄 Обновить</button>
+          <button @click="refreshAll" :disabled="isRefreshing" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50">
+             <span v-if="isRefreshing">⏳ Обновление...</span>
+             <span v-else>🔄 Обновить</span>
+          </button>
       </div>
       
       <!-- Overview Cards -->
