@@ -15,7 +15,7 @@ export const useRealtimeStore = defineStore('realtime', {
             }
 
             console.log('[SSE] Connecting...')
-            const es = new EventSource('/api/events')
+            const es = new EventSource('/api/events/stream')
 
             es.onopen = () => {
                 console.log('[SSE] Connection established')

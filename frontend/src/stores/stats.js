@@ -96,6 +96,17 @@ export const useStatsStore = defineStore('stats', {
                     this.analytics = res.data
                 }
             } catch (e) { console.error(e) }
+        },
+
+        async fetchErrors() {
+            try {
+                const res = await axios.get('/api/errors/recent')
+                if (res.data.success) {
+                    this.errors = res.data.errors
+                }
+            } catch (e) {
+                console.error('Failed to fetch errors:', e)
+            }
         }
     }
 })
