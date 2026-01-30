@@ -719,6 +719,48 @@ app.post('/api/schedule', (req, res) => {
     }
 });
 
+// Debug Endpoint for File System
+app.get('/api/debug/fs', (req, res) => {
+    try {
+        const pathsToCheck = [
+            path.join(__dirname),
+            path.join(__dirname, '..'),
+            path.join(__dirname, '../public'),
+            path.join(__dirname, '../dist'),
+            // absolute check for Docker
+            '/app',
+            '/app/public',
+            '/app/dist'
+        ];
+
+        const results: any = {};
+
+        pathsToCheck.forEach(p => {
+            try {
+                if (fs.existsSync(p)) {
+                    if (fs.statSync(p).isDirectory()) {
+                        results[p] = fs.readdirSync(p);
+                    } else {
+                        results[p] = 'FILE';
+                    }
+                } else {
+                    results[p] = 'NOT FOUND';
+                }
+            } catch (e: any) {
+                results[p] = `ERROR: ${e.message}`;
+            }
+        });
+
+        res.json({
+            cwd: process.cwd(),
+            __dirname: __dirname,
+            structure: results
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
