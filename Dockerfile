@@ -1,30 +1,48 @@
-FROM python:3.11-slim
+# Build Stage
+FROM node:20-alpine AS builder
+
+# Only accept GIT_SHA as build arg (not sensitive)
+ARG GIT_SHA
 
 WORKDIR /app
 
-# Consume build args provided by EasyPanel to prevent errors
-ARG GIT_SHA
-ARG YANDEX_TOKEN
-ARG OPENAI_API_KEY
-ARG UPLOAD_POST_API_KEY
-ARG DATABASE_URL
+# 1. Install Backend Dependencies
+COPY package*.json ./
+RUN npm install
 
-# Install system dependencies (including ffmpeg later)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3-dev \
-    libffi-dev \
-    libssl-dev \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# 2. Build Frontend
+COPY frontend ./frontend
+WORKDIR /app/frontend
+# Explicitly install frontend deps and build
+RUN npm install
+RUN npm run build
+WORKDIR /app
 
+# 3. Build Backend
+COPY tsconfig.json ./
+COPY config.example.json ./config.example.json
+COPY src ./src
+# Note: We do NOT copy valid old public folder here, we will replace it
+RUN npm run build
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Production Stage
+FROM node:20-alpine
 
-COPY . .
+WORKDIR /app
 
-# Default command
+COPY package*.json ./
+RUN npm install --production
+
+COPY --from=builder /app/dist ./dist
+# Copy Frontend Build to public/
+COPY --from=builder /app/frontend/dist ./public
+COPY --from=builder /app/config.example.json ./config.example.json
+
+# Environment variables for runtime
 ENV PORT=3001
+ENV DATA_DIR=/app/data
+
+# Expose default port
 EXPOSE 3001
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3001"]
+
+CMD ["npm", "start"]
