@@ -36,7 +36,7 @@ const triggerRun = async (testMode = false) => {
 
     isRunning.value = true
     try {
-        await axios.post('/api/run', { testMode })
+        await axios.post('/api/schedule/run', { run_for_today_only: testMode })
         alert('✅ Автоматизация запущена! Проверьте логи для отслеживания прогресса.')
     } catch (e) {
         console.error(e)
