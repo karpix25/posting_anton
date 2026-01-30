@@ -210,7 +210,14 @@ const applyBulkLimits = async (isDisabled = false) => {
                                 <td class="p-3 text-center">
                                     <input type="checkbox" :value="profile.username" v-model="selectedProfiles">
                                 </td>
-                                <td class="p-3 font-medium">{{ profile.username }}</td>
+                                <td class="p-3">
+                                    <div class="font-medium text-gray-900">{{ profile.username }}</div>
+                                    <div class="flex gap-1 mt-1 flex-wrap">
+                                        <span v-if="profile.platforms?.includes('instagram')" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-700 border border-pink-200">Instagram</span>
+                                        <span v-if="profile.platforms?.includes('tiktok')" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-800 border border-gray-200">TikTok</span>
+                                        <span v-if="profile.platforms?.includes('youtube')" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700 border border-red-200">YouTube</span>
+                                    </div>
+                                </td>
                                 <td class="p-3">
                                     <select v-model="profile.theme_key" @change="configStore.saveConfig" class="border rounded p-1 text-xs w-32">
                                         <option value="">Без темы</option>
