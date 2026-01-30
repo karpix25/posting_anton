@@ -63,11 +63,25 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     db_clients = res_clients.scalars().all()
     
     pyd_clients = []
+    
+    # Helper to find quota in brand_quotas (Category -> Brand -> Quota)
+    quotas_map = app_settings.brand_quotas or {}
+    
+    def find_quota(client_name):
+        clean = client_name.lower().replace(" ", "")
+        for cat, brands in quotas_map.items():
+            # brands could be None if malformed
+            if not brands: continue
+            if clean in brands:
+                return brands[clean]
+        return 0
+
     for c in db_clients:
         pyd_clients.append(PydanticClient(
             name=c.name,
             prompt=c.prompt,
-            regex=c.regex
+            regex=c.regex,
+            quota=find_quota(c.name)
         ))
 
     # 4. Construct
