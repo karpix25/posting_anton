@@ -89,6 +89,13 @@ async def get_config(session: AsyncSession = Depends(get_session)):
 
 @app.post("/api/config")
 async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session)):
+    import logging
+    logger = logging.getLogger("app.main")
+    # Log critical sections of payload to debug "wiping" issues
+    clients_len = len(config_data.get("clients", [])) if "clients" in config_data else "MISSING"
+    profiles_len = len(config_data.get("profiles", [])) if "profiles" in config_data else "MISSING"
+    logger.info(f"Update Config Payload: Clients={clients_len}, Profiles={profiles_len}")
+
     # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
     if "clients" in config_data:
         if "brandQuotas" not in config_data:

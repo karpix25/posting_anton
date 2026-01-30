@@ -212,31 +212,32 @@ async def save_db_config(session: AsyncSession, config_data: dict):
     await session.execute(stmt_del_p)
 
     # 3. Sync Clients (Full Sync Strategy)
-    incoming_clients = config_data.get("clients", [])
-    incoming_client_names = set()
-    
-    for c in incoming_clients:
-        if hasattr(c, "dict"): c = c.dict()
+    if "clients" in config_data:
+        incoming_clients = config_data["clients"]
+        incoming_client_names = set()
         
-        name = c.get("name")
-        if not name: continue
-        incoming_client_names.add(name)
-        
-        stmt_c = select(AIClient).where(AIClient.name == name)
-        res_c = await session.execute(stmt_c)
-        db_c = res_c.scalar_one_or_none()
-        
-        if not db_c:
-            db_c = AIClient(name=name)
-            session.add(db_c)
+        for c in incoming_clients:
+            if hasattr(c, "dict"): c = c.dict()
             
-        db_c.prompt = c.get("prompt")
-        db_c.regex = c.get("regex")
-        db_c.updated_at = datetime.utcnow()
-        
-    # Delete missing clients
-    stmt_del_c = delete(AIClient).where(AIClient.name.not_in(incoming_client_names))
-    await session.execute(stmt_del_c)
+            name = c.get("name")
+            if not name: continue
+            incoming_client_names.add(name)
+            
+            stmt_c = select(AIClient).where(AIClient.name == name)
+            res_c = await session.execute(stmt_c)
+            db_c = res_c.scalar_one_or_none()
+            
+            if not db_c:
+                db_c = AIClient(name=name)
+                session.add(db_c)
+                
+            db_c.prompt = c.get("prompt")
+            db_c.regex = c.get("regex")
+            db_c.updated_at = datetime.utcnow()
+            
+        # Delete missing clients
+        stmt_del_c = delete(AIClient).where(AIClient.name.not_in(incoming_client_names))
+        await session.execute(stmt_del_c)
 
     await session.commit()
     logger.info("DB Config (Relational) Commit Successful")
