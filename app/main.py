@@ -225,7 +225,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         
         stats["totalVideos"] += 1
         
-        theme = extract_theme(path)
+        theme = extract_theme(path, config.themeAliases)
         author = extract_author(path)
         brand = extract_brand(path)
         

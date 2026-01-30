@@ -79,24 +79,31 @@ class Settings(BaseSettings):
                 limits=GlobalLimits(instagram=10, tiktok=10, youtube=2)
             )
         
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            
-            # Auto-repair: Ensure cronSchedule exists
-            changed = False
-            if "cronSchedule" not in data:
-                 data["cronSchedule"] = "1 0 * * *"
-                 changed = True
-                 
-            # Save back if repaired
-            if changed:
-                try:
-                    with open(path, "w", encoding="utf-8") as f_out:
-                         json.dump(data, f_out, indent=2, ensure_ascii=False)
-                except:
-                    pass
-
-            return LegacyConfig(**data)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+                # Auto-repair: Ensure cronSchedule exists
+                changed = False
+                if "cronSchedule" not in data:
+                     data["cronSchedule"] = "1 0 * * *"
+                     changed = True
+                     
+                # Save back if repaired
+                if changed:
+                    try:
+                        with open(path, "w", encoding="utf-8") as f_out:
+                             json.dump(data, f_out, indent=2, ensure_ascii=False)
+                    except:
+                        pass
+    
+                return LegacyConfig(**data)
+        except Exception as e:
+            # Fallback to default if file is corrupted
+            print(f"Error loading legacy config: {e}. Returning default.")
+            return LegacyConfig(
+                limits=GlobalLimits(instagram=10, tiktok=10, youtube=2)
+            )
 
     class Config:
         env_file = ".env"
