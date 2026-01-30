@@ -154,8 +154,13 @@ class ContentScheduler:
                 elif platform == 'youtube': platform_limit = profile.youtubeLimit
                 else: platform_limit = None
                 
-                if platform_limit is not None and platform_limit > 0: return platform_limit
-                if profile.limit is not None and profile.limit > 0: return profile.limit
+                # Allow 0 to override global limit (0 = disabled for this profile)
+                if platform_limit is not None: return platform_limit
+                
+                # Check legacy 'limit' field (also allow 0)
+                if profile.limit is not None: return profile.limit
+                
+                # Fallback to global limit
                 return getattr(self.config.limits, platform, 1)
 
             # Track planned counts dynamically for this run
