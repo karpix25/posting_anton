@@ -118,15 +118,19 @@ export const useStatsStore = defineStore('stats', {
             this.loading = true
             try {
                 // This endpoint returns generic stats including totalVideos and byCategory from Yandex scan
-                // Added timeout of 60 seconds to prevent hanging indefinitely
+                // Added timeout of 300 seconds (5 minutes) to prevent hanging indefinitely
                 const res = await axios.get('/api/stats', {
                     params: { refresh },
-                    timeout: 60000
+                    timeout: 300000
                 })
                 if (res.data) {
                     // Update relevant stats
                     this.stats.totalVideos = res.data.totalVideos || 0
                     this.stats.byCategory = res.data.byCategory || {}
+                    this.stats.byAuthor = res.data.byAuthor || {}
+                    this.stats.byBrand = res.data.byBrand || {}
+                    this.stats.byAuthorBrand = res.data.byAuthorBrand || {}
+                    this.stats.profilesByCategory = res.data.profilesByCategory || {}
                     // We might merge other fields if needed
                 }
             } catch (e) {
