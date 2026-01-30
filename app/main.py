@@ -85,7 +85,7 @@ async def health_check():
 @app.get("/api/config")
 async def get_config(session: AsyncSession = Depends(get_session)):
     config = await get_db_config(session)
-    return config.dict()
+    return {"success": True, "config": config.dict()}
 
 @app.post("/api/config")
 async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session)):
