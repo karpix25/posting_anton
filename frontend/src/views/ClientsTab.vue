@@ -27,6 +27,7 @@ const getClientProgress = (client) => {
 }
 
 const addClient = async () => {
+    if (!configStore.config.clients) configStore.config.clients = []
     configStore.config.clients.push({
         name: 'New Client',
         regex: '.*',
