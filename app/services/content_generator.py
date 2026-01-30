@@ -3,6 +3,10 @@ from typing import Optional, List
 from app.config import settings
 from app.config import ClientConfig
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class ContentGenerator:
     def __init__(self):
         self.client = openai.AsyncOpenAI(
@@ -43,15 +47,20 @@ class ContentGenerator:
 
         try:
             response = await self.client.chat.completions.create(
-                model="openai/gpt-4o-mini", # User requested cheaper model
+                model="openai/gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
-                ]
+                ],
+                timeout=45.0  # Explicit timeout
             )
-            return response.choices[0].message.content or ""
+            content = response.choices[0].message.content or ""
+            if not content:
+                logger.warning("[Generator] Received empty response from LLM")
+            return content
+            
         except Exception as e:
-            print(f"[Generator] Error: {e}")
-            return None
+            logger.error(f"[Generator] OpenRouter API Failed: {e}")
+            raise e
 
 content_generator = ContentGenerator()
