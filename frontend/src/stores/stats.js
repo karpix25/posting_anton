@@ -115,9 +115,14 @@ export const useStatsStore = defineStore('stats', {
         },
 
         async loadYandexStats(refresh = false) {
+            this.loading = true
             try {
                 // This endpoint returns generic stats including totalVideos and byCategory from Yandex scan
-                const res = await axios.get('/api/stats', { params: { refresh } })
+                // Added timeout of 60 seconds to prevent hanging indefinitely
+                const res = await axios.get('/api/stats', {
+                    params: { refresh },
+                    timeout: 60000
+                })
                 if (res.data) {
                     // Update relevant stats
                     this.stats.totalVideos = res.data.totalVideos || 0
@@ -126,6 +131,8 @@ export const useStatsStore = defineStore('stats', {
                 }
             } catch (e) {
                 console.error('Failed to load Yandex stats:', e)
+            } finally {
+                this.loading = false
             }
         }
     }
