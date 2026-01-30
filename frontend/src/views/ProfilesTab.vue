@@ -231,19 +231,19 @@ onMounted(() => {
                                     </div>
                                 </td>
                                 <td class="p-3">
-                                    <select v-model="profile.theme_key" @change="configStore.saveConfig" class="border rounded p-1 text-xs w-32">
+                                    <select v-model="profile.theme_key" @change="() => configStore.saveConfig()" class="border rounded p-1 text-xs w-32">
                                         <option value="">Без темы</option>
                                         <option v-for="theme in availableThemes" :key="theme" :value="theme">{{ theme }}</option>
                                     </select>
                                 </td>
                                 <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.instagramLimit" @change="configStore.saveConfig" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.instagramLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
                                 </td>
                                  <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.tiktokLimit" @change="configStore.saveConfig" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.tiktokLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
                                 </td>
                                  <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.youtubeLimit" @change="configStore.saveConfig" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.youtubeLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
                                 </td>
                                 <td class="p-3 text-right">
                                     <button @click="toggleProfileStatus(profile)" class="text-green-600 hover:text-green-800 font-bold text-xs bg-green-100 px-2 py-1 rounded">

@@ -39,6 +39,12 @@ export const useConfigStore = defineStore('config', {
 
         async saveConfig(newConfig) {
             try {
+                // GUARD: Prevent DOM Events from being treated as config objects
+                if (newConfig && (newConfig instanceof Event || typeof newConfig.preventDefault === 'function' || newConfig.target)) {
+                    console.warn('saveConfig called with Event object, ignoring argument.')
+                    newConfig = null
+                }
+
                 // Use provided config or current state
                 const configToSave = newConfig || this.config
                 const response = await axios.post('/api/config', configToSave)
@@ -46,15 +52,6 @@ export const useConfigStore = defineStore('config', {
                     // Only update local state if a NEW config object was provided
                     if (newConfig) {
                         this.config = newConfig
-                    } else {
-                        // If we saved the current state, it's already up to date locally.
-                        // However, to ensure we have any server-side sanitization/IDs, 
-                        // we SHOULD strictly re-fetch, but let's do it gently to avoid UI jumps.
-                        // For now, let's NOT fetch to prevent "empty list" if fetch fails or lags.
-                        // The user says "DB has it, UI loses it". 
-                        // Existing code was: this.config = configToSave. 
-                        // If configToSave IS this.config, we just did this.config = this.config.
-                        // This might be the culprit. So we DO NOTHING here.
                     }
                     return true
                 }
