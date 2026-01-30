@@ -140,8 +140,36 @@ async def save_db_config(session: AsyncSession, config_data: dict):
     
     # Update schedule fields derived from Cron (simplified)
     # If cron changed, we might want to update schedule_time?
-    # For now, let frontend drive /api/schedule separately, or main save overwrites?
     # Let's trust config_data for now.
+    
+    # AUTO-SYNC QUOTAS from Clients list (Critical for startup/seed)
+    updated_quotas = config_data.get("brandQuotas", {}).copy()
+    if "clients" in config_data:
+        incoming_clients = config_data["clients"]
+        for c in incoming_clients:
+             # handle dict or object
+             c_dict = c.dict() if hasattr(c, "dict") else c
+             
+             name = c_dict.get("name", "")
+             quota = c_dict.get("quota")
+             regex = c_dict.get("regex", "")
+             
+             if quota is not None:
+                 # Heuristic category extraction
+                 category = "unknown"
+                 if regex:
+                     parts = regex.replace("\\", "/").split("/")
+                     if len(parts) >= 3:
+                         category = parts[-2]
+                 category = category.lower().strip()
+                 
+                 if category not in updated_quotas:
+                     updated_quotas[category] = {}
+                 
+                 brand_clean = name.lower().replace(" ", "")
+                 updated_quotas[category][brand_clean] = quota
+                 
+    settings_row.brand_quotas = updated_quotas
     
     settings_row.updated_at = datetime.utcnow()
     
