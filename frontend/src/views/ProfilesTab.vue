@@ -120,6 +120,10 @@ const applyBulkCategory = async (isDisabled = false) => {
         if (list.includes(p.username)) p.theme_key = key
     })
     await configStore.saveConfig()
+
+    // Clear selection
+    if (isDisabled) selectedDisabledProfiles.value = []
+    else selectedProfiles.value = []
 }
 
 const applyBulkLimits = async (isDisabled = false) => {
@@ -138,6 +142,59 @@ const applyBulkLimits = async (isDisabled = false) => {
         }
     })
     await configStore.saveConfig()
+
+    // Clear selection
+    if (isDisabled) selectedDisabledProfiles.value = []
+    else selectedProfiles.value = []
+}
+
+// Shift+Click Selection Logic
+const lastSelectedUsername = ref(null)
+
+const getFlatProfiles = (groupedProfiles) => {
+    // Reconstruct the visual order of profiles based on sorted group keys
+    return Object.keys(groupedProfiles).reduce((acc, groupKey) => {
+        return acc.concat(groupedProfiles[groupKey])
+    }, [])
+}
+
+const handleProfileSelection = (event, profile, isDisabled = false) => {
+    const targetList = isDisabled ? selectedDisabledProfiles : selectedProfiles
+    const currentUsername = profile.username
+    
+    // Standard Toggle happens via v-model, we just track logic here
+    // But for Shift+Click we need to intervene
+    
+    if (event.shiftKey && lastSelectedUsername.value) {
+        const flatList = getFlatProfiles(isDisabled ? groupedDisabledProfiles.value : groupedActiveProfiles.value)
+        const lastIdx = flatList.findIndex(p => p.username === lastSelectedUsername.value)
+        const currIdx = flatList.findIndex(p => p.username === currentUsername)
+        
+        if (lastIdx !== -1 && currIdx !== -1) {
+            const start = Math.min(lastIdx, currIdx)
+            const end = Math.max(lastIdx, currIdx)
+            const rangeProfiles = flatList.slice(start, end + 1)
+            
+            // Determine target state based on the checkbox state AFTER the click (which triggered this)
+            // Actually, with v-model, the value in 'selectedProfiles' might already be updated or not?
+            // Safer to check the checked property of the input
+            const isChecked = event.target.checked
+            
+            const rangeUsernames = rangeProfiles.map(p => p.username)
+            
+            if (isChecked) {
+                // Add all in range
+                // Use Set to avoid duplicates
+                const newSet = new Set([...targetList.value, ...rangeUsernames])
+                targetList.value = Array.from(newSet)
+            } else {
+                // Remove all in range
+                targetList.value = targetList.value.filter(u => !rangeUsernames.includes(u))
+            }
+        }
+    }
+    
+    lastSelectedUsername.value = currentUsername
 }
 
 onMounted(() => {
@@ -220,7 +277,7 @@ onMounted(() => {
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="profile in profiles" :key="profile.username" class="hover:bg-blue-50">
                                 <td class="p-3 text-center">
-                                    <input type="checkbox" :value="profile.username" v-model="selectedProfiles">
+                                    <input type="checkbox" :value="profile.username" v-model="selectedProfiles" @click="handleProfileSelection($event, profile, false)">
                                 </td>
                                 <td class="p-3">
                                     <div class="font-medium text-gray-900">{{ profile.username }}</div>
