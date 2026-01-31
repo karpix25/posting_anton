@@ -37,6 +37,8 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     if not app_settings:
         # Fallback if migration failed or DB empty? Should not happen after migrate_file_to_db
         return LegacyConfig(limits={"instagram": 10, "tiktok": 10, "youtube": 2})
+    
+    logger.info(f"[ConfigDB] Loaded Settings from DB. Min Interval: {app_settings.min_interval_minutes} mins")
 
     # 2. Fetch Profiles
     stmt_profiles = select(SocialProfile)

@@ -128,6 +128,7 @@ class ContentScheduler:
         days_to_generate = self.config.daysToGenerate or 1
         
         logger.info(f"[Scheduler] Window: {start_hour}:00 - {end_hour}:00, Days: {days_to_generate}")
+        logger.info(f"[Scheduler] Using Minimum Post Interval: {self.config.minIntervalMinutes} minutes")
 
         for day_index in range(days_to_generate):
             current_day_start = start_date + timedelta(days=day_index)
