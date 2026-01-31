@@ -198,19 +198,26 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     # ... (skipping files empty check logic update: we need it later)
     
     if not files:
-         # Fill profilesByCategory even if no files
-         for p in config.profiles:
-            if p.theme_key:
-                # FIX: Use normalize_theme_key so it matches extract_theme results!
-                tk = normalize_theme_key(p.theme_key, config.themeAliases)
-                if tk not in stats["profilesByCategory"]:
-                    stats["profilesByCategory"][tk] = []
-                stats["profilesByCategory"][tk].append(p.username)
-    else:
-        # Filter and Aggregate
-        config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
-        
-        for f in files:
+    # Pre-compile regexes for performance
+    client_regexes = []
+    import re
+    if hasattr(config, "clients") and config.clients:
+        for c in config.clients:
+            if c.regex:
+                try:
+                    # Case insensitive search
+                    client_regexes.append((c.name, re.compile(c.regex, re.IGNORECASE)))
+                except re.error:
+                     logger.warning(f"Invalid regex for client {c.name}: {c.regex}")
+
+    # Helper to extract brand via regex
+    def get_brand_from_path(path: str) -> str:
+        for name, pattern in client_regexes:
+            if pattern.search(path):
+                return name
+        return extract_brand(path)
+
+    for f in files:
             path = f["path"]
             path_norm = path.replace("disk:", "").strip("/").lower()
             
@@ -227,7 +234,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             
             theme = extract_theme(path, config.themeAliases)
             author = extract_author(path)
-            brand = extract_brand(path)
+            brand = get_brand_from_path(path) # Use Regex
             
             if theme != "unknown":
                 stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
@@ -238,11 +245,14 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                 # Track brand breakdown per author
                 if author not in stats["byAuthorBrand"]:
                     stats["byAuthorBrand"][author] = {}
-                if brand != "unknown":
-                    stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
+                # Ensure we use a clean key for brand
+                brand_key = normalize(brand)
+                if brand_key != "unknown":
+                    stats["byAuthorBrand"][author][brand_key] = stats["byAuthorBrand"][author].get(brand_key, 0) + 1
                 
             if brand != "unknown":
-                stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
+                brand_key = normalize(brand) # Normalize for consistency in stats keys
+                stats["byBrand"][brand_key] = stats["byBrand"].get(brand_key, 0) + 1
 
         # Profiles mapping (Post-loop)
         for p in config.profiles:
@@ -259,14 +269,15 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     published_paths = res_pub.scalars().all()
     
     stats["publishedCount"] = len(published_paths)
-    
+    logger.info(f"STATS DEBUG: Published Paths Count: {len(published_paths)}")
+
     stats["publishedByAuthor"] = {}
     stats["publishedByBrand"] = {}
     
     for path in published_paths:
         theme = extract_theme(path, config.themeAliases)
         author = extract_author(path)
-        brand = extract_brand(path)
+        brand = get_brand_from_path(path) # Use Regex
         
         if theme != "unknown":
             stats["publishedByCategory"][theme] = stats["publishedByCategory"].get(theme, 0) + 1
@@ -275,7 +286,8 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
              stats["publishedByAuthor"][author] = stats["publishedByAuthor"].get(author, 0) + 1
              
         if brand != "unknown":
-             stats["publishedByBrand"][brand] = stats["publishedByBrand"].get(brand, 0) + 1
+             brand_key = normalize(brand)
+             stats["publishedByBrand"][brand_key] = stats["publishedByBrand"].get(brand_key, 0) + 1
             
     # 4. Save to DB if refreshed (and successful)
     if refresh:

@@ -12,13 +12,17 @@ const getClientPublished = (client) => {
         
         // Try precise match via brandStats (Category:Brand key)
         if (statsStore.brandStats && Object.keys(statsStore.brandStats).length > 0) {
-             const categoryMatch = (client.regex || '').match(/([a-zA-Zа-яА-Я0-9]+)/)
-             const category = categoryMatch ? categoryMatch[1].toLowerCase() : 'unknown'
              const brandName = client.name.toLowerCase().replace(/[^a-zа-я0-9]/g, '')
-             const key = `${category}:${brandName}`
              
-             if (statsStore.brandStats[key]) {
-                 return statsStore.brandStats[key].published_count || 0
+             // Find any key that ends with :brandName
+             // BrandStats keys are "category:brand"
+             const matchEntry = Object.entries(statsStore.brandStats).find(([k, v]) => {
+                 const [_, b] = k.split(':')
+                 return b === brandName
+             })
+             
+             if (matchEntry) {
+                 return matchEntry[1].published_count || 0
              }
         }
         

@@ -131,7 +131,12 @@ export const useStatsStore = defineStore('stats', {
                     this.stats.byBrand = res.data.byBrand || {}
                     this.stats.byAuthorBrand = res.data.byAuthorBrand || {}
                     this.stats.profilesByCategory = res.data.profilesByCategory || {}
-                    // We might merge other fields if needed
+
+                    // Ingest Published Stats from Backend
+                    this.stats.publishedCount = res.data.publishedCount || 0
+                    this.stats.publishedByBrand = res.data.publishedByBrand || {}
+                    this.stats.publishedByCategory = res.data.publishedByCategory || {}
+                    this.stats.publishedByAuthor = res.data.publishedByAuthor || {}
                 }
             } catch (e) {
                 console.error('Failed to load Yandex stats:', e)
