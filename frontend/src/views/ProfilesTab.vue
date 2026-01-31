@@ -59,9 +59,18 @@ const groupedDisabledProfiles = computed(() => groupProfiles(disabledProfiles.va
 
 // Helper to save config and refresh stats immediately
 const updateConfigAndStats = async () => {
-    await configStore.saveConfig()
-    // Soft refresh of stats (no Yandex scan) to update categories/counts
-    await statsStore.loadYandexStats(false) 
+    try {
+        await configStore.saveConfig()
+        // Soft refresh of stats (no Yandex scan) to update categories/counts
+        await statsStore.loadYandexStats(false) 
+    } catch (e) {
+        console.error("Auto-update failed:", e)
+        // If save failed, we might want to alert, but saveConfig usually throws?
+        // Let's rely on saveConfig failing to propagate if needed, but here we catch to ensure UI responsiveness?
+        // Actually, if saveConfig fails, we probably SHOULD NOT clear selection.
+        // But if loadYandexStats fails, we SHOULD clear.
+        if (e.response && e.response.status !== 200) throw e // Re-throw actual save errors
+    }
 }
 
 // Actions
@@ -123,14 +132,16 @@ const applyBulkCategory = async (isDisabled = false) => {
     const key = isDisabled ? bulkThemeKeyDisabled.value : bulkThemeKey.value
     if (!key || list.length === 0) return
     
-    configStore.config.profiles.forEach(p => {
-        if (list.includes(p.username)) p.theme_key = key
-    })
-    await updateConfigAndStats()
-
-    // Clear selection
-    if (isDisabled) selectedDisabledProfiles.value = []
-    else selectedProfiles.value = []
+    try {
+        configStore.config.profiles.forEach(p => {
+            if (list.includes(p.username)) p.theme_key = key
+        })
+        await updateConfigAndStats()
+    } finally {
+        // Clear selection regardless of success to prevent stuck UI
+        if (isDisabled) selectedDisabledProfiles.value = []
+        else selectedProfiles.value = []
+    }
 }
 
 const applyBulkLimits = async (isDisabled = false) => {
@@ -141,18 +152,20 @@ const applyBulkLimits = async (isDisabled = false) => {
 
     if (list.length === 0) return
 
-    configStore.config.profiles.forEach(p => {
-        if (list.includes(p.username)) {
-            if (ig !== '') p.instagramLimit = ig
-            if (tt !== '') p.tiktokLimit = tt
-            if (yt !== '') p.youtubeLimit = yt
-        }
-    })
-    await updateConfigAndStats()
-
-    // Clear selection
-    if (isDisabled) selectedDisabledProfiles.value = []
-    else selectedProfiles.value = []
+    try {
+        configStore.config.profiles.forEach(p => {
+            if (list.includes(p.username)) {
+                if (ig !== '') p.instagramLimit = ig
+                if (tt !== '') p.tiktokLimit = tt
+                if (yt !== '') p.youtubeLimit = yt
+            }
+        })
+        await updateConfigAndStats()
+    } finally {
+        // Clear selection
+        if (isDisabled) selectedDisabledProfiles.value = []
+        else selectedProfiles.value = []
+    }
 }
 
 // Shift+Click Selection Logic
