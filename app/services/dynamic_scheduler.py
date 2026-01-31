@@ -60,8 +60,8 @@ class DynamicScheduler:
             if croniter.match(cron_expression, now):
                 logger.info(f"[DynamicScheduler] ⏰ Schedule '{cron_expression}' matched at {now}. Triggering automation!")
                 
-                # Trigger Celery Task
-                generate_daily_schedule.delay()
+                # trigger via asyncio
+                asyncio.create_task(generate_daily_schedule())
         except Exception as e:
             logger.error(f"[DynamicScheduler] Check failed: {e}")
 

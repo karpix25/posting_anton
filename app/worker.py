@@ -426,11 +426,15 @@ async def update_post_status(history_id: int, status: str, error_msg: str = None
 
 async def increment_brand_stats(video_path: str):
     """Increment published count for brand in current month."""
-    category = extract_theme(video_path)
-    brand = extract_brand(video_path)
     month = datetime.now().strftime("%Y-%m")
     
     async for session in get_session():
+        # Load aliases from DB to avoid config.json fallback
+        from app.services.config_db import get_db_config
+        config = await get_db_config(session)
+        
+        category = extract_theme(video_path, config.themeAliases)
+        brand = extract_brand(video_path)
         stmt = select(BrandStats).where(
             BrandStats.category == category,
             BrandStats.brand == brand,

@@ -20,7 +20,6 @@ async def background_publisher():
             await asyncio.sleep(60)  # Check every minute
             
             now = datetime.now()
-            now = datetime.now()
             # USE SYNC SESSION for locking (async locking with sqlalchemy+asyncpg is tricky, 
             # but we can do it if we are careful. Better to use standard SELECT FOR UPDATE SKIP LOCKED)
             

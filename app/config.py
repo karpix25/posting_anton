@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     UPLOAD_POST_API_KEY: str = ""
     DATA_DIR: str = "/data"
     REDIS_URL: str = "redis://tools_redis:6379/0"
+    ALLOWED_ORIGINS: str = "*"
     
     # Internal state for legacy config
     _legacy_config: Optional[LegacyConfig] = None
