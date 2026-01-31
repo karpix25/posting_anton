@@ -353,6 +353,11 @@ class ContentScheduler:
             theme = self.extract_theme(path)
             brand = self.extract_brand(path)
             
+            # STRICT MODE: Only allow brands that exist in AI Clients config
+            if not has_ai_client(self.config.clients, brand):
+                skipped_brands.add(brand)
+                continue
+            
             if theme not in groups:
                 groups[theme] = {}
             if brand not in groups[theme]:
