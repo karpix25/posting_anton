@@ -242,4 +242,5 @@ async def save_db_config(session: AsyncSession, config_data: dict):
 
     await session.commit()
     logger.info("DB Config (Relational) Commit Successful")
+    return True
 
