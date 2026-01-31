@@ -73,9 +73,22 @@ class YandexDiskService:
                             for f in folders:
                                 # Normalize folder for comparison
                                 f_norm = f.replace("disk:", "").strip("/").lower()
+                                
+                                # 1. Prefix Match (Standard for paths)
                                 if path_norm.startswith(f_norm):
                                     match = True
                                     break
+                                    
+                                # 2. Segment Match (For Client Names auto-added to list)
+                                # If filter is a simple name (no slashes), check if it exists as a folder segment
+                                if "/" not in f_norm:
+                                    # fast check substring first
+                                    if f_norm in path_norm:
+                                        # Strict segment check to avoid partial matches (e.g. 'box' in 'dropbox')
+                                        segments = path_norm.split("/")
+                                        if f_norm in segments:
+                                            match = True
+                                            break
                             if not match:
                                 continue
 

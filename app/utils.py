@@ -35,22 +35,34 @@ def extract_brand_with_regex(path: str, client_regexes: List[tuple]) -> str:
             
     # Structure: ... / Video / Author / Category / Brand / ...
     # Brand is at v_idx + 3
-    if v_idx == -1 or v_idx + 3 >= len(parts):
-        return "unknown"
-        
-    candidate_folder = parts[v_idx + 3]
+    # If standard structure lookup failed (or v_idx not found), try scanning ALL parts
+    # This supports simpler structures like disk:/Brand/video.mp4
     
-    # Exclude files
-    if "." in candidate_folder: 
-            return "unknown"
+    # 1. Try standard structure first
+    structural_candidate = None
+    if v_idx != -1 and v_idx + 3 < len(parts):
+        candidate_folder = parts[v_idx + 3]
+        if "." not in candidate_folder:
+             structural_candidate = candidate_folder
+    
+    # Check structural candidate against regexes
+    if structural_candidate:
+        for name, pattern in client_regexes:
+            if pattern.search(structural_candidate):
+                return name
+        # If no regex matched, return normalized structural candidate
+        return normalize(structural_candidate)
 
-    # 1. Try Regex match
-    for name, pattern in client_regexes:
-        if pattern.search(candidate_folder):
-            return name
-            
-    # 2. Fallback to normalization
-    return normalize(candidate_folder)
+    # 2. Fallback: Scan ALL parts against regexes (if no structural match found)
+    # We iterate parts in reverse to find deepest match
+    for part in reversed(parts):
+        if "." in part: continue # skip files
+        
+        for name, pattern in client_regexes:
+             if pattern.search(part):
+                 return name
+                 
+    return "unknown"
 
 def extract_author(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]

@@ -572,7 +572,29 @@ class ContentScheduler:
                     except:
                         pass
         
-        # 3. If no client matched, return the most likely brand folder (prefer 3rd level, then 2nd)
+        # 3. Fallback: Scan ALL parts against Clients (if structure lookup didn't match a client)
+        # This allows detecting brands in non-standard paths like disk:/BrandName/video.mp4
+        for part in reversed(parts):
+            clean_part = part.split("*")[0].split("(")[0].strip()
+            if "." in clean_part: continue # Skip files
+            
+            normalized_part = self.normalize(clean_part)
+            
+            for client in self.config.clients:
+                # Check 1: Exact Name Match
+                if self.normalize(client.name) == normalized_part:
+                    return self.normalize(client.name)
+                
+                # Check 2: Regex Match
+                if client.regex:
+                    import re
+                    try:
+                        if re.search(client.regex, clean_part, re.IGNORECASE):
+                            return self.normalize(client.name)
+                    except:
+                        pass
+
+        # 4. If no client matched, return the most likely brand folder (prefer 3rd level, then 2nd)
         # warning: this might return "Category" name if no brand matched, 
         # but that's better than returning a subfolder file name.
         if candidate_parts:

@@ -36,6 +36,35 @@ async def generate_daily_schedule(test_mode: bool = False):
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
     logger.info(f"[Worker] Global limits: IG={config.limits.instagram}, TT={config.limits.tiktok}, YT={config.limits.youtube}")
     
+    # Auto-include folders for all configured AI Clients to ensure we scan their files
+    if folders:
+        # Create a set of normalized existing folders for checks
+        existing_norm = {f.replace("disk:", "").strip("/").lower() for f in folders}
+        
+        added_count = 0
+        for client in config.clients:
+            # 1. Use Client Name as folder
+            c_name = client.name.strip()
+            if c_name.lower() not in existing_norm:
+                folders.append(c_name)
+                existing_norm.add(c_name.lower())
+                added_count += 1
+                
+            # 2. If regex looks like a folder path (no special chars), use it
+            if client.regex and "/" in client.regex:
+                # remove typical regex chars if simple path
+                clean_reg = client.regex.replace("^", "").replace("$", "").strip()
+                # If it looks like a path segment
+                if clean_reg and "\\" not in clean_reg and "[" not in clean_reg:
+                     parts = clean_reg.split("/")
+                     # Add invalid/root parts logic if needed, but for now just add the top level if meaningful
+                     # e.g. /Category/Brand -> scan Category? 
+                     # Better to stick to Name for safety.
+                     pass
+        
+        if added_count > 0:
+            logger.info(f"[Worker] 🔧 Auto-added {added_count} client folders to scan list: {folders}")
+
     try:
         # Force refresh for scheduler to get latest files
         # Optimization: Pass folders to only fetch and process what we need
