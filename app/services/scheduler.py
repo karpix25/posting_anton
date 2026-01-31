@@ -349,6 +349,23 @@ class ContentScheduler:
         return schedule
 
             
+    def group_videos_by_theme(self, videos: List[Dict[str, Any]], client_regexes: List[Any]) -> Dict[str, Dict[str, List[Any]]]:
+        groups = {}
+        skipped_brands = set()
+
+        for v in videos:
+            path = v.get("path")
+            if not path:
+                continue
+
+            theme = self.extract_theme(path)
+            brand = self.extract_brand(path)
+            
+            if theme not in groups:
+                groups[theme] = {}
+            if brand not in groups[theme]:
+                groups[theme][brand] = []
+
             groups[theme][brand].append(v)
         
         # Debug: Log author distribution per brand
