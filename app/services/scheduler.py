@@ -354,7 +354,17 @@ class ContentScheduler:
             brand = self.extract_brand(path)
             
             # STRICT MODE: Only allow brands that exist in AI Clients config
-            if not has_ai_client(self.config.clients, brand):
+            try:
+                # Ensure clients list exists
+                clients_list = getattr(self.config, "clients", []) or []
+                if not has_ai_client(clients_list, brand):
+                    skipped_brands.add(brand)
+                    continue
+            except Exception as e:
+                # Log error but don't crash
+                logger.error(f"[Scheduler] Filtering Error for brand '{brand}': {e}")
+                # Fallback: Allow if error? Or Skip? 
+                # Better to skip to avoid spam if broken.
                 skipped_brands.add(brand)
                 continue
             
