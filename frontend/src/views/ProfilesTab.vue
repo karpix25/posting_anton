@@ -57,6 +57,13 @@ const disabledProfiles = computed(() => configStore.config.profiles?.filter(p =>
 const groupedActiveProfiles = computed(() => groupProfiles(activeProfiles.value))
 const groupedDisabledProfiles = computed(() => groupProfiles(disabledProfiles.value))
 
+// Helper to save config and refresh stats immediately
+const updateConfigAndStats = async () => {
+    await configStore.saveConfig()
+    // Soft refresh of stats (no Yandex scan) to update categories/counts
+    await statsStore.loadYandexStats(false) 
+}
+
 // Actions
 const toggleGroup = (group, isDisabled = false) => {
     const target = isDisabled ? expandedGroupsDisabled.value : expandedGroups.value
@@ -73,7 +80,7 @@ const expandAllGroups = (expand, isDisabled = false) => {
 
 const toggleProfileStatus = async (profile) => {
     profile.enabled = !profile.enabled
-    await configStore.saveConfig()
+    await updateConfigAndStats()
     selectedProfiles.value = selectedProfiles.value.filter(u => u !== profile.username)
     selectedDisabledProfiles.value = selectedDisabledProfiles.value.filter(u => u !== profile.username)
 }
@@ -93,7 +100,7 @@ const fullResync = async () => {
     if (!confirm("ВНИМАНИЕ! \nЭто удалит все текущие настройки. Вы уверены?")) return;
     configStore.config.profiles = []
     await syncProfiles()
-    await configStore.saveConfig()
+    await updateConfigAndStats()
 }
 
 const addProfile = async () => {
@@ -107,7 +114,7 @@ const addProfile = async () => {
         tiktokLimit: 0,
         youtubeLimit: 0
     })
-    await configStore.saveConfig()
+    await updateConfigAndStats()
 }
 
 // Bulk Actions
@@ -119,7 +126,7 @@ const applyBulkCategory = async (isDisabled = false) => {
     configStore.config.profiles.forEach(p => {
         if (list.includes(p.username)) p.theme_key = key
     })
-    await configStore.saveConfig()
+    await updateConfigAndStats()
 
     // Clear selection
     if (isDisabled) selectedDisabledProfiles.value = []
@@ -141,7 +148,7 @@ const applyBulkLimits = async (isDisabled = false) => {
             if (yt !== '') p.youtubeLimit = yt
         }
     })
-    await configStore.saveConfig()
+    await updateConfigAndStats()
 
     // Clear selection
     if (isDisabled) selectedDisabledProfiles.value = []
@@ -288,19 +295,19 @@ onMounted(() => {
                                     </div>
                                 </td>
                                 <td class="p-3">
-                                    <select v-model="profile.theme_key" @change="() => configStore.saveConfig()" class="border rounded p-1 text-xs w-32">
+                                    <select v-model="profile.theme_key" @change="updateConfigAndStats" class="border rounded p-1 text-xs w-32">
                                         <option value="">Без темы</option>
                                         <option v-for="theme in availableThemes" :key="theme" :value="theme">{{ theme }}</option>
                                     </select>
                                 </td>
                                 <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.instagramLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.instagramLimit" @change="updateConfigAndStats" class="w-12 border rounded text-center p-1">
                                 </td>
                                  <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.tiktokLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.tiktokLimit" @change="updateConfigAndStats" class="w-12 border rounded text-center p-1">
                                 </td>
                                  <td class="p-3 text-center">
-                                    <input type="number" v-model.number="profile.youtubeLimit" @change="() => configStore.saveConfig()" class="w-12 border rounded text-center p-1">
+                                    <input type="number" v-model.number="profile.youtubeLimit" @change="updateConfigAndStats" class="w-12 border rounded text-center p-1">
                                 </td>
                                 <td class="p-3 text-right">
                                     <button @click="toggleProfileStatus(profile)" class="text-green-600 hover:text-green-800 font-bold text-xs bg-green-100 px-2 py-1 rounded">
