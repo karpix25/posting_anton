@@ -6,7 +6,7 @@
     "start": "node dist/server.js",
     "cleanup": "node dist/scripts/cleanup.js",
     "build": "tsc",
-    "dev": "export NODE_ENV=development && ts-node src/server.ts",
+    "dev": "python3 -m uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload",
     "schedule": "node src/scheduler.js",
     "automation": "node dist/automation/main.js"
   },

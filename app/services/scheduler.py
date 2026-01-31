@@ -44,12 +44,23 @@ class ContentScheduler:
                                 profiles: List[SocialProfile], 
                                 occupied_slots: Dict[str, List[datetime]],
                                 existing_counts: Optional[Dict[str, Dict[str, Dict[str, int]]]] = None,
-                                check_db_duplicates: bool = True) -> List[Dict[str, Any]]:
+                                check_db_duplicates: bool = True,
+                                force_limit: Optional[int] = None) -> List[Dict[str, Any]]:
         # 1. Filter active profiles (Enabled + Has at least one valid platform)
         active_profiles = []
         skipped_reasons = {"disabled": 0, "no_platforms": 0}
         
         for p in profiles:
+            if not p.enabled:
+                skipped_reasons["disabled"] += 1
+                continue
+            
+            # Check if any platform is enabled
+            if not (p.instagramEnabled or p.tiktokEnabled or p.youtubeEnabled):
+                skipped_reasons["no_platforms"] += 1
+                continue
+                
+            active_profiles.append(p)
             if not p.enabled:
                 skipped_reasons["disabled"] += 1
                 continue
@@ -149,6 +160,9 @@ class ContentScheduler:
             last_brand_used_per_theme: Dict[str, str] = {}
             
             def get_profile_limit(profile: SocialProfile, platform: str) -> int:
+                if force_limit is not None:
+                    return force_limit
+                    
                 if platform == 'instagram': platform_limit = profile.instagramLimit
                 elif platform == 'tiktok': platform_limit = profile.tiktokLimit
                 elif platform == 'youtube': platform_limit = profile.youtubeLimit

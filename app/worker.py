@@ -14,9 +14,10 @@ from sqlalchemy import select, update
 
 logger = logging.getLogger(__name__)
 
-async def generate_daily_schedule():
+async def generate_daily_schedule(test_mode: bool = False):
     """Main automation function - generates schedule and queues posts."""
-    logger.info("🚀 [Worker] Starting schedule generation task (triggered manually)...")
+    test_str = " (TEST MODE: 1 post per platform)" if test_mode else ""
+    logger.info(f"🚀 [Worker] Starting schedule generation task{test_str}...")
     
     # Load config from DATABASE, not file!
     try:
@@ -173,7 +174,10 @@ async def generate_daily_schedule():
     async for session in get_session():
         scheduler = ContentScheduler(config, session)
         # Use active_profiles (already validated against API) instead of config.profiles
-        schedule = await scheduler.generate_schedule(all_videos, active_profiles, occupied_slots, existing_counts)
+        # Generate Schedule
+        force_limit = 1 if test_mode else None
+        schedule = await scheduler.generate_schedule(all_videos, active_profiles, occupied_slots, existing_counts, force_limit=force_limit)
+        logger.info(f"📅 [Worker] Schedule generated with {len(schedule)} posts")
         logger.info(f"✅ [Worker] Generated {len(schedule)} new posts to schedule.")
         
         for post in schedule:

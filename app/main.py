@@ -952,13 +952,18 @@ async def cleanup_queue(session: AsyncSession = Depends(get_session)):
         logger.error(f"Cleanup failed: {e}")
         return {"success": False, "message": f"Ошибка: {str(e)}"}
 
-@app.post("/api/run")
-async def run_automation():
-    """Manually trigger the daily schedule generation."""
+@app.post("/api/schedule/run")
+async def run_schedule_automation(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session)):
+    """Manually trigger the daily schedule generation.
+    Payload: {"run_for_today_only": bool}
+    """
+    test_mode = payload.get("run_for_today_only", False)
+    logger.info(f"API: Triggering schedule generation (Test Mode: {test_mode})")
+    
     from app.worker import generate_daily_schedule
     # Run in background without blocking
-    asyncio.create_task(generate_daily_schedule())
-    return {"success": True, "message": "Automation started in background"}
+    asyncio.create_task(generate_daily_schedule(test_mode=test_mode))
+    return {"success": True, "message": f"Automation started in background (test_mode={test_mode})"}
 
 @app.get("/api/logs")
 async def get_logs(lines: int = 100):
