@@ -2,6 +2,8 @@ from typing import List
 from app.config import settings
 
 def normalize(text: str) -> str:
+    if not text:
+        return ""
     return text.lower().replace("ё", "е").replace(" ", "").strip()
 
 def extract_brand(path: str) -> str:

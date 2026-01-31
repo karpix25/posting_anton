@@ -13,7 +13,7 @@ from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
 from app.models import BrandStats, PostingHistory
 from app.services.yandex import yandex_service
-from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key
+from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key, normalize
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.event_broadcaster import event_broadcaster
