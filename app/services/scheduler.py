@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 # Moscow timezone (UTC+3)
 MSK = timezone(timedelta(hours=3))
 
+from app.utils import extract_theme, extract_brand, extract_brand_with_regex, normalize_theme_key
+
 def has_ai_client(clients: list, brand_name: str) -> bool:
     """Check if brand has a matching AI client (by name or regex)."""
     import re
@@ -103,7 +105,19 @@ class ContentScheduler:
         logger.info(f"[Scheduler] Active profiles: {len(active_profiles)} (Skipped: {skipped_reasons['disabled']} disabled)")
         
         schedule = []
-        videos_by_theme = self.group_videos_by_theme(videos)
+        
+        # Compile Regexes for Brand Extraction
+        import re
+        client_regexes = []
+        if hasattr(self.config, "clients") and self.config.clients:
+            for c in self.config.clients:
+                if c.regex:
+                    try:
+                         client_regexes.append((c.name, re.compile(c.regex, re.IGNORECASE)))
+                    except re.error:
+                         pass
+
+        videos_by_theme = self.group_videos_by_theme(videos, client_regexes)
         
         profile_slots: Dict[str, List[datetime]] = occupied_slots.copy()
         for p in active_profiles:
@@ -334,27 +348,6 @@ class ContentScheduler:
 
         return schedule
 
-    def group_videos_by_theme(self, videos: List[Dict[str, Any]]) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
-        groups = {}
-        skipped_brands = set()
-        
-        for v in videos:
-            theme = self.extract_theme(v["path"])
-            brand = self.extract_brand(v["path"])
-            
-            # Skip brands without AI client configured
-            if not has_ai_client(self.config.clients, brand):
-                if brand not in skipped_brands:
-                    # Log ONCE per brand to avoid flooding
-                    skipped_brands.add(brand)
-                    logger.warning(f"[Scheduler] ⚠️ SKIPPING videos for brand '{brand}' (category '{theme}') - No AI Client configured matching this name/regex!")
-                    # Debug: List available clients
-                    available_clients = [c.name for c in self.config.clients]
-                    logger.debug(f"[Scheduler] Available AI Clients: {available_clients}")
-                continue
-            
-            if theme not in groups: groups[theme] = {}
-            if brand not in groups[theme]: groups[theme][brand] = []
             
             groups[theme][brand].append(v)
         

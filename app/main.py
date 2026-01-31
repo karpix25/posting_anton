@@ -195,9 +195,6 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         "publishedByBrand": {}     # New field for future use
     }
     
-    # ... (skipping files empty check logic update: we need it later)
-    
-    if not files:
     # Pre-compile regexes for performance
     client_regexes = []
     import re
