@@ -32,101 +32,36 @@ const toggleAuthorExpand = (name) => {
 }
 
 const getPublishedCount = (key) => {
-    // Logic from index.html: find key in published stats?
-    // index.html just calls `getPublishedCount(item.name)`.
-    // It implies `stats.publishedBy...` exists?
-    // Let's look at `index.html` structure again if possible.
-    // Assuming 0 for now or extracting from stats object if available.
+    if (viewMode.value === 'category') {
+        return statsStore.stats.publishedByCategory?.[key] || 0
+    }
+    if (viewMode.value === 'author') {
+        return statsStore.stats.publishedByAuthor?.[key] || 0
+    }
+    if (viewMode.value === 'brand') {
+        return statsStore.stats.publishedByBrand?.[key] || 0
+    }
     return 0 
 }
 
 const getAuthorBrands = (authorName) => {
     return statsStore.stats.byAuthorBrand?.[authorName] || {}
 }
-
-const getProfilesForCategory = (name) => {
-    // Access statsStore profiles mapping
-    const key = name.toLowerCase().trim()
-    if (viewMode.value === 'author') return statsStore.stats.profilesByAuthor?.[key] || []
-    if (viewMode.value === 'brand') return statsStore.stats.profilesByBrand?.[key] || []
-    return statsStore.stats.profilesByCategory?.[key] || []
-}
-const isRefreshing = ref(false)
-
-const refreshAll = async () => {
-    isRefreshing.value = true
-    await Promise.all([
-        statsStore.loadYandexStats(true), // Force refresh from Yandex
-        statsStore.loadBrandStats()
-    ])
-    isRefreshing.value = false
-}
+// ... (skipping unchanged lines)
 </script>
 
 <template>
-  <div>
-      <div class="flex justify-between items-center mb-6">
-          <h2 class="text-2xl font-bold">Аналитика и Статистика</h2>
-          <button @click="refreshAll" :disabled="isRefreshing" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50">
-             <span v-if="isRefreshing">⏳ Обновление...</span>
-             <span v-else>🔄 Обновить</span>
-          </button>
-      </div>
-      
-      <!-- Overview Cards -->
-      <div class="grid grid-cols-2 gap-6 mb-8">
-          <div class="bg-blue-50 p-6 rounded-lg border border-blue-100 text-center">
-              <div class="text-gray-500 mb-1">Всего доступно видео</div>
-              <div class="text-4xl font-bold text-blue-700">{{ statsStore.stats.totalVideos || 0 }}</div>
-              <div class="text-xs text-blue-400 mt-2">Готовы к публикации (Yandex Disk)</div>
-          </div>
-           <div class="bg-green-50 p-6 rounded-lg border border-green-100 text-center">
-              <div class="text-gray-500 mb-1">Опубликовано и удалено</div>
-              <div class="text-4xl font-bold text-green-700">{{ statsStore.stats.publishedCount || 0 }}</div>
-              <div class="text-xs text-green-400 mt-2">За всё время</div>
-          </div>
-      </div>
-      
-      <!-- Breakdown Table -->
-      <div class="flex justify-between items-center mb-4">
-          <h3 class="text-xl font-bold">Разбивка</h3>
-           <div class="bg-gray-200 p-1 rounded-lg flex text-sm">
-               <button @click="viewMode = 'category'" :class="['px-3 py-1 rounded-md transition', viewMode === 'category' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600']">По Темам</button>
-               <button @click="viewMode = 'author'" :class="['px-3 py-1 rounded-md transition', viewMode === 'author' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600']">По Авторам</button>
-               <button @click="viewMode = 'brand'" :class="['px-3 py-1 rounded-md transition', viewMode === 'brand' ? 'bg-white shadow text-blue-600 font-bold' : 'text-gray-600']">По Брендам</button>
-           </div>
-      </div>
-      
-      <div class="bg-white border rounded-lg overflow-hidden">
-          <table class="w-full border-collapse mt-6">
-              <thead class="bg-gray-100">
-                  <tr>
-                      <th v-if="viewMode === 'author'" class="text-left p-3 border-b w-8"></th>
-                      <th class="text-left p-3 border-b capitalize">{{ viewMode === 'brand' ? 'Бренд' : (viewMode === 'author' ? 'Автор' : 'Категория') }}</th>
-                      <th class="text-left p-3 border-b">Профили</th>
-                      <th class="text-right p-3 border-b w-32">На Диске</th>
-                      <th class="text-right p-3 border-b w-32">Опубликовано</th>
-                  </tr>
-              </thead>
-              <tbody>
-                  <template v-for="item in currentStatsList" :key="item.name">
-                      <tr class="border-b hover:bg-gray-50">
-                          <td v-if="viewMode === 'author'" class="p-3 text-center">
-                              <button @click="toggleAuthorExpand(item.name)" class="text-blue-600 font-bold">
-                                  {{ expandedAuthors.includes(item.name) ? '▼' : '▶' }}
-                              </button>
-                          </td>
-                          <td class="p-3 capitalize">{{ item.name }}</td>
-                          <td class="p-3">
-                              <div class="flex gap-2 flex-wrap">
-                                  <span v-for="profile in getProfilesForCategory(item.name)" :key="profile" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
-                                      {{ profile }}
-                                  </span>
-                                  <span v-if="!getProfilesForCategory(item.name).length" class="text-gray-400 text-sm italic">Нет профилей</span>
-                              </div>
-                          </td>
+  <!-- ... skipping ... -->
+                           <td class="p-3">
+                               <div class="flex gap-2 flex-wrap">
+                                   <span v-for="profile in getProfilesForCategory(item.name)" :key="profile" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded">
+                                       {{ profile }}
+                                   </span>
+                                   <span v-if="!getProfilesForCategory(item.name).length" class="text-gray-400 text-sm italic">Нет профилей</span>
+                               </div>
+                           </td>
                            <td class="p-3 text-right font-semibold">{{ item.count }}</td>
-                           <td class="p-3 text-right font-bold text-green-600">-</td>
+                           <td class="p-3 text-right font-bold text-green-600">{{ getPublishedCount(item.name) }}</td>
                       </tr>
                       <!-- Expandable Author Details -->
                       <tr v-if="viewMode === 'author' && expandedAuthors.includes(item.name)" class="bg-blue-50">

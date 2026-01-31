@@ -13,7 +13,7 @@ from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
 from app.models import BrandStats, PostingHistory
 from app.services.yandex import yandex_service
-from app.utils import extract_theme, extract_brand, extract_author
+from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.event_broadcaster import event_broadcaster
@@ -182,6 +182,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             files = []
             
     # 3. Calculate Stats
+    # 3. Calculate Stats
     stats = {
         "totalVideos": 0,
         "publishedCount": 0, 
@@ -189,68 +190,92 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         "byAuthor": {},
         "byBrand": {},
         "byAuthorBrand": {},  
-        "profilesByCategory": {}
+        "profilesByCategory": {},
+        "publishedByCategory": {}, # New field
+        "publishedByBrand": {}     # New field for future use
     }
     
-    # If using cached stats object from DB directly (fast path)? 
-    # Actually, we should recalculate stats from files in case config.profiles changed, 
-    # BUT if we want persistence of "categories", we need the files list or the stats object.
-    # Let's rely on processing the 'files' list which we now cache in DB.
+    # ... (skipping files empty check logic update: we need it later)
     
     if not files:
          # Fill profilesByCategory even if no files
          for p in config.profiles:
             if p.theme_key:
-                tk = p.theme_key.lower().strip()
+                # FIX: Use normalize_theme_key so it matches extract_theme results!
+                tk = normalize_theme_key(p.theme_key, config.themeAliases)
                 if tk not in stats["profilesByCategory"]:
                     stats["profilesByCategory"][tk] = []
                 stats["profilesByCategory"][tk].append(p.username)
-         return stats
+    else:
+        # Filter and Aggregate
+        config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
+        
+        for f in files:
+            path = f["path"]
+            path_norm = path.replace("disk:", "").strip("/").lower()
+            
+            # Check folder
+            in_folder = False
+            for folder in config_folders_norm:
+                if path_norm.startswith(folder):
+                    in_folder = True
+                    break
+            
+            if not in_folder: continue
+            
+            stats["totalVideos"] += 1
+            
+            theme = extract_theme(path, config.themeAliases)
+            author = extract_author(path)
+            brand = extract_brand(path)
+            
+            if theme != "unknown":
+                stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
+            
+            if author != "unknown":
+                stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
+                
+                # Track brand breakdown per author
+                if author not in stats["byAuthorBrand"]:
+                    stats["byAuthorBrand"][author] = {}
+                if brand != "unknown":
+                    stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
+                
+            if brand != "unknown":
+                stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
+
+        # Profiles mapping (Post-loop)
+        for p in config.profiles:
+            if p.theme_key:
+                # FIX: Use normalize_theme_key
+                tk = normalize_theme_key(p.theme_key, config.themeAliases)
+                if tk not in stats["profilesByCategory"]:
+                    stats["profilesByCategory"][tk] = []
+                stats["profilesByCategory"][tk].append(p.username)
+        
+    # NEW: Calculate Published Stats from DB
+    stmt_pub = select(PostingHistory.video_path).where(PostingHistory.status == 'success')
+    res_pub = await session.execute(stmt_pub)
+    published_paths = res_pub.scalars().all()
     
-    # Filter and Aggregate
-    config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
+    stats["publishedCount"] = len(published_paths)
     
-    for f in files:
-        path = f["path"]
-        path_norm = path.replace("disk:", "").strip("/").lower()
-        
-        # Check folder
-        in_folder = False
-        for folder in config_folders_norm:
-            if path_norm.startswith(folder):
-                in_folder = True
-                break
-        
-        if not in_folder: continue
-        
-        stats["totalVideos"] += 1
-        
+    stats["publishedByAuthor"] = {}
+    stats["publishedByBrand"] = {}
+    
+    for path in published_paths:
         theme = extract_theme(path, config.themeAliases)
         author = extract_author(path)
         brand = extract_brand(path)
         
         if theme != "unknown":
-            stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
-        
+            stats["publishedByCategory"][theme] = stats["publishedByCategory"].get(theme, 0) + 1
+            
         if author != "unknown":
-            stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
-            
-            # Track brand breakdown per author
-            if author not in stats["byAuthorBrand"]:
-                stats["byAuthorBrand"][author] = {}
-            if brand != "unknown":
-                stats["byAuthorBrand"][author][brand] = stats["byAuthorBrand"][author].get(brand, 0) + 1
-            
+             stats["publishedByAuthor"][author] = stats["publishedByAuthor"].get(author, 0) + 1
+             
         if brand != "unknown":
-            stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
-
-    # Profiles mapping
-    for p in config.profiles:
-        if p.theme_key:
-            tk = p.theme_key.lower().strip()
-            if tk not in stats["profilesByCategory"]:
-                stats["profilesByCategory"][tk] = []
-            stats["profilesByCategory"][tk].append(p.username)
+             stats["publishedByBrand"][brand] = stats["publishedByBrand"].get(brand, 0) + 1
             
     # 4. Save to DB if refreshed (and successful)
     if refresh:
