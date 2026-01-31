@@ -248,12 +248,18 @@ class ContentScheduler:
                     # USER REQ: Randomize and avoid clumps
                     available_brand_videos = [v for v in brand_videos]
                     random.shuffle(available_brand_videos)
-
+                    
+                    # Anti-Clumping: Try to find a video from a DIFFERENT author than previous post
+                    last_author = last_brand_used_per_theme.get(f"{profile.username}_author")
+                    
+                    selected_candidate = None
+                    
+                    # Pass 1: Try to find unique author
                     for v in available_brand_videos:
                         vid_id = v.get("md5") or v.get("path")
                         vid_path = v.get("path")
                         
-                        # 1. Check uniqueness (MD5/Path)
+                        # 1. Check uniqueness
                         is_unique = False
                         if self.config.allowVideoReuse:
                             if (vid_id, profile.username) not in self.used_video_profile_pairs:
@@ -261,17 +267,51 @@ class ContentScheduler:
                         else:
                             if vid_id not in self.used_video_md5s:
                                 is_unique = True
-                        
-                        if not is_unique:
-                            continue
+                        if not is_unique: continue
 
-                        # 2. Check Database History (NOW O(1) from Memory)
+                        # 2. Check Database History
                         if check_db_duplicates:
-                            if (profile.username, vid_path) in posted_history_set:
-                                continue # NEXT video for this profile
-
-                        video_for_slot = v
+                             if (profile.username, vid_path) in posted_history_set:
+                                 continue
+                        
+                        # 3. Check Author (Anti-Clumping)
+                        author = self.extract_author(vid_path)
+                        if last_author and author == last_author:
+                            # Skip if same author (preferred)
+                            continue
+                            
+                        selected_candidate = v
                         break
+                    
+                    # Pass 2: If no candidate found (e.g. all available videos are from same author), 
+                    # RELAX author constraint to satisfy Quota
+                    if not selected_candidate:
+                        for v in available_brand_videos:
+                            vid_id = v.get("md5") or v.get("path")
+                            vid_path = v.get("path")
+                            
+                            is_unique = False
+                            if self.config.allowVideoReuse:
+                                if (vid_id, profile.username) not in self.used_video_profile_pairs: is_unique = True
+                            else:
+                                if vid_id not in self.used_video_md5s: is_unique = True
+                            if not is_unique: continue
+                            
+                            if check_db_duplicates:
+                                if (profile.username, vid_path) in posted_history_set: continue
+                            
+                            # Accept even if author matches
+                            selected_candidate = v
+                            break
+
+                    if not selected_candidate:
+                        continue # Next iteration/brand
+
+                    video_for_slot = selected_candidate
+                    
+                    # Update last author
+                    current_author = self.extract_author(video_for_slot.get("path"))
+                    last_brand_used_per_theme[f"{profile.username}_author"] = current_author
                     
                     if not video_for_slot:
                         # If we couldn't find a video for this brand, maybe try next iteration (which will pick another brand)
@@ -538,6 +578,24 @@ class ContentScheduler:
         if candidate_parts:
              return self.normalize(candidate_parts[0].split("*")[0].split("(")[0].strip())
              
+        return "unknown"
+
+    def extract_author(self, path: str) -> str:
+        # Structure: /ВИДЕО/Author/Category/Brand/...
+        # Author is usually at index 1 after 'video'
+        parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
+        
+        v_idx = -1
+        for i, p in enumerate(parts):
+            if p.lower() in ["video", "видео"]:
+                v_idx = i
+                break
+        
+        if v_idx != -1 and v_idx + 1 < len(parts):
+             # Ensure we don't accidentally pick "Category" if structure is weird
+             # But assume standard structure for now
+             return parts[v_idx + 1].strip()
+        
         return "unknown"
 
     def normalize(self, text: Optional[str]) -> str:
