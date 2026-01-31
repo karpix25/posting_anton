@@ -45,6 +45,12 @@ const groupProfiles = (profiles) => {
         if (!groups[displayKey]) groups[displayKey] = []
         groups[displayKey].push(p)
     })
+    
+    // Sort profiles inside each group
+    Object.keys(groups).forEach(key => {
+        groups[key].sort((a, b) => a.username.localeCompare(b.username))
+    })
+
     return Object.keys(groups).sort().reduce((acc, key) => {
         acc[key] = groups[key]
         return acc
