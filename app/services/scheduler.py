@@ -561,17 +561,22 @@ class ContentScheduler:
 
     def find_safe_slot(self, slots: List[datetime], desired: datetime, day_start: datetime, day_end: datetime) -> Optional[datetime]:
         candidate = desired
+        # Use configured interval or default to 45 mins
+        min_gap_seconds = (self.config.minIntervalMinutes or 45) * 60
+        
         for _ in range(15):
              conflict = False
              for s in slots:
-                 if abs((s - candidate).total_seconds()) < 45 * 60:
+                 if abs((s - candidate).total_seconds()) < min_gap_seconds:
                      conflict = True
                      break
              if not conflict:
                  return candidate
              
-             # Retry with offset
-             candidate += timedelta(minutes=random.randint(45, 105))
+             # Retry with offset (at least min_interval, up to min_interval + 60 mins)
+             min_minutes = self.config.minIntervalMinutes or 45
+             candidate += timedelta(minutes=random.randint(min_minutes, min_minutes + 60))
+             
              if candidate > day_end:
                  candidate = self.get_random_time_window(day_start, day_end)
         return None

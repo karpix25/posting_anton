@@ -114,4 +114,7 @@ class AppSettings(SQLModel, table=True):
     # Cached Stats (to avoid rescanning and persistance)
     cached_yandex_stats: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
     
+    # Scheduling settings
+    min_interval_minutes: int = Field(default=45)
+
     updated_at: datetime = Field(default_factory=datetime.utcnow)

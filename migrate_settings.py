@@ -7,6 +7,10 @@ async def migrate():
         try:
             await conn.execute(text("ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS cached_yandex_stats JSONB DEFAULT '{}'"))
             print("✅ Added 'cached_yandex_stats' column to 'app_settings'")
+            
+            await conn.execute(text("ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS min_interval_minutes INTEGER DEFAULT 45"))
+            print("✅ Added 'min_interval_minutes' column to 'app_settings'")
+            
         except Exception as e:
             print(f"❌ Migration failed: {e}")
 

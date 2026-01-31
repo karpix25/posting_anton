@@ -96,6 +96,7 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
         daysToGenerate=app_settings.days_to_generate,
         limits=LimitsConfig(**g_limits),
         cronSchedule=app_settings.cron_schedule,
+        minIntervalMinutes=app_settings.min_interval_minutes or 45,
         
         profiles=pyd_profiles,
         clients=pyd_clients,
@@ -129,6 +130,7 @@ async def save_db_config(session: AsyncSession, config_data: dict):
     settings_row.cron_schedule = config_data.get("cronSchedule", "")
     settings_row.days_to_generate = config_data.get("daysToGenerate", 1)
     settings_row.yandex_folders = config_data.get("yandexFolders", [])
+    settings_row.min_interval_minutes = config_data.get("minIntervalMinutes", 45)
     
     # Limits map back to dict
     limits_data = config_data.get("limits", {})

@@ -84,6 +84,12 @@ const updateFolders = () => {
             <label class="block mb-2 font-semibold">На сколько дней планировать вперед?</label>
             <input type="number" min="1" max="30" v-model.number="config.daysToGenerate" class="w-full border p-2 rounded">
          </div>
+
+         <div class="mb-4">
+             <label class="block mb-2 font-semibold">Минимальный интервал между постами (минут)</label>
+             <input type="number" min="5" max="1440" v-model.number="config.minIntervalMinutes" class="w-full border p-2 rounded">
+             <p class="text-xs text-gray-500 mt-1">Минимальная пауза между публикациями на одном аккаунте.</p>
+         </div>
          
          <h3 class="text-xl font-bold mt-6 mb-4">Лимиты платформ (глобальные)</h3>
          <div class="grid grid-cols-3 gap-4">

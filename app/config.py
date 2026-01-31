@@ -56,6 +56,7 @@ class LegacyConfig(BaseModel):
     clients: List[ClientConfig] = []
     schedule: Optional[ScheduleConfig] = None
     allowVideoReuse: bool = False
+    minIntervalMinutes: int = 45
     cached_yandex_stats: Dict[str, Any] = {}
 
 class Settings(BaseSettings):
