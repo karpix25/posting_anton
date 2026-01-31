@@ -524,8 +524,10 @@ class ContentScheduler:
              
         return "unknown"
 
-    def normalize(self, text: str) -> str:
-        return text.lower().replace("ё", "е").replace(" ", "").strip()
+    def normalize(self, text: Optional[str]) -> str:
+        if not text:
+            return ""
+        return str(text).lower().replace("ё", "е").replace(" ", "").strip()
 
     def normalize_theme_key(self, text: str) -> str:
         raw = self.normalize(text)
