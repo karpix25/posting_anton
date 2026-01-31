@@ -246,14 +246,14 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                 brand_key = normalize(brand) # Normalize for consistency in stats keys
                 stats["byBrand"][brand_key] = stats["byBrand"].get(brand_key, 0) + 1
 
-        # Profiles mapping (Post-loop)
-        for p in config.profiles:
-            if p.theme_key:
-                # FIX: Use normalize_theme_key
-                tk = normalize_theme_key(p.theme_key, config.themeAliases)
-                if tk not in stats["profilesByCategory"]:
-                    stats["profilesByCategory"][tk] = []
-                stats["profilesByCategory"][tk].append(p.username)
+    # Profiles mapping (Post-loop)
+    for p in config.profiles:
+        if p.theme_key:
+            # FIX: Use normalize_theme_key
+            tk = normalize_theme_key(p.theme_key, config.themeAliases)
+            if tk not in stats["profilesByCategory"]:
+                stats["profilesByCategory"][tk] = []
+            stats["profilesByCategory"][tk].append(p.username)
         
     # NEW: Calculate Published Stats from DB
     stmt_pub = select(PostingHistory.video_path).where(PostingHistory.status == 'success')
