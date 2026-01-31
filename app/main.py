@@ -338,22 +338,7 @@ async def update_brand_quota(
         
     await session.commit()
     
-    # Also update config.json for sync?
-    # The original implementation updated both DB and config.json.
-    # Backward compatibility:
-    try:
-        config = settings.load_legacy_config()
-        if not config.brandQuotas: config.brandQuotas = {}
-        if category not in config.brandQuotas: config.brandQuotas[category] = {}
-        config.brandQuotas[category][brand] = quota
-        
-        # Save
-        path = settings.get_config_path()
-        with open(path, "w", encoding="utf-8") as f:
-            # Reconstruct full dict
-            json.dump(config.dict(), f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        print(f"Failed to sync quota to config.json: {e}")
+    # Updated DB Only (Legacy config sync removed)
 
     return {"success": True, "message": f"Updated quota for {category}:{brand} to {quota}"}
 
