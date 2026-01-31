@@ -471,8 +471,11 @@ async def increment_brand_stats(video_path: str):
         from app.utils import extract_brand_with_regex
         
         client_regexes = []
+        client_regexes = []
         if hasattr(config, "clients") and config.clients:
-            for c in config.clients:
+            # Sort clients by regex length descending to prevent substring collisions
+            sorted_clients = sorted(config.clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
+            for c in sorted_clients:
                 if c.regex:
                     try:
                         client_regexes.append((c.name, re.compile(c.regex, re.IGNORECASE)))
@@ -602,7 +605,12 @@ def find_ai_client(clients, brand_name: str):
     
     normalized_brand = normalize_client(brand_name)
     
-    for client in clients:
+    normalized_brand = normalize_client(brand_name)
+    
+    # Sort clients by regex length descending to prevent substring collisions
+    sorted_clients = sorted(clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
+    
+    for client in sorted_clients:
         # Method 1: Exact name match (normalized)
         if normalize_client(client.name) == normalized_brand:
             return client

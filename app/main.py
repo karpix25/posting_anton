@@ -216,7 +216,10 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     from app.utils import extract_brand_with_regex
 
     if hasattr(config, "clients") and config.clients:
-        for c in config.clients:
+        # Sort clients by regex length descending to prevent substring collisions (e.g. 'smart' matching 'b-smart')
+        sorted_clients = sorted(config.clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
+        
+        for c in sorted_clients:
             if c.regex:
                 try:
                     # Case insensitive search
