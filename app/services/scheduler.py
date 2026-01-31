@@ -57,15 +57,7 @@ class ContentScheduler:
                 skipped_reasons["disabled"] += 1
                 continue
             
-            # Check if any platform is enabled
-            if not (p.instagramEnabled or p.tiktokEnabled or p.youtubeEnabled):
-                skipped_reasons["no_platforms"] += 1
-                continue
-                
-            active_profiles.append(p)
-            if not p.enabled:
-                skipped_reasons["disabled"] += 1
-                continue
+
                 
             # Filter empty strings or nulls from platforms
             valid_platforms = [pl for pl in (p.platforms or []) if pl and pl.strip()]
