@@ -209,6 +209,9 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                 except re.error:
                      logger.warning(f"Invalid regex for client {c.name}: {c.regex}")
 
+    # Pre-calculate normalized config folders
+    config_folders_norm = [f.strip("/").lower() for f in config.yandexFolders]
+
     for f in files:
             path = f["path"]
             path_norm = path.replace("disk:", "").strip("/").lower()
