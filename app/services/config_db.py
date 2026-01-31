@@ -101,7 +101,8 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
         clients=pyd_clients,
         
         themeAliases=app_settings.theme_aliases,
-        brandQuotas=app_settings.brand_quotas
+        brandQuotas=app_settings.brand_quotas,
+        cached_yandex_stats=app_settings.cached_yandex_stats or {}
     )
     
     return config

@@ -111,4 +111,7 @@ class AppSettings(SQLModel, table=True):
     schedule_timezone: str = Field(default="Europe/Moscow")
     schedule_time: str = Field(default="00:00")
     
+    # Cached Stats (to avoid rescanning and persistance)
+    cached_yandex_stats: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    
     updated_at: datetime = Field(default_factory=datetime.utcnow)

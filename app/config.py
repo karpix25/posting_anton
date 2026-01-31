@@ -56,6 +56,7 @@ class LegacyConfig(BaseModel):
     clients: List[ClientConfig] = []
     schedule: Optional[ScheduleConfig] = None
     allowVideoReuse: bool = False
+    cached_yandex_stats: Dict[str, Any] = {}
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://admin:admin@tools_postgres:5432/postgres"

@@ -261,16 +261,17 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             # If files list > 1MB, it might be heavy for DB row. 
             # Optimization: Save only necessary paths.
             simple_files = [{"path": f["path"]} for f in files]
+            new_cache = {"files": simple_files, "updated_at": datetime.now().isoformat()}
+
+            # Fix: Update DB directly using AppSettings model (config is Pydantic, cannot be added to session)
+            from sqlalchemy import update
+            from app.models import AppSettings
             
-            config.dict()["cached_yandex_stats"] = {"files": simple_files, "updated_at": datetime.now().isoformat()}
-            # We need to use update logic since config is Pydantic/SQLModel
-            # But get_db_config returns AppSettings model instance
-            config.cached_yandex_stats = {"files": simple_files, "updated_at": datetime.now().isoformat()}
-            
-            # Need to explicitly add to session to update? get_db_config usually returns attached instance?
-            # get_db_config -> select(AppSettings).first() -> It is attached.
-            session.add(config)
+            stmt = update(AppSettings).where(AppSettings.id == 1).values(cached_yandex_stats=new_cache)
+            await session.execute(stmt)
             await session.commit()
+            
+            config.cached_yandex_stats = new_cache
             logger.info("✅ Saved Yandex Disk cache to DB")
         except Exception as e:
             logger.error(f"Failed to save DB cache: {e}")
