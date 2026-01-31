@@ -3,7 +3,8 @@ import os
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, Body, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,20 @@ from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.event_broadcaster import event_broadcaster
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
+security = HTTPBasic()
+
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+    
+    is_admin = credentials.username == "admin" and credentials.password == admin_password
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 # Setup Logging
 logger = setup_logging()
@@ -83,12 +98,12 @@ async def health_check():
     return {"status": "ok", "version": "2.0.0"}
 
 @app.get("/api/config")
-async def get_config(session: AsyncSession = Depends(get_session)):
+async def get_config(session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     config = await get_db_config(session)
-    return {"success": True, "config": config.dict()}
+    return {"success": True, "config": config.dict(), "role": username}
 
 @app.post("/api/config")
-async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session)):
+async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     import logging
     logger = logging.getLogger("app.main")
     # Log critical sections of payload to debug "wiping" issues
@@ -135,7 +150,7 @@ async def update_config(config_data: Dict[str, Any], session: AsyncSession = Dep
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/profiles/sync")
-async def sync_profiles_endpoint():
+async def sync_profiles_endpoint(username: str = Depends(get_current_username)):
     """Trigger safe synchronization of profiles with API."""
     from app.services.sync_profiles import sync_profiles_service
     try:
@@ -150,7 +165,7 @@ _files_cache = []
 _files_cache_timestamp = None
 
 @app.get("/api/stats")
-async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):
+async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     global _files_cache, _files_cache_timestamp
     
     # 1. Load config
@@ -314,7 +329,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     return stats
 
 @app.get("/api/brands/stats")
-async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = Depends(get_session)):
+async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     target_month = month or datetime.now().strftime("%Y-%m")
     
     stmt = select(BrandStats).where(BrandStats.month == target_month)
@@ -329,7 +344,7 @@ async def get_brand_stats(month: Optional[str] = None, session: AsyncSession = D
     return {"success": True, "stats": stats, "month": target_month}
 
 @app.post("/api/config/restore-defaults")
-async def restore_defaults(session: AsyncSession = Depends(get_session)):
+async def restore_defaults(session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     """Force restores client prompts from seed data."""
     try:
         from app.seed_data import DEFAULT_CLIENTS
@@ -345,11 +360,12 @@ async def restore_defaults(session: AsyncSession = Depends(get_session)):
         return {"success": True, "message": "Restored default AI clients"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-        
+
 @app.post("/api/brands/quotas")
 async def update_brand_quota(
     payload: Dict[str, Any] = Body(...),
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    username: str = Depends(get_current_username)
 ):
     category = payload.get("category")
     brand = payload.get("brand")
@@ -374,12 +390,10 @@ async def update_brand_quota(
         
     await session.commit()
     
-    # Updated DB Only (Legacy config sync removed)
-
     return {"success": True, "message": f"Updated quota for {category}:{brand} to {quota}"}
 
 @app.get("/api/schedule")
-async def get_schedule(session: AsyncSession = Depends(get_session)):
+async def get_schedule(session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     config = await get_db_config(session)
     cron = config.cronSchedule or ""
     logger.info(f"[API] get_schedule loaded cron: '{cron}'")
@@ -410,7 +424,7 @@ async def get_schedule(session: AsyncSession = Depends(get_session)):
     }
 
 @app.post("/api/schedule")
-async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session)):
+async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     enabled = payload.get("enabled", False)
     daily_time = payload.get("dailyRunTime", "00:00")
     
@@ -441,7 +455,7 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stats/today")
-async def get_today_stats(session: AsyncSession = Depends(get_session)):
+async def get_today_stats(session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     """Get statistics for today's publications (Moscow timezone)."""
     try:
         from datetime import timezone, timedelta
@@ -515,7 +529,8 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
 async def get_publishing_stats(
     date_from: Optional[str] = None, 
     date_to: Optional[str] = None,
-    session: AsyncSession = Depends(get_session)
+    session: AsyncSession = Depends(get_session),
+    username: str = Depends(get_current_username)
 ):
     """Get comprehensive publishing statistics for all posts with optional date filtering."""
     try:
@@ -629,7 +644,7 @@ async def get_publishing_stats(
 
 
 @app.get("/api/stats/history")
-async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_session)):
+async def get_history_stats(days: int = 30, session: AsyncSession = Depends(get_session), username: str = Depends(get_current_username)):
     """Get daily publication history for the last N days."""
     try:
         from app.models import PostingHistory
@@ -1012,7 +1027,7 @@ async def event_stream():
             logger.info("[SSE] Client connected to event stream")
             
             # Send initial connection event IMMEDIATELY
-            yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'connected', 'timestamp': datetime.utcnow().isoformat()})}\\n\\n"
             
             # Keep sending events as they arrive
             while True:
@@ -1023,12 +1038,12 @@ async def event_stream():
                     
                     # Send event to client
                     data_str = json.dumps(event)
-                    yield f"data: {data_str}\n\n"
+                    yield f"data: {data_str}\\n\\n"
                     
                 except asyncio.TimeoutError:
                     # Send keepalive comment to prevent connection timeout
                     # Colon usually indicates a comment in SSE
-                    yield ": keepalive\n\n"
+                    yield ": keepalive\\n\\n"
                     
         except asyncio.CancelledError:
             logger.info("[SSE] Client disconnected from event stream (Cancelled)")
