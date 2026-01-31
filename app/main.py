@@ -201,6 +201,8 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     # Pre-compile regexes for performance
     client_regexes = []
     import re
+    from app.utils import extract_brand_with_regex
+
     if hasattr(config, "clients") and config.clients:
         for c in config.clients:
             if c.regex:
@@ -209,13 +211,6 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                     client_regexes.append((c.name, re.compile(c.regex, re.IGNORECASE)))
                 except re.error:
                      logger.warning(f"Invalid regex for client {c.name}: {c.regex}")
-
-    # Helper to extract brand via regex
-    def get_brand_from_path(path: str) -> str:
-        for name, pattern in client_regexes:
-            if pattern.search(path):
-                return name
-        return extract_brand(path)
 
     for f in files:
             path = f["path"]
@@ -234,7 +229,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             
             theme = extract_theme(path, config.themeAliases)
             author = extract_author(path)
-            brand = get_brand_from_path(path) # Use Regex
+            brand = extract_brand_with_regex(path, client_regexes) # Use Utils
             
             if theme != "unknown":
                 stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
@@ -277,7 +272,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     for path in published_paths:
         theme = extract_theme(path, config.themeAliases)
         author = extract_author(path)
-        brand = get_brand_from_path(path) # Use Regex
+        brand = extract_brand_with_regex(path, client_regexes) # Use Utils
         
         if theme != "unknown":
             stats["publishedByCategory"][theme] = stats["publishedByCategory"].get(theme, 0) + 1

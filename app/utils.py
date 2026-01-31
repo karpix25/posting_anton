@@ -20,6 +20,36 @@ def extract_brand(path: str) -> str:
     
     return normalize(brand_raw) if brand_raw else "unknown"
 
+def extract_brand_with_regex(path: str, client_regexes: List[tuple]) -> str:
+    """Extract brand using compiled regexes with strict folder hierarchy: Video -> Author -> Category -> [Brand]."""
+    parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
+    
+    # Find 'Video' anchor
+    v_idx = -1
+    for i, p in enumerate(parts):
+        if p.lower() in ["video", "видео"]:
+            v_idx = i
+            break
+            
+    # Structure: ... / Video / Author / Category / Brand / ...
+    # Brand is at v_idx + 3
+    if v_idx == -1 or v_idx + 3 >= len(parts):
+        return "unknown"
+        
+    candidate_folder = parts[v_idx + 3]
+    
+    # Exclude files
+    if "." in candidate_folder: 
+            return "unknown"
+
+    # 1. Try Regex match
+    for name, pattern in client_regexes:
+        if pattern.search(candidate_folder):
+            return name
+            
+    # 2. Fallback to normalization
+    return normalize(candidate_folder)
+
 def extract_author(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
     v_idx = -1

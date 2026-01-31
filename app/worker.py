@@ -437,8 +437,22 @@ async def increment_brand_stats(video_path: str):
         from app.services.config_db import get_db_config
         config = await get_db_config(session)
         
+        # Compile Regexes for Brand Extraction
+        import re
+        from app.utils import extract_brand_with_regex
+        
+        client_regexes = []
+        if hasattr(config, "clients") and config.clients:
+            for c in config.clients:
+                if c.regex:
+                    try:
+                        client_regexes.append((c.name, re.compile(c.regex, re.IGNORECASE)))
+                    except re.error:
+                        pass
+        
         category = extract_theme(video_path, config.themeAliases)
-        brand = extract_brand(video_path)
+        brand = extract_brand_with_regex(video_path, client_regexes)
+        
         stmt = select(BrandStats).where(
             BrandStats.category == category,
             BrandStats.brand == brand,
