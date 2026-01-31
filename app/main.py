@@ -13,7 +13,7 @@ from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
 from app.models import BrandStats, PostingHistory
 from app.services.yandex import yandex_service
-from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key
+from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key, normalize
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.event_broadcaster import event_broadcaster
@@ -218,10 +218,13 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             
             # Check folder
             in_folder = False
-            for folder in config_folders_norm:
-                if path_norm.startswith(folder):
-                    in_folder = True
-                    break
+            if not config_folders_norm:
+                in_folder = True
+            else:
+                for folder in config_folders_norm:
+                    if path_norm.startswith(folder):
+                        in_folder = True
+                        break
             
             if not in_folder: continue
             
