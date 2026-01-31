@@ -13,7 +13,7 @@ from app.config import settings, LegacyConfig
 from app.database import get_session, init_db
 from app.models import BrandStats, PostingHistory
 from app.services.yandex import yandex_service
-from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key, normalize
+from app.utils import extract_theme, extract_brand, extract_author, normalize_theme_key
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.event_broadcaster import event_broadcaster
@@ -210,7 +210,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                      logger.warning(f"Invalid regex for client {c.name}: {c.regex}")
 
     # Pre-calculate normalized config folders
-    config_folders_norm = [f.strip("/").lower() for f in config.yandexFolders]
+    config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
 
     for f in files:
             path = f["path"]
