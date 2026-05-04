@@ -1,0 +1,1287 @@
+{
+  "name": "ПОСТИНГ",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1408,
+        1968
+      ],
+      "id": "28332272-aeb4-48f7-9dcc-f94ab1d9fe76",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "users"
+      },
+      "type": "n8n-nodes-upload-post.uploadPost",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        1968
+      ],
+      "id": "3d274142-b645-4d52-ba04-32ddab4a506d",
+      "name": "List users1",
+      "credentials": {
+        "uploadPostApi": {
+          "id": "jd48dwDfUotaDjVa",
+          "name": "Upload Post account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "monitoring",
+        "operation": "listScheduled"
+      },
+      "type": "n8n-nodes-upload-post.uploadPost",
+      "typeVersion": 1,
+      "position": [
+        -448,
+        1968
+      ],
+      "id": "de807027-d55c-43f5-ac4c-281cd30cce35",
+      "name": "List scheduled posts1",
+      "credentials": {
+        "uploadPostApi": {
+          "id": "jd48dwDfUotaDjVa",
+          "name": "Upload Post account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "6748ZOz4gcQqczxa",
+          "mode": "list",
+          "cachedResultName": "Data",
+          "cachedResultUrl": "/projects/tXUz64rGNsJLe91p/datatables/6748ZOz4gcQqczxa"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "company",
+              "keyValue": "={{ $json.company }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "quantity": "={{ $json.quantity }}",
+            "company": "={{ $json.company }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        1104
+      ],
+      "id": "c0b058eb-1d05-4799-b222-0d6262b47e90",
+      "name": "Upsert row(s)1"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "https://cloud-api.yandex.net/v1/disk/resources",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ encodeURIComponent($json.video_path) }}"
+            },
+            {
+              "name": "permanently",
+              "value": "true"
+            },
+            {
+              "name": "force_async",
+              "value": "true"
+            },
+            {
+              "name": "md5",
+              "value": "={{ $json.video_md5 }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "OAuth y0__xDUkIsTGLrFOyDR4vyjFVprcWtJyQ49C_x4r4XoU82ZPru4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1120,
+        2832
+      ],
+      "id": "c816daef-6156-4efe-abc4-cfc81a7ef759",
+      "name": "Удаление1",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1760,
+        1952
+      ],
+      "id": "1b782c7b-11c7-416d-82d7-60e7c16efa3e",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// -------------------------------------------------------------\n// 1. Берём все результаты из ноды \"Code in JavaScript\"\n//    (там, где ты формируешь расписание и есть video_name)\n// -------------------------------------------------------------\nconst scheduleItems = $items(\"Code in JavaScript2\", 0);\n\n// Собираем все video_name и считаем уникальные\nconst uniqueNames = new Set(\n  scheduleItems\n    .map(i => i.json.video_name)\n    .filter(Boolean) // отсекаем пустые / undefined\n);\n\nconst newVideosCount = uniqueNames.size;\n\n// -------------------------------------------------------------\n// 2. Берём прошлое накопленное значение из DataTable\n//    нода \"Get row(s)\" должна уже вернуть строку с company и quantity\n// -------------------------------------------------------------\nconst row = $('Get row(s)1').first()?.json || {};\n\nconst oldQuantity = Number(row.quantity) || 0;\nconst company = row.company || \"UNKNOWN\";\n\n// -------------------------------------------------------------\n// 3. Складываем старое + новые\n// -------------------------------------------------------------\nconst total = oldQuantity + newVideosCount;\n\n// -------------------------------------------------------------\n// 4. Отдаём дальше в Upsert (DataTable)\n// -------------------------------------------------------------\nreturn [\n  {\n    json: {\n      company,\n      quantity: total,\n      // на всякий случай ещё отдадим сколько добавили в этот заход\n      added_now: newVideosCount,\n      previous_quantity: oldQuantity\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        1104
+      ],
+      "id": "3ade3a04-8807-4f79-a115-6bdc810df808",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "6748ZOz4gcQqczxa",
+          "mode": "list",
+          "cachedResultName": "Data",
+          "cachedResultUrl": "/projects/tXUz64rGNsJLe91p/datatables/6748ZOz4gcQqczxa"
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        1968
+      ],
+      "id": "4cbff17c-d18f-4fdd-b507-6ef017c080a2",
+      "name": "Get row(s)1"
+    },
+    {
+      "parameters": {
+        "content": "## ALL",
+        "width": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -560,
+        1408
+      ],
+      "typeVersion": 1,
+      "id": "910282a5-9903-4089-881f-2a3a00975860",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target_platform }}",
+                    "rightValue": "instagram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "3bc521e2-7771-41f9-a87f-6657a04f4a88"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "inst"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e08c21ee-4b01-40fd-a751-6d5bbdc48f97",
+                    "leftValue": "={{ $json.target_platform }}",
+                    "rightValue": "youtube",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "YT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "37ef9856-f77b-454f-b7f9-c11811c4f3e6",
+                    "leftValue": "={{ $json.target_platform }}",
+                    "rightValue": "tiktok",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "TT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        1248,
+        1952
+      ],
+      "id": "da38aa28-2057-434d-beb9-94f164ae9a51",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Y9aJOKrMoPalD4lf",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/Y9aJOKrMoPalD4lf",
+          "cachedResultName": "Instagram"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "video_path_split": "={{ $json.video_path.split(\"/\")[3] }}",
+            "video_path": "={{ $json.video_path }}",
+            "profile_username": "={{ $('Switch').item.json.profile_username }}",
+            "video_url": "={{ $('Switch').item.json.video_url }}",
+            "publish_at": "={{ $('Switch').item.json.publish_at }}",
+            "video_md": "={{ $json.video_md5 }}"
+          },
+          "matchingColumns": [
+            "video_path_split",
+            "video_path",
+            "profile_username",
+            "video_url",
+            "publish_at"
+          ],
+          "schema": [
+            {
+              "id": "video_path_split",
+              "displayName": "video_path_split",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_path",
+              "displayName": "video_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "profile_username",
+              "displayName": "profile_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_url",
+              "displayName": "video_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "publish_at",
+              "displayName": "publish_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_md",
+              "displayName": "video_md",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        1776
+      ],
+      "name": "INST",
+      "id": "7c63bfd7-96bc-490e-9f10-90f96d9d809c",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "YBceZCqhYuWTMivi",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/YBceZCqhYuWTMivi",
+          "cachedResultName": "YOUTUBE"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "video_path_split": "={{ $json.video_path.split(\"/\")[3] }}",
+            "video_path": "={{ $json.video_path }}",
+            "profile_username": "={{ $json.profile_username }}",
+            "video_url": "={{ $json.video_url }}",
+            "publish_at": "={{ $json.publish_at }}",
+            "video_md": "={{ $json.video_md5 }}"
+          },
+          "matchingColumns": [
+            "video_path_split",
+            "video_path",
+            "profile_username",
+            "video_url",
+            "publish_at"
+          ],
+          "schema": [
+            {
+              "id": "video_path_split",
+              "displayName": "video_path_split",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_path",
+              "displayName": "video_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "profile_username",
+              "displayName": "profile_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_url",
+              "displayName": "video_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "publish_at",
+              "displayName": "publish_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_md",
+              "displayName": "video_md",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        1968
+      ],
+      "name": "YOUTUBE",
+      "id": "94474f50-5382-47e0-9255-3f90eaa56b4a",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "p95IYB14Q0maREOg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/p95IYB14Q0maREOg",
+          "cachedResultName": "TIKTOK"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "video_path_split": "={{ $json.video_path.split(\"/\")[3] }}",
+            "video_path": "={{ $json.video_path }}",
+            "profile_username": "={{ $('Switch').item.json.profile_username }}",
+            "video_url": "={{ $('Switch').item.json.video_url }}",
+            "publish_at": "={{ $('Switch').item.json.publish_at }}",
+            "video_md": "={{ $json.video_md5 }}"
+          },
+          "matchingColumns": [
+            "video_path_split",
+            "video_path",
+            "profile_username",
+            "video_url",
+            "publish_at"
+          ],
+          "schema": [
+            {
+              "id": "video_path_split",
+              "displayName": "video_path_split",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_path",
+              "displayName": "video_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "profile_username",
+              "displayName": "profile_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_url",
+              "displayName": "video_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "publish_at",
+              "displayName": "publish_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "video_md",
+              "displayName": "video_md",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        2160
+      ],
+      "name": "TIKTOK",
+      "id": "8ee23642-2124-4ca0-bce8-ed3bb4a1238a",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "73911e8b-9da9-4ca0-b5c2-6b11ecdac398",
+              "name": "LIMIT_INSTAGRAM",
+              "value": "10",
+              "type": "string"
+            },
+            {
+              "id": "d096812d-a6ea-477b-a8c2-ac29ecba590b",
+              "name": "LIMIT_TIKTOK",
+              "value": "10",
+              "type": "string"
+            },
+            {
+              "id": "032baa48-9b35-4b0e-8e8c-14451c8c079a",
+              "name": "LIMIT_YOUTUBE",
+              "value": "2",
+              "type": "string"
+            },
+            {
+              "id": "02dbcd6e-e356-47b7-acda-27c10d6e2009",
+              "name": "DAYS_TO_GENERATE",
+              "value": "1",
+              "type": "string"
+            },
+            {
+              "id": "ca5bf50e-a7b5-4aa5-bf9d-c3e5700ab9b2",
+              "name": " MIN_INTERVAL_MINUTES",
+              "value": "30",
+              "type": "string"
+            },
+            {
+              "id": "e4bc4604-1acc-449d-a9b7-f4577a59879b",
+              "name": "MIN_INTERVAL_JITTER",
+              "value": "15",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        320,
+        1952
+      ],
+      "id": "4313f16c-4ef6-4a1a-95b2-e761d382e339",
+      "name": "Настройки"
+    },
+    {
+      "parameters": {
+        "url": "https://docs.google.com/spreadsheets/d/e/2PACX-1vTci6T0TNUHJH6hpOaXrnAPXLZsqjHlPG8PqytOGEyJI9GXDN9uGjqZtGiEtvalIqu-uUpZpIk85ZyO/pub?gid=1268864022&single=true&output=csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -896,
+        1968
+      ],
+      "id": "329c5c6a-a7d7-4f2c-9abd-8cf9c772d58f",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1120,
+        3056
+      ],
+      "id": "c4941d7b-7737-4d43-8ce7-417755efa155",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "resource": "monitoring",
+        "operation": "cancelScheduled",
+        "scheduleJobId": "={{ $json.job_id }}"
+      },
+      "type": "n8n-nodes-upload-post.uploadPost",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        1328
+      ],
+      "id": "266991ac-8883-42e6-ba77-5689dc0a4d69",
+      "name": "Cancel scheduled post",
+      "credentials": {
+        "uploadPostApi": {
+          "id": "jd48dwDfUotaDjVa",
+          "name": "Upload Post account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "scheduled_posts",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        1328
+      ],
+      "id": "cf0ae618-b7af-418c-a829-31716891a057",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2096,
+        1856
+      ],
+      "id": "827f5f29-3db5-4d2d-81c4-f1dfe67b4839",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2544,
+        1712
+      ],
+      "id": "b2a3c8a9-f07d-40df-9422-7b81d4d25c03",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// -------------------------------------------------------------\n// ПОЛУЧАЕМ ПЕРЕМЕННЫЕ ИЗ INPUT JSON\n// -------------------------------------------------------------\nconst cfg = $input.first().json || {};\n\nconst DAYS_TO_GENERATE   = parseInt(cfg.DAYS_TO_GENERATE   || 7);\nconst LIMIT_INSTAGRAM    = parseInt(cfg.LIMIT_INSTAGRAM    || 4);\nconst LIMIT_TIKTOK       = parseInt(cfg.LIMIT_TIKTOK       || 2);\nconst LIMIT_YOUTUBE      = parseInt(cfg.LIMIT_YOUTUBE      || 1);\n\n// Рабочее окно (с лёгким рандомом)\nconst WORK_START_HOUR    = 8;\nconst WORK_END_HOUR      = 23;\n\n// Паузы между платформами\nconst PLATFORM_OFFSET_MIN = 2;\nconst PLATFORM_OFFSET_MAX = 5;\n\n// -------------------------------------------------------------\n// HELPERS\n// -------------------------------------------------------------\nfunction normalize(str) {\n  return String(str || \"\")\n    .toLowerCase()\n    .replace(/ё/g, \"е\")\n    .replace(/[^a-zа-я0-9]/g, \"\");\n}\n\nfunction extractCategoryKeyFromPath(path) {\n  const parts = String(path || \"\").split(\"/\");\n  if (parts.length < 3) return null;\n\n  const raw = parts[2].replace(/\\(.*?\\)/g, \" \");\n  const first = raw.split(/\\s+/).filter(Boolean)[0];\n  return first ? normalize(first) : null;\n}\n\nfunction extractBrandKeyFromPath(path) {\n  const parts = String(path || \"\").split(\"/\");\n  if (parts.length < 4) return null;\n\n  const raw = parts[3].split(\"*\")[0];\n  const cleaned = raw.replace(/\\(.*?\\)/g, \" \").split(/\\s+/).filter(Boolean)[0];\n  return normalize(cleaned);\n}\n\nfunction extractCategoryKeyFromUsername(username) {\n  return normalize(String(username).replace(/[0-9].*$/, \"\"));\n}\n\nfunction extractFileName(path) {\n  const parts = String(path || \"\").split(\"/\");\n  return parts[parts.length - 1];\n}\n\nfunction randomInt(min, max) {\n  return Math.floor(Math.random() * (max - min + 1)) + min;\n}\n\nfunction shuffle(arr) {\n  for (let i = arr.length - 1; i > 0; i--) {\n    const j = randomInt(0, i);\n    [arr[i], arr[j]] = [arr[j], arr[i]];\n  }\n  return arr;\n}\n\nfunction getRandomDayWindow(baseDayMsk, dayIndex) {\n  const day = new Date(baseDayMsk.getTime() + dayIndex * 24 * 3600 * 1000);\n\n  const startJitter = randomInt(0, 2);\n  const endJitter   = randomInt(0, 2);\n\n  const startHour = WORK_START_HOUR + startJitter;\n  let endHour     = WORK_END_HOUR - endJitter;\n\n  if (endHour <= startHour) endHour = startHour + 1;\n\n  const dayStart = new Date(day);\n  dayStart.setHours(startHour, randomInt(0,59), 0, 0);\n\n  const dayEnd   = new Date(day);\n  dayEnd.setHours(endHour, randomInt(0,59), 0, 0);\n\n  return { dayStart, dayEnd };\n}\n\n// -------------------------------------------------------------\n// ЧТЕНИЕ scheduled (чтобы не дублировать видео)\n// -------------------------------------------------------------\nconst scheduledNodes = $('List scheduled posts1').all();\nlet scheduled = [];\nfor (const s of scheduledNodes) {\n  if (Array.isArray(s.json?.scheduled_posts)) {\n    scheduled.push(...s.json.scheduled_posts);\n  }\n}\nconst scheduledNames = new Set(\n  scheduled.map(p => p.file_name || p.media_name).filter(Boolean)\n);\n\n// -------------------------------------------------------------\n// ЧТЕНИЕ ДИСКА: категория → бренд → видео\n// -------------------------------------------------------------\nconst diskNodes = $('ЧТО ВНУТРИ ДИСКА1').all();\nlet diskItems = [];\nfor (const n of diskNodes) {\n  if (Array.isArray(n.json?.items)) diskItems.push(...n.json.items);\n}\n\nconst categories = {};\n\nfor (const item of diskItems) {\n  const path = item.path || item.name || \"\";\n  const catKey   = extractCategoryKeyFromPath(path);\n  const brandKey = extractBrandKeyFromPath(path);\n  if (!catKey || !brandKey) continue;\n\n  const videoName = extractFileName(item.name || item.path);\n  if (!videoName || scheduledNames.has(videoName)) continue;\n\n  if (!categories[catKey]) {\n    categories[catKey] = {\n      categoryName: String(path.split(\"/\")[2] || \"\"),\n      brands: {}\n    };\n  }\n\n  const brandFolder = path.split(\"/\")[3] || \"\";\n  const brandName = brandFolder.split(\"*\")[0];\n\n  if (!categories[catKey].brands[brandKey]) {\n    categories[catKey].brands[brandKey] = {\n      brandName,\n      videos: []\n    };\n  }\n\n  categories[catKey].brands[brandKey].videos.push({\n    video_name: videoName,\n    video_url : item.file || item.preview || item.path,\n    video_path: item.path,\n    video_md5 : item.md5 || null   // ← MD5 УЧТЁН\n  });\n}\n\n// -------------------------------------------------------------\n// ПРОФИЛИ ПО КАТЕГОРИЯМ\n// -------------------------------------------------------------\nconst userNodes = $('List users1').all();\nlet allProfiles = [];\nfor (const u of userNodes) {\n  if (Array.isArray(u.json?.profiles)) allProfiles.push(...u.json.profiles);\n}\n\nconst profilesByCategory = {};\n\nfor (const p of allProfiles) {\n  const acc = p.social_accounts || {};\n  if (!acc.instagram && !acc.tiktok && !acc.youtube) continue;\n\n  const ck = extractCategoryKeyFromUsername(p.username);\n  if (!ck) continue;\n\n  if (!profilesByCategory[ck]) profilesByCategory[ck] = [];\n  profilesByCategory[ck].push(p);\n}\n\n// -------------------------------------------------------------\n// ОЧЕРЕДЬ ВИДЕО ДЛЯ БРЕНДОВ КАТЕГОРИИ\n// -------------------------------------------------------------\nconst categoryBrandQueues = {};\n\nfor (const catKey of Object.keys(categories)) {\n  categoryBrandQueues[catKey] = {};\n\n  for (const brandKey of Object.keys(categories[catKey].brands)) {\n    const vids = categories[catKey].brands[brandKey].videos;\n    if (!vids.length) continue;\n\n    categoryBrandQueues[catKey][brandKey] = shuffle(vids.slice());\n  }\n}\n\nfunction pickRandomBrand(catKey) {\n  const brands = categoryBrandQueues[catKey] || {};\n  const available = Object.keys(brands).filter(\n    b => brands[b] && brands[b].length > 0\n  );\n  if (!available.length) return null;\n  return available[randomInt(0, available.length - 1)];\n}\n\n// -------------------------------------------------------------\n// БАЗОВАЯ ДАТА ПО МОСКВЕ\n// -------------------------------------------------------------\nconst now = new Date();\nconst mskNow = new Date(now.getTime() + 3 * 3600 * 1000);\nconst baseDay = new Date(mskNow.getFullYear(), mskNow.getMonth(), mskNow.getDate());\n\n// -------------------------------------------------------------\n// ОСНОВНАЯ ГЕНЕРАЦИЯ РАСПИСАНИЯ\n// -------------------------------------------------------------\nconst PLATFORM_PRIORITY = [\"instagram\", \"youtube\", \"tiktok\"];\nconst result = [];\n\nfor (let dayIndex = 0; dayIndex < DAYS_TO_GENERATE; dayIndex++) {\n  const { dayStart, dayEnd } = getRandomDayWindow(baseDay, dayIndex);\n  const duration = dayEnd - dayStart;\n\n  for (const catKey of Object.keys(categories)) {\n    const profiles = profilesByCategory[catKey] || [];\n    if (!profiles.length) continue;\n\n    for (const profile of profiles) {\n      const acc = profile.social_accounts || {};\n      const platforms = [];\n\n      if (acc.instagram) platforms.push(\"instagram\");\n      if (acc.youtube)   platforms.push(\"youtube\");\n      if (acc.tiktok)    platforms.push(\"tiktok\");\n\n      if (!platforms.length) continue;\n\n      let limit = Infinity;\n      if (acc.instagram) limit = Math.min(limit, LIMIT_INSTAGRAM);\n      if (acc.tiktok)    limit = Math.min(limit, LIMIT_TIKTOK);\n      if (acc.youtube)   limit = Math.min(limit, LIMIT_YOUTUBE);\n\n      if (!isFinite(limit) || limit <= 0) continue;\n\n      for (let i = 0; i < limit; i++) {\n        const brandKey = pickRandomBrand(catKey);\n        if (!brandKey) break;\n\n        const video = categoryBrandQueues[catKey][brandKey].shift();\n        if (!video) break;\n\n        const offset = randomInt(0, duration);\n        const baseT = new Date(dayStart.getTime() + offset);\n        baseT.setSeconds(randomInt(0, 59));\n\n        const sortedPlatforms = platforms.slice().sort(\n          (a,b) => PLATFORM_PRIORITY.indexOf(a) - PLATFORM_PRIORITY.indexOf(b)\n        );\n\n        let curTime = new Date(baseT);\n\n        for (let pi = 0; pi < sortedPlatforms.length; pi++) {\n          if (pi > 0) {\n            const off = randomInt(PLATFORM_OFFSET_MIN, PLATFORM_OFFSET_MAX);\n            curTime = new Date(curTime.getTime() + off * 60000);\n            curTime.setSeconds(randomInt(0, 59));\n          }\n\n          result.push({\n            json: {\n              day_index: dayIndex,\n              category_key: catKey,\n              brand_key: brandKey,\n              profile_username: profile.username,\n\n              video_name: video.video_name,\n              video_url : video.video_url,\n              video_path: video.video_path,\n              video_md5 : video.video_md5,   // ← MD5 ТЕПЕРЬ ВЫХОДИТ ВСЕГДА\n\n              target_platform: sortedPlatforms[pi],\n              publish_at: curTime.toISOString()\n            }\n          });\n        }\n      }\n    }\n  }\n}\n\nreturn result;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        2608
+      ],
+      "id": "a721a248-3dfe-4882-a1d2-c5bd54b5e753",
+      "name": "Распределяем равномерно1"
+    },
+    {
+      "parameters": {
+        "maxItems": 30
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1056,
+        1968
+      ],
+      "id": "442d1376-6d80-4226-a9c4-8f3f5b27526b",
+      "name": "Limit",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "https://cloud-api.yandex.net/v1/disk/resources",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "=ВИДЕО/Toplash (Бьюти)/REX/Елена Пильгун REX/ty6u.mp4"
+            },
+            {
+              "name": "permanently",
+              "value": "true"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "OAuth y0__xDUkIsTGLrFOyDR4vyjFVprcWtJyQ49C_x4r4XoU82ZPru4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1120,
+        2384
+      ],
+      "id": "c5684caf-37ba-4ec9-9b7b-c252a0580a73",
+      "name": "Удаление2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "https://cloud-api.yandex.net/v1/disk/resources",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "={{ $json.video_path }}"
+            },
+            {
+              "name": "permanently",
+              "value": "true"
+            },
+            {
+              "name": "md5",
+              "value": "={{ $json.video_md }}"
+            },
+            {
+              "name": "force_async",
+              "value": "true"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "OAuth y0__xDUkIsTGLrFOyDR4vyjFVprcWtJyQ49C_x4r4XoU82ZPru4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2416,
+        1968
+      ],
+      "id": "005b9f42-5214-460f-83d6-67c3bb5d71aa",
+      "name": "Удаление3",
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('Распределяем равномерно123').all();\n\nreturn items.map(item => {\n  const filePath = item.json.video_path || null;\n\n  const fileName =\n    item.json.video_name ||\n    (filePath ? filePath.split('/').pop() : null);\n\n  return {\n    json: {\n      file_name: fileName,\n      file_path: filePath\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        1552
+      ],
+      "id": "31c4ec29-7bd2-4aa0-99ef-08d754572193",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "type": "random"
+      },
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        864,
+        1968
+      ],
+      "id": "70afadf2-381c-4861-9516-c9da273db5fe",
+      "name": "Sort",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1200,
+        1824
+      ],
+      "id": "deb19c2b-1f81-467a-a14b-e81a40fc8838",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://cloud-api.yandex.net/v1/disk/resources/files",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "path",
+              "value": "ВИДЕО"
+            },
+            {
+              "name": "limit",
+              "value": "99999"
+            },
+            {
+              "name": "preview_size",
+              "value": "XXXL"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "OAuth y0__xDUkIsTGLrFOyDR4vyjFVprcWtJyQ49C_x4r4XoU82ZPru4"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        1968
+      ],
+      "id": "4b19f85e-58f5-41a6-bbce-0ff0d73d3209",
+      "name": "ЧТО ВНУТРИ ДИСКА1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// -------------------------------------------------------------\n// КОНФИГУРАЦИЯ (Извлечение параметров)\n// -------------------------------------------------------------\n// ЧИТАЕМ ПЕРЕМЕННЫЕ ИСХОДЯ ИЗ УКАЗАННОГО ВАМИ ПУТИ\nconst cfg = $input.first()?.json || {}; \n\n// Устанавливаем параметры, используя cfg и значения по умолчанию\nconst DAYS_TO_GENERATE    = parseInt(cfg.DAYS_TO_GENERATE ?? 7, 10);\n\n// ЛИМИТЫ ПО ПЛАТФОРМАМ:\nconst LIMIT_INSTAGRAM     = parseInt(cfg.LIMIT_INSTAGRAM ?? 10, 10);\nconst LIMIT_TIKTOK        = parseInt(cfg.LIMIT_TIKTOK ?? 10, 10);\nconst LIMIT_YOUTUBE       = parseInt(cfg.LIMIT_YOUTUBE ?? 2, 10);\n\n// Используем ключ с пробелом, как указано в узле Set\nconst MIN_INTERVAL_MINUTES = parseInt(\n  cfg[' MIN_INTERVAL_MINUTES'] ?? 45,\n  10\n);\nconst MIN_INTERVAL_JITTER = parseInt(cfg.MIN_INTERVAL_JITTER ?? 20, 10);\n\nconst WORK_START_HOUR = 8;\nconst WORK_END_HOUR   = 23;\n\nconst PLATFORM_OFFSET_MIN = 2;\nconst PLATFORM_OFFSET_MAX = 5;\n\nconst PLATFORM_PRIORITY = [\"instagram\", \"youtube\", \"tiktok\"];\n\n// Маппинг лимитов для удобного доступа\nconst PLATFORM_LIMITS = {\n    instagram: LIMIT_INSTAGRAM,\n    tiktok: LIMIT_TIKTOK,\n    youtube: LIMIT_YOUTUBE\n};\n\n// -------------------------------------------------------------\n// THEME ALIASES (Тематики, которые имеют разные названия)\n// -------------------------------------------------------------\nconst THEME_ALIASES = {\n  smart: [\"smart\"],\n  toplash: [\"toplash\", \"toplashбьюти\", \"toplashbeauty\", \"toplashбюти\"], \n  wb: [\"покупкивб\", \"wb\", \"wildberries\"]\n};\n\n// -------------------------------------------------------------\n// HELPERS (функции оставлены без изменений)\n// -------------------------------------------------------------\nconst SIZE_PRIORITY = [ \"xxxs\", \"xxs\", \"xs\", \"s\", \"m\", \"l\", \"xl\", \"xxl\", \"xxxl\" ];\n\nfunction normalizeBase(str) {\n  return String(str || \"\").toLowerCase().replace(/ё/g, \"е\").replace(/[^a-zа-я0-9]/g, \"\");\n}\n\nfunction normalizeTheme(str) {\n  const raw = normalizeBase(str);\n  for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {\n    if (aliases.includes(raw)) return canonical;\n  }\n  return raw;\n}\n\nfunction extractThemeFromDiskPath(path) {\n  const parts = String(path || \"\").split(\"/\");\n  if (parts.length >= 4) {\n      return parts[3]; \n  }\n  return null; \n}\n\nfunction extractCategoryKeyFromUsername(username) {\n  return normalizeBase(String(username).replace(/[0-9].*$/, \"\"));\n}\n\nfunction randomInt(min, max) {\n  return Math.floor(Math.random() * (max - min + 1)) + min;\n}\n\nfunction shuffle(arr) {\n  for (let i = arr.length - 1; i > 0; i--) {\n    const j = randomInt(0, i);\n    [arr[i], arr[j]] = [arr[j], arr[i]];\n  }\n  return arr;\n}\n\nfunction getVideoUID(video) {\n  return video.video_md5 || video.path || video.video_path || video.video_name;\n}\n\nfunction getSizeRank(name) {\n  return SIZE_PRIORITY.indexOf(String(name || \"\").toLowerCase());\n}\n\nfunction getRandomDayWindow(baseDay, dayIndex) {\n  const day = new Date(baseDay.getTime() + dayIndex * 86400000);\n\n  const startHour = WORK_START_HOUR + randomInt(0, 2);\n  const endHour   = Math.max(startHour + 1, WORK_END_HOUR - randomInt(0, 2));\n\n  const dayStart = new Date(day);\n  dayStart.setHours(startHour, randomInt(0, 59), 0, 0);\n\n  const dayEnd = new Date(day);\n  dayEnd.setHours(endHour, randomInt(0, 59), 0, 0);\n\n  return { dayStart, dayEnd };\n}\n\nfunction applyAntiCluster(slots, dayKey, profile, baseTime, dayStart, dayEnd) {\n  const key = `${dayKey}::${profile}`;\n  if (!slots[key]) slots[key] = [];\n\n  const minGapMs =\n    (MIN_INTERVAL_MINUTES + randomInt(0, MIN_INTERVAL_JITTER)) * 60000;\n\n  let t = new Date(baseTime);\n\n  const conflict = time =>\n    slots[key].some(e => Math.abs(e.getTime() - time.getTime()) < minGapMs);\n\n  let tries = 0;\n  while (conflict(t) && tries < 20) {\n    t = new Date(t.getTime() + minGapMs);\n    tries++;\n  }\n\n  if (t > dayEnd) {\n    t = new Date(dayStart.getTime() + randomInt(0, dayEnd - dayStart));\n  }\n\n  slots[key].push(t);\n  return t;\n}\n\n// -------------------------------------------------------------\\n// 1. ЗАГРУЗКА УЖЕ ЗАПЛАНИРОВАННЫХ ПОСТОВ\\n// -------------------------------------------------------------\\n\nconst scheduledNodes = $('List scheduled posts1').all();\nconst scheduledVideoUIDs = new Set();\n\nfor (const n of scheduledNodes) {\n  const v =\n    n.json?.video_md5 ||\n    n.json?.video_path ||\n    n.json?.video_name;\n  if (v) scheduledVideoUIDs.add(v);\n}\n\n// -------------------------------------------------------------\\n// 2. ЗАГРУЗКА ФАЙЛОВ С ДИСКА (с обработкой sizes[])\\n// -------------------------------------------------------------\\n\nconst diskNodes = $('ЧТО ВНУТРИ ДИСКА1').all();\nlet videosPool = [];\n\nfor (const n of diskNodes) {\n  const items = n.json?.items || n.json?._embedded?.items; \n  \n  if (!Array.isArray(items)) continue;\n\n  for (const item of items) {\n    if (item.type !== \"file\") continue;\n    if (!Array.isArray(item.sizes)) continue;\n    if (!item.file) continue;\n\n    let bestSize = null;\n    let bestRank = -1;\n\n    for (const s of item.sizes) {\n      const r = getSizeRank(s.name);\n      if (r > bestRank) {\n        bestRank = r;\n        bestSize = s;\n      }\n    }\n\n    if (!bestSize) continue;\n\n    const themeRaw = extractThemeFromDiskPath(item.path);\n    if (!themeRaw) continue;\n\n    const uid = item.md5 || item.path; \n    if (scheduledVideoUIDs.has(uid)) continue; \n\n    videosPool.push({\n      video_name: item.name,\n      video_path: item.path,\n      video_md5 : item.md5 || null,\n      video_url : item.file,\n\n      video_size_label: bestSize.name,\n      video_size_rank : bestRank,\n\n      video_theme_key: normalizeTheme(themeRaw) \n    });\n  }\n}\n\nshuffle(videosPool);\n\n// -------------------------------------------------------------\\n// 3. ЗАГРУЗКА ПРОФИЛЕЙ\\n// -------------------------------------------------------------\\n\nconst userNodes = $('List users1').all();\nlet profiles = [];\n\nfor (const u of userNodes) {\n  if (!Array.isArray(u.json?.profiles)) continue;\n\n  for (const p of u.json.profiles) {\n    const themeRaw =\n      p.category ||\n      p.theme ||\n      extractCategoryKeyFromUsername(p.username);\n\n    profiles.push({\n      ...p,\n      theme_key: normalizeTheme(themeRaw) \n    });\n  }\n}\n\n// -------------------------------------------------------------\\n// --- ОТЛАДКА И ПРОВЕРКА КОНФИГА ---\n// -------------------------------------------------------------\\n\nconsole.log('--- ОТЛАДОЧНАЯ ИНФОРМАЦИЯ ---');\nconsole.log(`Профили: ${profiles.length}, Видео: ${videosPool.length}`);\nconsole.log(`Дни для генерации (DAYS_TO_GENERATE): ${DAYS_TO_GENERATE}`);\nconsole.log(`Лимиты: IG=${LIMIT_INSTAGRAM}, TT=${LIMIT_TIKTOK}, YT=${LIMIT_YOUTUBE}`);\n\nif (isNaN(DAYS_TO_GENERATE) || isNaN(LIMIT_INSTAGRAM) || isNaN(LIMIT_TIKTOK) || isNaN(LIMIT_YOUTUBE)) {\n    console.error('КРИТИЧЕСКАЯ ОШИБКА ЧТЕНИЯ КОНФИГА: Один из параметров лимита не является числом (NaN).');\n    return [];\n}\n\nif (profiles.length === 0 || videosPool.length === 0) {\n    return []; \n}\nconsole.log('-----------------------------');\n\n\n// -------------------------------------------------------------\\n// 4. ВРЕМЕННАЯ БАЗА И ГЕНЕРАЦИЯ\\n// -------------------------------------------------------------\\n\nconst now = new Date();\nconst mskNow = new Date(now.getTime() + 3 * 3600000); \nconst baseDay = new Date(mskNow.getFullYear(), mskNow.getMonth(), mskNow.getDate()); \n\nconst usedVideosGlobal      = new Set(); \nconst profilePublishCount = {};\nconst profileSlots          = {}; \n\nconst result = [];\n\nfor (let dayIndex = 0; dayIndex < DAYS_TO_GENERATE; dayIndex++) {\n  const { dayStart, dayEnd } = getRandomDayWindow(baseDay, dayIndex);\n  const dayKey = dayStart.toISOString().slice(0, 10);\n\n  shuffle(profiles);\n\n  for (const profile of profiles) {\n    const acc = profile.social_accounts || {};\n    const profileKey = profile.username;\n\n    // Инициализация счетчиков, если не существует\n    if (!profilePublishCount[profileKey]) {\n        profilePublishCount[profileKey] = {\n            instagram: 0,\n            tiktok: 0,\n            youtube: 0\n        };\n    }\n    \n    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ #1: Переносим объявление platforms и sortedPlatforms\n    // наверх, чтобы избежать ReferenceError.\n    const platforms = [];\n    if (acc.instagram) platforms.push(\"instagram\");\n    if (acc.youtube)    platforms.push(\"youtube\");\n    if (acc.tiktok)     platforms.push(\"tiktok\");\n\n    const sortedPlatforms = platforms.slice().sort(\n      (a, b) => PLATFORM_PRIORITY.indexOf(a) - PLATFORM_PRIORITY.indexOf(b)\n    );\n\n    if (platforms.length === 0) continue; // Если нет активных платформ, пропускаем\n    \n    // --- Главный цикл поиска видео: Профиль продолжает искать видео, пока не достигнет лимитов ---\n    for (const video of videosPool) {\n        \n        // 1. ПРОВЕРКА ДОСТУПНОСТИ СЛОТОВ\n        const slotsAvailable = (\n            profilePublishCount[profileKey].instagram < PLATFORM_LIMITS.instagram ||\n            profilePublishCount[profileKey].tiktok < PLATFORM_LIMITS.tiktok ||\n            profilePublishCount[profileKey].youtube < PLATFORM_LIMITS.youtube\n        );\n        \n        if (!slotsAvailable) {\n            // Если все лимиты платформ достигнуты, прекращаем поиск видео для этого профиля\n            break; \n        }\n\n        // 2. Проверка тематики\n        if (video.video_theme_key !== profile.theme_key) continue;\n\n        const uid = getVideoUID(video);\n        // 3. Проверка уникальности (1 файл = 1 профиль)\n        if (usedVideosGlobal.has(uid)) continue; \n\n        \n        // --- Видео найдено и уникально. Планируем его на все доступные платформы ---\n        \n        const baseTime = new Date(\n            dayStart.getTime() + randomInt(0, dayEnd - dayStart)\n        );\n\n        const safeTime = applyAntiCluster(\n            profileSlots,\n            dayKey,\n            profileKey,\n            baseTime,\n            dayStart,\n            dayEnd\n        );\n\n        let curTime = new Date(safeTime);\n        usedVideosGlobal.add(uid); // Фиксируем видео как использованное для этого профиля\n\n        let postScheduled = false;\n\n        // 4. Планирование на все доступные платформы профиля\n        for (const platform of sortedPlatforms) {\n            \n            const currentPlatformCount = profilePublishCount[profileKey][platform];\n            const platformLimit = PLATFORM_LIMITS[platform];\n            \n            // 5. Проверка лимита для конкретной платформы\n            if (currentPlatformCount >= platformLimit) continue; \n            \n            // --- Публикация ---\n            result.push({\n                json: {\n                    day_index: dayIndex,\n                    profile_username: profile.username,\n                    theme_key: profile.theme_key,\n\n                    video_name: video.video_name,\n                    video_path: video.video_path,\n                    video_url : video.video_url,\n                    video_md5 : video.video_md5,\n                    video_size_label: video.video_size_label,\n\n                    target_platform: platform,\n                    publish_at: curTime.toISOString()\n                }\n            });\n\n            profilePublishCount[profileKey][platform]++;\n            postScheduled = true;\n\n            curTime = new Date(\n                curTime.getTime() +\n                randomInt(PLATFORM_OFFSET_MIN, PLATFORM_OFFSET_MAX) * 60000\n            );\n        }\n        \n        // Если видео было выбрано, но не удалось запланировать ни на одну платформу,\n        // его нельзя считать использованным, и другой профиль может его взять.\n        if (!postScheduled) {\n            usedVideosGlobal.delete(uid);\n        }\n    } // Конец цикла по видео. Продолжается, пока не сработает `break`\n  } // Конец цикла по профилям\n}\n\nconsole.log(`--- ЗАВЕРШЕНИЕ ---`);\nconsole.log(`Итого сгенерировано постов: ${result.length}`);\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        1856
+      ],
+      "id": "e254d913-77df-4de1-acd2-bbccc36ecc27",
+      "name": "Распределяем равномерно123"
+    },
+    {
+      "parameters": {
+        "jsCode": "// -------------------------------------------------------------\n// 1. КОНФИГУРАЦИЯ И ПАРАМЕТРЫ\n// -------------------------------------------------------------\nconst cfg = $input.first()?.json || {}; \n\nconst DAYS_TO_GENERATE    = parseInt(cfg.DAYS_TO_GENERATE ?? 7, 10);\nconst LIMIT_INSTAGRAM     = parseInt(cfg.LIMIT_INSTAGRAM ?? 10, 10);\nconst LIMIT_TIKTOK        = parseInt(cfg.LIMIT_TIKTOK ?? 10, 10);\nconst LIMIT_YOUTUBE       = parseInt(cfg.LIMIT_YOUTUBE ?? 2, 10);\n\nconst PLATFORM_LIMITS = {\n    instagram: LIMIT_INSTAGRAM,\n    tiktok: LIMIT_TIKTOK,\n    youtube: LIMIT_YOUTUBE\n};\n\nconst MIN_INTERVAL_MINUTES = parseInt(cfg[' MIN_INTERVAL_MINUTES'] ?? 45, 10);\nconst MIN_INTERVAL_JITTER  = parseInt(cfg.MIN_INTERVAL_JITTER ?? 20, 10);\n\nconst WORK_START_HOUR = 8;\nconst WORK_END_HOUR   = 23;\n\nconst PLATFORM_OFFSET_MIN = 2;\nconst PLATFORM_OFFSET_MAX = 5;\n\nconst PLATFORM_PRIORITY = [\"instagram\", \"youtube\", \"tiktok\"];\n\nconst THEME_ALIASES = {\n  smart: [\"smart\"],\n  toplash: [\"toplash\", \"toplashбьюти\", \"toplashbeauty\", \"toplashбюти\"], \n  wb: [\"покупкивб\", \"wb\", \"wildberries\", \"pokypkiwb\", \"pokypki\", \"покупки\", \"pokypki-wb\"]\n};\n\nconst SIZE_PRIORITY = [ \"xxxs\", \"xxs\", \"xs\", \"s\", \"m\", \"l\", \"xl\", \"xxl\", \"xxxl\" ];\n\n// -------------------------------------------------------------\n// 2. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ\n// -------------------------------------------------------------\nfunction normalizeBase(str) {\n  return String(str || \"\").toLowerCase().replace(/ё/g, \"е\").replace(/[^a-zа-я0-9]/g, \"\");\n}\n\nfunction normalizeTheme(str) {\n  const raw = normalizeBase(str);\n  for (const [canonical, aliases] of Object.entries(THEME_ALIASES)) {\n    if (aliases.includes(raw)) return canonical;\n  }\n  return raw;\n}\n\n// Извлекаем и базовую тему (wb), и конкретный товар (подпапку)\nfunction extractDetailedPathInfo(path) {\n  const parts = String(path || \"\").split(\"/\");\n  // Ожидаем структуру: disk:/ВИДЕО/Блогер/Категория/Товар/видео.mp4\n  if (parts.length >= 5) {\n      const baseTheme = normalizeTheme(parts[3]);\n      const productFolder = normalizeBase(parts[4]);\n      return { baseTheme, productKey: `${baseTheme}_${productFolder}` };\n  } else if (parts.length === 4) {\n      const baseTheme = normalizeTheme(parts[3]);\n      return { baseTheme, productKey: baseTheme };\n  }\n  return null;\n}\n\nfunction extractCategoryKeyFromUsername(username) {\n  return normalizeBase(String(username).replace(/[0-9].*$/, \"\"));\n}\n\nfunction randomInt(min, max) {\n  return Math.floor(Math.random() * (max - min + 1)) + min;\n}\n\nfunction shuffle(arr) {\n  for (let i = arr.length - 1; i > 0; i--) {\n    const j = randomInt(0, i);\n    [arr[i], arr[j]] = [arr[j], arr[i]];\n  }\n  return arr;\n}\n\nfunction getVideoUID(video) {\n  return video.video_md5 || video.video_path || video.video_name;\n}\n\nfunction getSizeRank(name) {\n  return SIZE_PRIORITY.indexOf(String(name || \"\").toLowerCase());\n}\n\nfunction getRandomDayWindow(baseDay, dayIndex) {\n  const day = new Date(baseDay.getTime() + dayIndex * 86400000);\n  const startHour = WORK_START_HOUR + randomInt(0, 2);\n  const endHour   = Math.max(startHour + 1, WORK_END_HOUR - randomInt(0, 2));\n  const dayStart = new Date(day);\n  dayStart.setHours(startHour, randomInt(0, 59), 0, 0);\n  const dayEnd = new Date(day);\n  dayEnd.setHours(endHour, randomInt(0, 59), 0, 0);\n  return { dayStart, dayEnd };\n}\n\nfunction applyAntiCluster(slots, dayKey, profile, baseTime, dayStart, dayEnd) {\n  const key = `${dayKey}::${profile}`;\n  if (!slots[key]) slots[key] = [];\n  const minGapMs = (MIN_INTERVAL_MINUTES + randomInt(0, MIN_INTERVAL_JITTER)) * 60000;\n  let t = new Date(baseTime);\n  const conflict = time => slots[key].some(e => Math.abs(e.getTime() - time.getTime()) < minGapMs);\n  let tries = 0;\n  while (conflict(t) && tries < 20) {\n    t = new Date(t.getTime() + minGapMs);\n    tries++;\n  }\n  if (t > dayEnd) t = new Date(dayStart.getTime() + randomInt(0, dayEnd - dayStart));\n  slots[key].push(t);\n  return t;\n}\n\n// -------------------------------------------------------------\n// 3. ЗАГРУЗКА ДАННЫХ\n// -------------------------------------------------------------\n\nconst scheduledVideoUIDs = new Set();\ntry {\n  const scheduledNodes = $('List scheduled posts1').all();\n  for (const n of scheduledNodes) {\n    const v = n.json?.video_md5 || n.json?.video_path || n.json?.video_name;\n    if (v) scheduledVideoUIDs.add(v);\n  }\n} catch (e) {}\n\nconst diskNodes = $('ЧТО ВНУТРИ ДИСКА1').all();\nconst videosByProduct = {}; // Группировка по товарам\n\nfor (const n of diskNodes) {\n  const items = n.json?.items || n.json?._embedded?.items; \n  if (!Array.isArray(items)) continue;\n  for (const item of items) {\n    if (item.type !== \"file\" || !Array.isArray(item.sizes) || !item.file) continue;\n    \n    let bestSize = null, bestRank = -1;\n    for (const s of item.sizes) {\n      const r = getSizeRank(s.name);\n      if (r > bestRank) { bestRank = r; bestSize = s; }\n    }\n\n    const pathInfo = extractDetailedPathInfo(item.path);\n    if (!pathInfo || !bestSize) continue;\n    \n    const uid = item.md5 || item.path; \n    if (scheduledVideoUIDs.has(uid)) continue; \n\n    const videoObj = {\n      video_name: item.name,\n      video_path: item.path,\n      video_md5 : item.md5 || null,\n      video_url : item.file,\n      video_size_label: bestSize.name,\n      base_theme: pathInfo.baseTheme,\n      product_key: pathInfo.productKey\n    };\n\n    if (!videosByProduct[pathInfo.productKey]) videosByProduct[pathInfo.productKey] = [];\n    videosByProduct[pathInfo.productKey].push(videoObj);\n  }\n}\n\n// Перемешиваем видео внутри каждого товара\nfor (const key in videosByProduct) {\n    shuffle(videosByProduct[key]);\n}\n\nconst userNodes = $('List users1').all();\nlet profiles = [];\nfor (const u of userNodes) {\n  if (!Array.isArray(u.json?.profiles)) continue;\n  for (const p of u.json.profiles) {\n    const themeRaw = p.category || p.theme || extractCategoryKeyFromUsername(p.username);\n    profiles.push({ ...p, theme_key: normalizeTheme(themeRaw) });\n  }\n}\n\n// -------------------------------------------------------------\n// 4. ГЕНЕРАЦИЯ (РАВНОМЕРНОЕ РАСПРЕДЕЛЕНИЕ ПО ТОВАРАМ)\n// -------------------------------------------------------------\nconst now = new Date();\nconst mskNow = new Date(now.getTime() + 3 * 3600000); \nconst baseDay = new Date(mskNow.getFullYear(), mskNow.getMonth(), mskNow.getDate()); \n\nconst usedVideosGlobal = new Set(); \nconst profileSlots = {}; \nconst result = [];\n\nfor (let dayIndex = 0; dayIndex < DAYS_TO_GENERATE; dayIndex++) {\n    const { dayStart, dayEnd } = getRandomDayWindow(baseDay, dayIndex);\n    const dayKey = dayStart.toISOString().slice(0, 10);\n    const dailyProfilePublishCount = {}; \n\n    shuffle(profiles);\n\n    for (const p of profiles) {\n        dailyProfilePublishCount[p.username] = { instagram: 0, tiktok: 0, youtube: 0 };\n    }\n\n    const MAX_ITERATIONS = Math.max(LIMIT_INSTAGRAM, LIMIT_TIKTOK, LIMIT_YOUTUBE);\n\n    // В каждой итерации (от 1 до 10) стараемся дать каждому профилю НОВЫЙ товар\n    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {\n        for (const profile of profiles) {\n            const profileKey = profile.username;\n            const acc = profile.social_accounts || {};\n            \n            const needsMore = (\n                dailyProfilePublishCount[profileKey].instagram < LIMIT_INSTAGRAM ||\n                dailyProfilePublishCount[profileKey].tiktok < LIMIT_TIKTOK ||\n                dailyProfilePublishCount[profileKey].youtube < LIMIT_YOUTUBE\n            );\n            if (!needsMore) continue;\n\n            // Ищем видео среди всех товаров, чья базовая тема совпадает с темой профиля\n            let foundVideo = null;\n            const productKeys = Object.keys(videosByProduct);\n            // Перемешиваем ключи товаров для разнообразия\n            shuffle(productKeys);\n\n            for (const pKey of productKeys) {\n                const productVideos = videosByProduct[pKey];\n                if (productVideos.length === 0) continue;\n                \n                // Проверяем соответствие базовой темы (wb к wb)\n                if (productVideos[0].base_theme !== profile.theme_key) continue;\n\n                // Берем видео\n                const v = productVideos[0];\n                const uid = getVideoUID(v);\n                \n                if (!usedVideosGlobal.has(uid)) {\n                    foundVideo = productVideos.shift(); // Удаляем видео из пула товара\n                    usedVideosGlobal.add(uid);\n                    break;\n                }\n            }\n\n            if (foundVideo) {\n                const baseTime = new Date(dayStart.getTime() + randomInt(0, dayEnd - dayStart));\n                const safeTime = applyAntiCluster(profileSlots, dayKey, profileKey, baseTime, dayStart, dayEnd);\n                let curTime = new Date(safeTime);\n\n                const platforms = [];\n                if (acc.instagram) platforms.push(\"instagram\");\n                if (acc.youtube)    platforms.push(\"youtube\");\n                if (acc.tiktok)     platforms.push(\"tiktok\");\n                const sortedPlatforms = platforms.sort((a, b) => PLATFORM_PRIORITY.indexOf(a) - PLATFORM_PRIORITY.indexOf(b));\n\n                for (const platform of sortedPlatforms) {\n                    if (dailyProfilePublishCount[profileKey][platform] < PLATFORM_LIMITS[platform]) {\n                        result.push({\n                            json: {\n                                day_index: dayIndex,\n                                profile_username: profile.username,\n                                theme_key: profile.theme_key,\n                                video_name: foundVideo.video_name,\n                                video_path: foundVideo.video_path,\n                                video_url : foundVideo.video_url,\n                                video_md5 : foundVideo.video_md5,\n                                target_platform: platform,\n                                publish_at: curTime.toISOString()\n                            }\n                        });\n                        dailyProfilePublishCount[profileKey][platform]++;\n                        curTime = new Date(curTime.getTime() + randomInt(PLATFORM_OFFSET_MIN, PLATFORM_OFFSET_MAX) * 60000);\n                    }\n                }\n            }\n        }\n    }\n}\n\nconsole.log(`--- ЗАВЕРШЕНИЕ ---`);\nconsole.log(`Итого сгенерировано постов: ${result.length}`);\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        2176
+      ],
+      "id": "53bc0ef8-ee82-4f24-9e4e-4c1c7dc4a048",
+      "name": "Распределяем равномерно"
+    }
+  ],
+  "pinData": {
+    "Удаление2": [
+      {
+        "json": {
+          "error": {
+            "message": "404 - \"{\\\"error\\\":\\\"DiskNotFoundError\\\",\\\"description\\\":\\\"Resource not found.\\\",\\\"message\\\":\\\"Не удалось найти запрошенный ресурс.\\\"}\"",
+            "name": "AxiosError",
+            "stack": "AxiosError: Request failed with status code 404\n    at settle (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/axios@1.12.0/node_modules/axios/lib/core/settle.js:19:12)\n    at RedirectableRequest.handleResponse (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/axios@1.12.0/node_modules/axios/lib/adapters/http.js:565:9)\n    at RedirectableRequest.emit (node:events:531:35)\n    at RedirectableRequest._processResponse (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/follow-redirects@1.15.11/node_modules/follow-redirects/index.js:409:10)\n    at ClientRequest.RedirectableRequest._onNativeResponse (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/follow-redirects@1.15.11/node_modules/follow-redirects/index.js:102:12)\n    at Object.onceWrapper (node:events:634:26)\n    at ClientRequest.emit (node:events:519:28)\n    at HTTPParser.parserOnIncomingClient [as onIncoming] (node:_http_client:772:27)\n    at HTTPParser.parserOnHeadersComplete (node:_http_common:122:17)\n    at TLSSocket.socketOnData (node:_http_client:614:22)\n    at Axios.request (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/axios@1.12.0/node_modules/axios/lib/core/Axios.js:45:41)\n    at processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at invokeAxios (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+sdk-trace-base@1.30_08b575bec2313d5d8a4cc75358971443/node_modules/n8n-core/src/execution-engine/node-execution-context/utils/request-helper-functions.ts:272:10)\n    at proxyRequestToAxios (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+sdk-trace-base@1.30_08b575bec2313d5d8a4cc75358971443/node_modules/n8n-core/src/execution-engine/node-execution-context/utils/request-helper-functions.ts:648:20)\n    at Object.request (/usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-core@file+packages+core_@opentelemetry+api@1.9.0_@opentelemetry+sdk-trace-base@1.30_08b575bec2313d5d8a4cc75358971443/node_modules/n8n-core/src/execution-engine/node-execution-context/utils/request-helper-functions.ts:1789:4)",
+            "code": "ERR_BAD_REQUEST",
+            "status": 404
+          }
+        }
+      }
+    ],
+    "Schedule Trigger": [
+      {
+        "json": {
+          "timestamp": "2025-12-29T00:00:33.009+03:00",
+          "Readable date": "December 29th 2025, 12:00:33 am",
+          "Readable time": "12:00:33 am",
+          "Day of week": "Monday",
+          "Year": "2025",
+          "Month": "December",
+          "Day of month": "29",
+          "Hour": "00",
+          "Minute": "00",
+          "Second": "33",
+          "Timezone": "Europe/Moscow (UTC+03:00)"
+        }
+      }
+    ],
+    "When clicking ‘Execute workflow’": [
+      {
+        "json": {}
+      }
+    ]
+  },
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List users1": {
+      "main": [
+        [
+          {
+            "node": "List scheduled posts1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List scheduled posts1": {
+      "main": [
+        [
+          {
+            "node": "Get row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Upsert row(s)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s)1": {
+      "main": [
+        [
+          {
+            "node": "ЧТО ВНУТРИ ДИСКА1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "INST",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "YOUTUBE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "TIKTOK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INST": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "YOUTUBE": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "TIKTOK": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Настройки": {
+      "main": [
+        [
+          {
+            "node": "Распределяем равномерно",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Распределяем равномерно123",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "List users1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Cancel scheduled post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Удаление3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Удаление1": {
+      "main": [
+        []
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Удаление3": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ЧТО ВНУТРИ ДИСКА1": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Распределяем равномерно123": {
+      "main": [
+        []
+      ]
+    },
+    "Распределяем равномерно": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "603337bf-f7ef-4702-a9b4-c5cf46737d8f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8fbaf9cc31ee8207c14f521e964eb85fad125c400327140a73864621efa3e2b9"
+  },
+  "id": "kJMPBD3eUEqNyTHY",
+  "tags": []
+}
