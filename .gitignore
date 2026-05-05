@@ -5,3 +5,7 @@ dist
 *.log
 config.json
 src/automation/used_hashes.json
+__pycache__
+*.pyc
+.gemini
+.antigravity

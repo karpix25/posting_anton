@@ -29,6 +29,34 @@ async_session_maker = sessionmaker(
 
 async def init_db():
     async with engine.begin() as conn:
+        # Defensive Migration: Fix system_config schema mismatch without data loss
+        try:
+            from sqlalchemy import text
+            # Check if table exists
+            res = await conn.execute(text("SELECT 1 FROM information_schema.tables WHERE table_name = 'system_config'"))
+            if res.fetchone():
+                # Check for 'key' column
+                res_col = await conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'system_config' AND column_name = 'key'"
+                ))
+                if not res_col.fetchone():
+                    # Check for legacy 'id' column to migrate
+                    res_id = await conn.execute(text(
+                        "SELECT 1 FROM information_schema.columns "
+                        "WHERE table_name = 'system_config' AND column_name = 'id'"
+                    ))
+                    if res_id.fetchone():
+                        print("🛠️ [DB] Migrating legacy 'system_config.id' to 'key'...")
+                        await conn.execute(text("ALTER TABLE system_config RENAME COLUMN id TO key"))
+                        await conn.execute(text("ALTER TABLE system_config ALTER COLUMN key TYPE VARCHAR"))
+                    else:
+                        print("🛠️ [DB] Adding missing 'key' column to 'system_config'...")
+                        await conn.execute(text("ALTER TABLE system_config ADD COLUMN key VARCHAR"))
+                        await conn.execute(text("UPDATE system_config SET key = 'main_config' WHERE key IS NULL"))
+        except Exception as e:
+            print(f"⚠️ [DB] Defensive migration error (ignoring): {e}")
+
         # await conn.run_sync(SQLModel.metadata.drop_all)
         await conn.run_sync(SQLModel.metadata.create_all)
 
