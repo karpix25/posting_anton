@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Optional
 from app.config import settings
 
 def normalize(text: str) -> str:
@@ -35,23 +35,38 @@ def extract_author(path: str) -> str:
             pass
     return "unknown"
 
-def extract_theme(path: str) -> str:
+def extract_theme(path: str, aliases_map: Optional[Dict[str, List[str]]] = None, use_aliases: bool = True) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
     try:
+        raw = ""
         v_idx = -1
         for i, p in enumerate(parts):
             if p.lower() in ["video", "видео"]:
                 v_idx = i
                 break
-        
+
+        # Primary structure: /VIDEO/Author/Category/Brand/file
         if v_idx != -1 and v_idx + 2 < len(parts):
-                raw = parts[v_idx + 2].split("(")[0].strip()
-                return normalize_theme_key(raw)
+            raw = parts[v_idx + 2].split("(")[0].strip()
+        # Fallback: parent folder if VIDEO marker is absent
+        elif len(parts) >= 2:
+            raw = parts[-2].split("(")[0].strip()
+
+        if not raw:
+            return "unknown"
+
+        # Avoid treating file names as categories
+        if "." in raw and raw.lower().split(".")[-1] in {"mp4", "mov", "mkv", "avi", "webm"}:
+            return "unknown"
+
+        if use_aliases:
+            return normalize_theme_key(raw, aliases_map)
+        return raw
     except:
         pass
     return "unknown"
 
-def normalize_theme_key(text: str) -> str:
+def normalize_theme_key(text: str, aliases_override: Optional[Dict[str, List[str]]] = None) -> str:
     raw = normalize(text)
     # Load config dynamically or reuse settings? 
     # Settings has _legacy_config loaded?
@@ -63,7 +78,7 @@ def normalize_theme_key(text: str) -> str:
     if config is None:
         config = settings.load_legacy_config()
         settings._legacy_config = config
-    aliases = config.themeAliases or {}
+    aliases = aliases_override if aliases_override is not None else (config.themeAliases or {})
     
     for canonical, list_ in aliases.items():
         if raw == normalize(canonical): return canonical

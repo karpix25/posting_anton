@@ -200,6 +200,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             "totalVideos": 0,
             "publishedCount": 0, # TODO: fetch from DB history count?
             "byCategory": {},
+            "byCategoryRaw": {},
             "byAuthor": {},
             "byBrand": {},
             "profilesByCategory": {}
@@ -228,12 +229,15 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             
             stats["totalVideos"] += 1
             
-            theme = extract_theme(path)
+            theme = extract_theme(path, config.themeAliases, use_aliases=True)
+            theme_raw = extract_theme(path, config.themeAliases, use_aliases=False)
             author = extract_author(path)
             brand = extract_brand(path)
-            
+
             if theme != "unknown":
                 stats["byCategory"][theme] = stats["byCategory"].get(theme, 0) + 1
+            if theme_raw != "unknown":
+                stats["byCategoryRaw"][theme_raw] = stats["byCategoryRaw"].get(theme_raw, 0) + 1
             
             if author != "unknown":
                 stats["byAuthor"][author] = stats["byAuthor"].get(author, 0) + 1
@@ -242,12 +246,23 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                 stats["byBrand"][brand] = stats["byBrand"].get(brand, 0) + 1
 
         # Profiles mapping
+        # Build profile mapping for canonical keys and aliases so raw categories also resolve.
+        aliases_map = config.themeAliases or {}
+        aliases_lookup = {str(k).lower().strip(): [str(a).lower().strip() for a in v] for k, v in aliases_map.items()}
+
         for p in config.profiles:
             if p.theme_key:
                 tk = p.theme_key.lower().strip()
                 if tk not in stats["profilesByCategory"]:
                     stats["profilesByCategory"][tk] = []
                 stats["profilesByCategory"][tk].append(p.username)
+
+                # Also map aliases for this canonical theme
+                for alias in aliases_lookup.get(tk, []):
+                    if alias not in stats["profilesByCategory"]:
+                        stats["profilesByCategory"][alias] = []
+                    if p.username not in stats["profilesByCategory"][alias]:
+                        stats["profilesByCategory"][alias].append(p.username)
         
         stats_cache = stats
         stats_cache_time = time.time()
@@ -260,6 +275,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             "totalVideos": 0,
             "publishedCount": 0,
             "byCategory": {},
+            "byCategoryRaw": {},
             "byAuthor": {},
             "profilesByCategory": {},
             "error": str(e)

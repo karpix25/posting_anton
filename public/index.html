@@ -792,7 +792,7 @@
                 let source = {};
                 if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
                 else if (this.statsViewMode === 'brand') source = this.stats.byBrand || {};
-                else source = this.stats.byCategory || {};
+                else source = this.stats.byCategoryRaw || this.stats.byCategory || {};
 
                 return Object.entries(source)
                   .map(([name, count]) => ({ name, count }))
@@ -897,7 +897,7 @@
                     let changed = false;
                     if (!this.config.themeAliases) this.config.themeAliases = {};
 
-                    const foundFolders = Object.keys(this.stats.byCategory || {});
+                    const foundFolders = Object.keys(this.stats.byCategoryRaw || this.stats.byCategory || {});
                     foundFolders.forEach(folder => {
                       // Use exact folder name as key
                       // If not exists, add it.
