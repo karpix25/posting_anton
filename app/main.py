@@ -1,6 +1,7 @@
 import json
 import os
 import asyncio
+import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Body
@@ -31,6 +32,15 @@ app.add_middleware(
 )
 
 from app.services.config_db import migrate_file_to_db, get_db_config, save_db_config
+
+# In-memory caches for expensive Yandex stats scans
+stats_cache: Optional[Dict[str, Any]] = None
+stats_cache_time: float = 0.0
+STATS_CACHE_TTL = 60  # seconds
+
+files_cache: List[Dict[str, Any]] = []
+files_cache_time: float = 0.0
+FILES_CACHE_TTL = 30 * 60  # 30 minutes
 
 # Startup event
 @app.on_event("startup")
@@ -162,16 +172,29 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     # Yandex service currently fetches fresh.
     # In production, cache this result in memory or Redis.
     
+    global stats_cache, stats_cache_time, files_cache, files_cache_time
     try:
+        now_ts = time.time()
+        if not refresh and stats_cache and (now_ts - stats_cache_time) < STATS_CACHE_TTL:
+            return stats_cache
+
         # Load folders from config
         config = await get_db_config(session)
+        # Ensure theme alias resolution in utils uses DB config, not stale file config
+        settings._legacy_config = config
         all_videos = []
         
         # We fetch all flat files once (wrapper handles limit)
         # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
         # We fetch all flat files once (wrapper handles limit)
         # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        files = await yandex_service.list_files(limit=100000)
+        use_cached_files = (not refresh) and files_cache and ((now_ts - files_cache_time) < FILES_CACHE_TTL)
+        if use_cached_files:
+            files = files_cache
+        else:
+            files = await yandex_service.list_files(limit=100000)
+            files_cache = files
+            files_cache_time = now_ts
         
         stats = {
             "totalVideos": 0,
@@ -226,6 +249,8 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                     stats["profilesByCategory"][tk] = []
                 stats["profilesByCategory"][tk].append(p.username)
         
+        stats_cache = stats
+        stats_cache_time = time.time()
         return stats
 
     except Exception as e:

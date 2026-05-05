@@ -59,7 +59,10 @@ def normalize_theme_key(text: str) -> str:
     # For utility, we might need access to config.
     # Let's try to access settings._legacy_config if loaded, else load it.
     
-    config = settings._legacy_config or settings.load_legacy_config()
+    config = settings._legacy_config
+    if config is None:
+        config = settings.load_legacy_config()
+        settings._legacy_config = config
     aliases = config.themeAliases or {}
     
     for canonical, list_ in aliases.items():
