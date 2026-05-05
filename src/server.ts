@@ -192,7 +192,8 @@ app.get('/api/stats', async (req, res) => {
             publishedCount: 0,
             byCategory: {} as Record<string, number>,
             byAuthor: {} as Record<string, number>,
-            profilesByCategory: {} as Record<string, string[]> // NEW: profiles per category
+            profilesByCategory: {} as Record<string, string[]>, // NEW: profiles per category
+            error: '' // Surface integration errors to UI instead of silent zeroes
         };
 
         let usedSet = new Set<string>();
@@ -210,9 +211,12 @@ app.get('/api/stats', async (req, res) => {
         if (fs.existsSync(CONFIG_PATH)) {
             const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
             const folders: string[] = config.yandexFolders || [];
+            const yandexToken = process.env.YANDEX_TOKEN || config.yandexToken || '';
 
-            if (process.env.YANDEX_TOKEN) {
-                const yandex = new YandexDiskClient(process.env.YANDEX_TOKEN);
+            if (yandexToken) {
+                const tokenSource = process.env.YANDEX_TOKEN ? 'env' : 'config';
+                console.log(`[Stats] Using Yandex token from ${tokenSource}.`);
+                const yandex = new YandexDiskClient(yandexToken);
 
                 let allFiles: any[] = [];
                 const now = Date.now();
@@ -243,6 +247,7 @@ app.get('/api/stats', async (req, res) => {
                         }
                     } catch (e: any) {
                         console.error('[Stats] Failed to list files', e);
+                        stats.error = `Yandex listFiles failed: ${e?.message || 'unknown error'}`;
                         // If cache exists (even expired), use it as fallback?
                         // For now, simple fail logic, or empty array
                     }
@@ -336,6 +341,10 @@ app.get('/api/stats', async (req, res) => {
                         stats.byAuthor[author] = (stats.byAuthor[author] || 0) + 1;
                     }
                 });
+            }
+            else {
+                console.warn('[Stats] YANDEX_TOKEN is missing (both env and config).');
+                stats.error = 'YANDEX_TOKEN is missing';
             }
             // Map profiles to categories based on theme_key
             if (config && config.profiles) {
