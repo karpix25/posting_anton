@@ -183,18 +183,23 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         }
         
         # Filter and Aggregate
-        config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders]
+        config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders if f]
         
         for f in files:
             path = f["path"]
             path_norm = path.replace("disk:", "").strip("/").lower()
             
             # Check folder
-            in_folder = False
-            for folder in config_folders_norm:
-                if path_norm.startswith(folder):
-                    in_folder = True
-                    break
+            # If folders are not configured, include all files.
+            if not config_folders_norm:
+                in_folder = True
+            else:
+                in_folder = False
+                for folder in config_folders_norm:
+                    # Keep matching tolerant to path formatting/subfolders.
+                    if folder and (path_norm.startswith(folder) or folder in path_norm):
+                        in_folder = True
+                        break
             
             if not in_folder: continue
             
