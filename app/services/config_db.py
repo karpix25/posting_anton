@@ -41,11 +41,11 @@ async def migrate_file_to_db():
                 
         if existing:
             # Auto-heal existing DB if clients missing
-            db_val = existing.value
+            db_val = existing.config
             if not db_val.get("clients") and CLIENTS_SEED:
                  logger.info("Auto-Healing: Injecting Seed Clients into existing DB config.")
                  db_val["clients"] = CLIENTS_SEED
-                 existing.value = db_val
+                 existing.config = db_val
                  existing.updated_at = datetime.utcnow()
                  session.add(existing)
                  await session.commit()
@@ -72,7 +72,7 @@ async def migrate_file_to_db():
                 limits={"instagram": 10, "tiktok": 10, "youtube": 2},
                 cronSchedule="1 0 * * *"
             ).dict()
-            new_config = SystemConfig(key=CONFIG_KEY, value=default_config)
+            new_config = SystemConfig(key=CONFIG_KEY, config=default_config)
             session.add(new_config)
             await session.commit()
 
@@ -82,8 +82,8 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     record = result.scalar_one_or_none()
     
     if record:
-        # logger.debug(f"DB Config Loaded: {record.value.get('cronSchedule')}")
-        return LegacyConfig(**record.value)
+        # logger.debug(f"DB Config Loaded: {record.config.get('cronSchedule')}")
+        return LegacyConfig(**record.config)
     
     return LegacyConfig(limits={"instagram": 10, "tiktok": 10, "youtube": 2})
 
@@ -94,10 +94,10 @@ async def save_db_config(session: AsyncSession, config_data: dict):
     record = result.scalar_one_or_none()
     
     if record:
-        record.value = config_data
-        record.updated_at = datetime.utcnow() # Fix dependency on settings.utc_now if not exists
+        record.config = config_data
+        record.updated_at = datetime.utcnow()
     else:
-        new_config = SystemConfig(key=CONFIG_KEY, value=config_data)
+        new_config = SystemConfig(key=CONFIG_KEY, config=config_data)
         session.add(new_config)
     
     await session.commit()

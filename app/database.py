@@ -55,18 +55,18 @@ async def init_db():
                         await conn.execute(text("ALTER TABLE system_config ADD COLUMN key VARCHAR"))
                         await conn.execute(text("UPDATE system_config SET key = 'main_config' WHERE key IS NULL"))
 
-                # Check for 'value' column (JSONB) — may be absent if table was created from old schema
-                res_val = await conn.execute(text(
+                # Check for 'config' column (JSONB) — the shared DB uses 'config', not 'value'
+                res_cfg = await conn.execute(text(
                     "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name = 'system_config' AND column_name = 'value'"
+                    "WHERE table_name = 'system_config' AND column_name = 'config'"
                 ))
-                if not res_val.fetchone():
-                    print("🛠️ [DB] Adding missing 'value' JSONB column to 'system_config'...")
+                if not res_cfg.fetchone():
+                    print("🛠️ [DB] Adding missing 'config' JSONB column to 'system_config'...")
                     await conn.execute(text(
-                        "ALTER TABLE system_config ADD COLUMN value JSONB NOT NULL DEFAULT '{}'"
+                        "ALTER TABLE system_config ADD COLUMN config JSONB NOT NULL DEFAULT '{}'"
                     ))
 
-                # Check for 'updated_at' column — may also be absent in old schemas
+                # Check for 'updated_at' column
                 res_upd = await conn.execute(text(
                     "SELECT 1 FROM information_schema.columns "
                     "WHERE table_name = 'system_config' AND column_name = 'updated_at'"

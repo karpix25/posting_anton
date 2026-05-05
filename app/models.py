@@ -40,5 +40,5 @@ class BrandStats(SQLModel, table=True):
 class SystemConfig(SQLModel, table=True):
     __tablename__ = "system_config"
     key: str = Field(primary_key=True)
-    value: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    config: Dict[str, Any] = Field(default={}, sa_column=Column("config", JSONB))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
