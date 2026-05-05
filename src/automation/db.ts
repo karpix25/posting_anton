@@ -2,7 +2,7 @@ import { Pool, PoolClient } from 'pg';
 import { ClientConfig, ScheduledPost } from './types';
 
 type AIClientsStorage =
-    | { kind: 'table'; tableName: string }
+    | { kind: 'table'; schemaName: string; tableName: string }
     | { kind: 'posting_system_config' }
     | { kind: 'none' };
 
@@ -244,7 +244,7 @@ export class DatabaseService {
             }
 
             if (storage.kind === 'table') {
-                return await this.getAIClientsFromTable(storage.tableName);
+                return await this.getAIClientsFromTable(storage.schemaName, storage.tableName);
             }
 
             return [];
@@ -292,7 +292,7 @@ export class DatabaseService {
                     );
                 }
             } else {
-                await this.replaceAIClientsInTable(dbClient, storage.tableName, safeClients);
+                await this.replaceAIClientsInTable(dbClient, storage.schemaName, storage.tableName, safeClients);
             }
 
             await dbClient.query('COMMIT');
@@ -340,43 +340,69 @@ export class DatabaseService {
         return `"${identifier.replace(/"/g, '""')}"`;
     }
 
-    private async tableExists(tableName: string): Promise<boolean> {
-        const rel = tableName.includes(' ') || /[A-Z]/.test(tableName)
-            ? `public.${this.quoteIdentifier(tableName)}`
-            : `public.${tableName}`;
-        const result = await this.pool.query('SELECT to_regclass($1) AS reg', [rel]);
-        return !!result.rows[0]?.reg;
+    private async findTableByNames(names: string[]): Promise<{ schemaName: string; tableName: string } | null> {
+        const normalized = names.map((n) => n.toLowerCase());
+        const result = await this.pool.query(
+            `
+            SELECT table_schema, table_name
+            FROM information_schema.tables
+            WHERE table_type = 'BASE TABLE'
+              AND lower(table_name) = ANY($1)
+            ORDER BY
+              CASE WHEN table_schema = 'public' THEN 0 ELSE 1 END,
+              table_schema,
+              table_name
+            LIMIT 1
+            `,
+            [normalized]
+        );
+
+        const row = result.rows[0];
+        if (!row) return null;
+        return { schemaName: row.table_schema, tableName: row.table_name };
     }
 
     private async detectAIClientsStorage(): Promise<AIClientsStorage> {
         if (this.aiClientsStorageCache) return this.aiClientsStorageCache;
 
-        const tableCandidates = ['ai_clients_db', 'Ai Clients Db', 'ai clients db'];
-        for (const candidate of tableCandidates) {
-            if (await this.tableExists(candidate)) {
-                this.aiClientsStorageCache = { kind: 'table', tableName: candidate };
-                return this.aiClientsStorageCache;
-            }
-        }
-
-        if (await this.tableExists('posting_system_config')) {
-            this.aiClientsStorageCache = { kind: 'posting_system_config' };
+        const aiClientsDbTable = await this.findTableByNames(['ai_clients_db', 'Ai Clients Db', 'ai clients db']);
+        if (aiClientsDbTable) {
+            this.aiClientsStorageCache = {
+                kind: 'table',
+                schemaName: aiClientsDbTable.schemaName,
+                tableName: aiClientsDbTable.tableName
+            };
+            console.log(`[DB] AI clients source: table ${aiClientsDbTable.schemaName}.${aiClientsDbTable.tableName}`);
             return this.aiClientsStorageCache;
         }
 
-        if (await this.tableExists('ai_clients')) {
-            this.aiClientsStorageCache = { kind: 'table', tableName: 'ai_clients' };
+        const postingConfigTable = await this.findTableByNames(['posting_system_config']);
+        if (postingConfigTable) {
+            this.aiClientsStorageCache = { kind: 'posting_system_config' };
+            console.log('[DB] AI clients source: posting_system_config(main_config).');
+            return this.aiClientsStorageCache;
+        }
+
+        const aiClientsTable = await this.findTableByNames(['ai_clients']);
+        if (aiClientsTable) {
+            this.aiClientsStorageCache = {
+                kind: 'table',
+                schemaName: aiClientsTable.schemaName,
+                tableName: aiClientsTable.tableName
+            };
+            console.log(`[DB] AI clients source: fallback table ${aiClientsTable.schemaName}.${aiClientsTable.tableName}`);
             return this.aiClientsStorageCache;
         }
 
         this.aiClientsStorageCache = { kind: 'none' };
+        console.warn('[DB] AI clients source not found.');
         return this.aiClientsStorageCache;
     }
 
-    private async getTableColumns(tableName: string): Promise<Map<string, string>> {
+    private async getTableColumns(schemaName: string, tableName: string): Promise<Map<string, string>> {
         const result = await this.pool.query(
-            `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
-            [tableName]
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2`,
+            [schemaName, tableName]
         );
         const map = new Map<string, string>();
         for (const row of result.rows) {
@@ -386,8 +412,8 @@ export class DatabaseService {
         return map;
     }
 
-    private async getAIClientsFromTable(tableName: string): Promise<ClientConfig[]> {
-        const columns = await this.getTableColumns(tableName);
+    private async getAIClientsFromTable(schemaName: string, tableName: string): Promise<ClientConfig[]> {
+        const columns = await this.getTableColumns(schemaName, tableName);
         const nameCol = columns.get('name');
         const regexCol = columns.get('regex');
         const promptCol = columns.get('prompt');
@@ -396,7 +422,7 @@ export class DatabaseService {
         const quotaCol = columns.get('quota');
         const sortCol = columns.get('sort_order');
         const updatedAtCol = columns.get('updated_at');
-        const tableRef = `${this.quoteIdentifier('public')}.${this.quoteIdentifier(tableName)}`;
+        const tableRef = `${this.quoteIdentifier(schemaName)}.${this.quoteIdentifier(tableName)}`;
 
         const selectParts = [
             `${this.quoteIdentifier(nameCol)} AS name`,
@@ -417,10 +443,11 @@ export class DatabaseService {
 
     private async replaceAIClientsInTable(
         dbClient: PoolClient,
+        schemaName: string,
         tableName: string,
         clients: ClientConfig[]
     ): Promise<void> {
-        const columns = await this.getTableColumns(tableName);
+        const columns = await this.getTableColumns(schemaName, tableName);
         const nameCol = columns.get('name');
         const regexCol = columns.get('regex');
         const promptCol = columns.get('prompt');
@@ -431,7 +458,7 @@ export class DatabaseService {
         const quotaCol = columns.get('quota');
         const sortCol = columns.get('sort_order');
         const updatedAtCol = columns.get('updated_at');
-        const tableRef = `${this.quoteIdentifier('public')}.${this.quoteIdentifier(tableName)}`;
+        const tableRef = `${this.quoteIdentifier(schemaName)}.${this.quoteIdentifier(tableName)}`;
 
         await dbClient.query(`DELETE FROM ${tableRef}`);
 
