@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import SystemConfig
+from app.models import PostingSystemConfig
 from app.config import settings, LegacyConfig
 from app.database import async_session_maker
 
@@ -16,18 +16,17 @@ CONFIG_KEY = "main_config"
 
 DEFAULT_LIMITS = {"instagram": 10, "tiktok": 10, "youtube": 2}
 
+
 async def migrate_file_to_db():
     from app.database import async_session_maker
     async with async_session_maker() as session:
-        # Check if record already exists
-        stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
+        stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
         result = await session.execute(stmt)
         existing = result.scalar_one_or_none()
 
         if existing:
-            db_val = existing.config or {}
+            db_val = existing.value or {}
 
-            # Detect corrupt/empty config — must have 'limits' to be valid
             is_corrupt = not db_val.get("limits")
             needs_clients = not db_val.get("clients")
 
@@ -48,7 +47,7 @@ async def migrate_file_to_db():
                 db_val["clients"] = CLIENTS_SEED
 
             if is_corrupt or needs_clients:
-                existing.config = db_val
+                existing.value = db_val
                 existing.updated_at = datetime.utcnow()
                 session.add(existing)
                 await session.commit()
@@ -79,20 +78,20 @@ async def migrate_file_to_db():
             logger.info("Injecting Seed Clients into new DB config.")
             file_data["clients"] = CLIENTS_SEED
 
-        logger.info("Creating new config record in DB.")
-        new_config = SystemConfig(key=CONFIG_KEY, config=file_data)
+        logger.info("Creating new config record in posting_system_config.")
+        new_config = PostingSystemConfig(key=CONFIG_KEY, value=file_data)
         session.add(new_config)
         await session.commit()
 
 
 async def get_db_config(session: AsyncSession) -> LegacyConfig:
-    stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
+    stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()
 
     if record:
         try:
-            return LegacyConfig(**record.config)
+            return LegacyConfig(**record.value)
         except Exception as e:
             logger.error(f"Corrupt config in DB, using defaults: {e}")
 
@@ -101,15 +100,15 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
 
 async def save_db_config(session: AsyncSession, config_data: dict):
     logger.info(f"Saving Config to DB. Cron: {config_data.get('cronSchedule')}")
-    stmt = select(SystemConfig).where(SystemConfig.key == CONFIG_KEY)
+    stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()
 
     if record:
-        record.config = config_data
+        record.value = config_data
         record.updated_at = datetime.utcnow()
     else:
-        new_config = SystemConfig(key=CONFIG_KEY, config=config_data)
+        new_config = PostingSystemConfig(key=CONFIG_KEY, value=config_data)
         session.add(new_config)
 
     await session.commit()

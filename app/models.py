@@ -42,3 +42,10 @@ class SystemConfig(SQLModel, table=True):
     key: str = Field(primary_key=True)
     config: Dict[str, Any] = Field(default={}, sa_column=Column("config", JSONB))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Dedicated config table for posting_anton — isolated from shared system_config
+class PostingSystemConfig(SQLModel, table=True):
+    __tablename__ = "posting_system_config"
+    key: str = Field(primary_key=True)
+    value: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
