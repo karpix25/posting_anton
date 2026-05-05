@@ -1,9 +1,15 @@
 import { Pool, PoolClient } from 'pg';
-import { ScheduledPost } from './types';
+import { ClientConfig, ScheduledPost } from './types';
+
+type AIClientsStorage =
+    | { kind: 'table'; tableName: string }
+    | { kind: 'posting_system_config' }
+    | { kind: 'none' };
 
 export class DatabaseService {
     private pool: Pool;
     private initialized: boolean = false;
+    private aiClientsStorageCache: AIClientsStorage | null = null;
 
     constructor(connectionString: string) {
         this.pool = new Pool({
@@ -16,6 +22,10 @@ export class DatabaseService {
             console.error('[DB] Unexpected error on idle client', err);
             // Don't exit, just log
         });
+    }
+
+    public isReady(): boolean {
+        return this.initialized;
     }
 
     public async init(): Promise<void> {
@@ -210,6 +220,246 @@ export class DatabaseService {
             console.log(`[DB] Updated quota for ${category}:${brand} to ${quota}`);
         } catch (error) {
             console.error('[DB] Failed to update brand quota:', error);
+        }
+    }
+
+    public async getAIClients(): Promise<ClientConfig[]> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping getAIClients because DB is not initialized.');
+            return [];
+        }
+
+        try {
+            const storage = await this.detectAIClientsStorage();
+
+            if (storage.kind === 'posting_system_config') {
+                const result = await this.pool.query(
+                    'SELECT value FROM posting_system_config WHERE key = $1',
+                    ['main_config']
+                );
+                const row = result.rows[0];
+                const value = row?.value || {};
+                const clients = Array.isArray(value.clients) ? value.clients : [];
+                return this.sanitizeClients(clients);
+            }
+
+            if (storage.kind === 'table') {
+                return await this.getAIClientsFromTable(storage.tableName);
+            }
+
+            return [];
+        } catch (error) {
+            console.error('[DB] Failed to get AI clients:', error);
+            return [];
+        }
+    }
+
+    public async replaceAIClients(clients: ClientConfig[]): Promise<void> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping replaceAIClients because DB is not initialized.');
+            return;
+        }
+
+        const safeClients = this.sanitizeClients(clients);
+        const storage = await this.detectAIClientsStorage();
+
+        if (storage.kind === 'none') {
+            console.warn('[DB] No AI clients storage detected.');
+            return;
+        }
+
+        const dbClient = await this.pool.connect();
+        try {
+            await dbClient.query('BEGIN');
+            if (storage.kind === 'posting_system_config') {
+                const existing = await dbClient.query(
+                    'SELECT value FROM posting_system_config WHERE key = $1 FOR UPDATE',
+                    ['main_config']
+                );
+                const row = existing.rows[0];
+                const current = row?.value && typeof row.value === 'object' ? row.value : {};
+                const nextValue = { ...current, clients: safeClients };
+
+                if (row) {
+                    await dbClient.query(
+                        'UPDATE posting_system_config SET value = $1, updated_at = NOW() WHERE key = $2',
+                        [nextValue, 'main_config']
+                    );
+                } else {
+                    await dbClient.query(
+                        'INSERT INTO posting_system_config (key, value, updated_at) VALUES ($1, $2, NOW())',
+                        ['main_config', nextValue]
+                    );
+                }
+            } else {
+                await this.replaceAIClientsInTable(dbClient, storage.tableName, safeClients);
+            }
+
+            await dbClient.query('COMMIT');
+            console.log(`[DB] Replaced AI clients: ${safeClients.length}`);
+        } catch (error) {
+            await dbClient.query('ROLLBACK');
+            console.error('[DB] Failed to replace AI clients:', error);
+            throw error;
+        } finally {
+            dbClient.release();
+        }
+    }
+
+    private sanitizeClients(clients: any[]): ClientConfig[] {
+        if (!Array.isArray(clients)) return [];
+        const seen = new Set<string>();
+        const sanitized: ClientConfig[] = [];
+
+        for (const raw of clients) {
+            if (!raw || typeof raw !== 'object') continue;
+            const name = String(raw.name || '').trim();
+            if (!name) continue;
+            const dedupeKey = name.toLowerCase();
+            if (seen.has(dedupeKey)) continue;
+            seen.add(dedupeKey);
+
+            const regex = String(raw.regex || '').trim();
+            const prompt = String(raw.prompt || '');
+            const quotaNumber = raw.quota === undefined || raw.quota === null || raw.quota === ''
+                ? undefined
+                : Number(raw.quota);
+
+            sanitized.push({
+                name,
+                regex,
+                prompt,
+                quota: Number.isFinite(quotaNumber as number) ? quotaNumber : undefined
+            });
+        }
+
+        return sanitized;
+    }
+
+    private quoteIdentifier(identifier: string): string {
+        return `"${identifier.replace(/"/g, '""')}"`;
+    }
+
+    private async tableExists(tableName: string): Promise<boolean> {
+        const rel = tableName.includes(' ') || /[A-Z]/.test(tableName)
+            ? `public.${this.quoteIdentifier(tableName)}`
+            : `public.${tableName}`;
+        const result = await this.pool.query('SELECT to_regclass($1) AS reg', [rel]);
+        return !!result.rows[0]?.reg;
+    }
+
+    private async detectAIClientsStorage(): Promise<AIClientsStorage> {
+        if (this.aiClientsStorageCache) return this.aiClientsStorageCache;
+
+        const tableCandidates = ['ai_clients_db', 'Ai Clients Db', 'ai clients db'];
+        for (const candidate of tableCandidates) {
+            if (await this.tableExists(candidate)) {
+                this.aiClientsStorageCache = { kind: 'table', tableName: candidate };
+                return this.aiClientsStorageCache;
+            }
+        }
+
+        if (await this.tableExists('posting_system_config')) {
+            this.aiClientsStorageCache = { kind: 'posting_system_config' };
+            return this.aiClientsStorageCache;
+        }
+
+        if (await this.tableExists('ai_clients')) {
+            this.aiClientsStorageCache = { kind: 'table', tableName: 'ai_clients' };
+            return this.aiClientsStorageCache;
+        }
+
+        this.aiClientsStorageCache = { kind: 'none' };
+        return this.aiClientsStorageCache;
+    }
+
+    private async getTableColumns(tableName: string): Promise<Map<string, string>> {
+        const result = await this.pool.query(
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`,
+            [tableName]
+        );
+        const map = new Map<string, string>();
+        for (const row of result.rows) {
+            const col = String(row.column_name);
+            map.set(col.toLowerCase(), col);
+        }
+        return map;
+    }
+
+    private async getAIClientsFromTable(tableName: string): Promise<ClientConfig[]> {
+        const columns = await this.getTableColumns(tableName);
+        const nameCol = columns.get('name');
+        const regexCol = columns.get('regex');
+        const promptCol = columns.get('prompt');
+        if (!nameCol || !regexCol || !promptCol) return [];
+
+        const quotaCol = columns.get('quota');
+        const sortCol = columns.get('sort_order');
+        const updatedAtCol = columns.get('updated_at');
+        const tableRef = `${this.quoteIdentifier('public')}.${this.quoteIdentifier(tableName)}`;
+
+        const selectParts = [
+            `${this.quoteIdentifier(nameCol)} AS name`,
+            `${this.quoteIdentifier(regexCol)} AS regex`,
+            `${this.quoteIdentifier(promptCol)} AS prompt`,
+            quotaCol ? `${this.quoteIdentifier(quotaCol)} AS quota` : 'NULL::int AS quota'
+        ];
+
+        const orderParts: string[] = [];
+        if (sortCol) orderParts.push(`${this.quoteIdentifier(sortCol)} ASC`);
+        if (updatedAtCol) orderParts.push(`${this.quoteIdentifier(updatedAtCol)} DESC`);
+        orderParts.push(`${this.quoteIdentifier(nameCol)} ASC`);
+
+        const query = `SELECT ${selectParts.join(', ')} FROM ${tableRef} ORDER BY ${orderParts.join(', ')}`;
+        const result = await this.pool.query(query);
+        return this.sanitizeClients(result.rows);
+    }
+
+    private async replaceAIClientsInTable(
+        dbClient: PoolClient,
+        tableName: string,
+        clients: ClientConfig[]
+    ): Promise<void> {
+        const columns = await this.getTableColumns(tableName);
+        const nameCol = columns.get('name');
+        const regexCol = columns.get('regex');
+        const promptCol = columns.get('prompt');
+        if (!nameCol || !regexCol || !promptCol) {
+            throw new Error(`Table ${tableName} does not have required columns: name, regex, prompt`);
+        }
+
+        const quotaCol = columns.get('quota');
+        const sortCol = columns.get('sort_order');
+        const updatedAtCol = columns.get('updated_at');
+        const tableRef = `${this.quoteIdentifier('public')}.${this.quoteIdentifier(tableName)}`;
+
+        await dbClient.query(`DELETE FROM ${tableRef}`);
+
+        for (let i = 0; i < clients.length; i++) {
+            const client = clients[i];
+            const insertCols = [
+                this.quoteIdentifier(nameCol),
+                this.quoteIdentifier(regexCol),
+                this.quoteIdentifier(promptCol)
+            ];
+            const values: any[] = [client.name, client.regex || '', client.prompt || ''];
+
+            if (quotaCol) {
+                insertCols.push(this.quoteIdentifier(quotaCol));
+                values.push(client.quota === undefined ? null : client.quota);
+            }
+            if (sortCol) {
+                insertCols.push(this.quoteIdentifier(sortCol));
+                values.push(i);
+            }
+            if (updatedAtCol) {
+                insertCols.push(this.quoteIdentifier(updatedAtCol));
+                values.push(new Date());
+            }
+
+            const placeholders = values.map((_, idx) => `$${idx + 1}`).join(', ');
+            const sql = `INSERT INTO ${tableRef} (${insertCols.join(', ')}) VALUES (${placeholders})`;
+            await dbClient.query(sql, values);
         }
     }
 

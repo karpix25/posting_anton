@@ -6,6 +6,7 @@ import { PlatformManager } from './automation/platforms';
 import { StatsManager } from './automation/stats';
 import { DatabaseService } from './automation/db';
 import { AutomationScheduler } from './automation/auto_scheduler';
+import { ClientConfig } from './automation/types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -35,6 +36,42 @@ db.init().catch(err => console.error('[Server] Failed to initialize database:', 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../public'))); // Serve UI
+
+function normalizeClientConfig(raw: any): ClientConfig | null {
+    if (!raw || typeof raw !== 'object') return null;
+
+    const name = String(raw.name || '').trim();
+    if (!name) return null;
+
+    const regex = String(raw.regex || '').trim();
+    const prompt = String(raw.prompt || '');
+    const quota = raw.quota === undefined || raw.quota === null || raw.quota === ''
+        ? undefined
+        : Number(raw.quota);
+
+    return {
+        name,
+        regex,
+        prompt,
+        quota: Number.isFinite(quota as number) ? quota : undefined
+    };
+}
+
+function sanitizeClients(clients: any[]): ClientConfig[] {
+    if (!Array.isArray(clients)) return [];
+
+    const cleaned: ClientConfig[] = [];
+    const seenNames = new Set<string>();
+    for (const client of clients) {
+        const normalized = normalizeClientConfig(client);
+        if (!normalized) continue;
+        const dedupeKey = normalized.name.toLowerCase();
+        if (seenNames.has(dedupeKey)) continue;
+        seenNames.add(dedupeKey);
+        cleaned.push(normalized);
+    }
+    return cleaned;
+}
 
 // Helper to extract metadata (Theme, Brand, and Author)
 function extractMetadata(filePath: string, aliasesMap?: Record<string, string[]>) {
@@ -333,7 +370,7 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // Get Config
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
     // If config.json doesn't exist, try to initialize it
     if (!fs.existsSync(CONFIG_PATH)) {
         // Look for example config in the APP root (not data dir)
@@ -361,7 +398,7 @@ app.get('/api/config', (req, res) => {
 
             // Ensure essential structure
             if (!config.profiles) config.profiles = [];
-            if (!config.clients) config.clients = [];
+            config.clients = sanitizeClients(config.clients || []);
             if (!config.limits) config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
 
             // Migration logic: Sync clients from example if they are missing
@@ -467,6 +504,31 @@ app.get('/api/config', (req, res) => {
                 }
             }
 
+            // DB source of truth for AI clients with one-time bootstrap from config.json
+            if (db.isReady()) {
+                try {
+                    const currentFileClients = sanitizeClients(config.clients || []);
+                    config.clients = currentFileClients;
+                    const dbClients = await db.getAIClients();
+                    if (dbClients.length === 0 && currentFileClients.length > 0) {
+                        await db.replaceAIClients(currentFileClients);
+                        console.log(`[Config] Bootstrapped ${currentFileClients.length} AI clients from config.json to DB.`);
+                        config.clients = currentFileClients;
+                    } else if (dbClients.length > 0) {
+                        config.clients = dbClients;
+                    }
+
+                    if (JSON.stringify(currentFileClients) !== JSON.stringify(config.clients)) {
+                        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+                    }
+                } catch (e) {
+                    console.error('[Config] Failed to sync AI clients with DB, falling back to config.json:', e);
+                    config.clients = sanitizeClients(config.clients || []);
+                }
+            }
+
+            config.clients = sanitizeClients(config.clients || []);
+
             res.json(config);
         } catch (e) {
             console.error('[Server] Failed to parse config.json', e);
@@ -480,7 +542,8 @@ app.get('/api/config', (req, res) => {
 // Update Config
 app.post('/api/config', async (req, res) => {
     try {
-        const newConfig = req.body;
+        const newConfig = (req.body && typeof req.body === 'object') ? req.body : {};
+        newConfig.clients = sanitizeClients(newConfig.clients || []);
 
         // Sync client quotas to brandQuotas structure
         if (newConfig.clients && Array.isArray(newConfig.clients)) {
@@ -503,6 +566,15 @@ app.post('/api/config', async (req, res) => {
                     // Update database
                     await db.updateBrandQuota(category, brandName, currentMonth, client.quota);
                 }
+            }
+        }
+
+        // Persist AI clients in DB (source of truth)
+        if (db.isReady()) {
+            await db.replaceAIClients(newConfig.clients);
+            const dbClients = await db.getAIClients();
+            if (dbClients.length > 0) {
+                newConfig.clients = dbClients;
             }
         }
 

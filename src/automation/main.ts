@@ -105,6 +105,21 @@ async function main() {
     const db = new DatabaseService(dbUrl);
     await db.init();
 
+    // DB source of truth for AI clients/prompts.
+    if (db.isReady()) {
+        try {
+            const dbClients = await db.getAIClients();
+            if (dbClients.length > 0) {
+                config.clients = dbClients;
+            } else if (Array.isArray(config.clients) && config.clients.length > 0) {
+                await db.replaceAIClients(config.clients);
+                console.log(`[Main] Bootstrapped ${config.clients.length} AI clients from config.json to DB.`);
+            }
+        } catch (e) {
+            console.warn('[Main] Failed to sync AI clients with DB, using config.json clients:', e);
+        }
+    }
+
     // Inject Env Vars
     config.yandexToken = process.env.YANDEX_TOKEN || '';
 
