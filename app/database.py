@@ -54,6 +54,30 @@ async def init_db():
                         print("🛠️ [DB] Adding missing 'key' column to 'system_config'...")
                         await conn.execute(text("ALTER TABLE system_config ADD COLUMN key VARCHAR"))
                         await conn.execute(text("UPDATE system_config SET key = 'main_config' WHERE key IS NULL"))
+
+                # Check for 'value' column (JSONB) — may be absent if table was created from old schema
+                res_val = await conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'system_config' AND column_name = 'value'"
+                ))
+                if not res_val.fetchone():
+                    print("🛠️ [DB] Adding missing 'value' JSONB column to 'system_config'...")
+                    await conn.execute(text(
+                        "ALTER TABLE system_config ADD COLUMN value JSONB NOT NULL DEFAULT '{}'"
+                    ))
+
+                # Check for 'updated_at' column — may also be absent in old schemas
+                res_upd = await conn.execute(text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = 'system_config' AND column_name = 'updated_at'"
+                ))
+                if not res_upd.fetchone():
+                    print("🛠️ [DB] Adding missing 'updated_at' column to 'system_config'...")
+                    await conn.execute(text(
+                        "ALTER TABLE system_config ADD COLUMN updated_at TIMESTAMP WITHOUT TIME ZONE "
+                        "NOT NULL DEFAULT now()"
+                    ))
+
         except Exception as e:
             print(f"⚠️ [DB] Defensive migration error (ignoring): {e}")
 
