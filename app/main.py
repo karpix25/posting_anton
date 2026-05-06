@@ -208,6 +208,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
 
         # Pre-fill all author folders from disk:/ВИДЕО with zero counts,
         # so UI shows authors even when they currently have no video files.
+        all_authors: List[str] = []
         try:
             all_authors = await yandex_service.list_directories("disk:/ВИДЕО", limit=10000)
             for author in all_authors:
@@ -215,6 +216,25 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
                     stats["byAuthor"].setdefault(author, 0)
         except Exception:
             pass
+
+        # Pre-fill all category folders from disk:/ВИДЕО/<author> with zero counts,
+        # so UI shows complete category list even when there are no videos in a category yet.
+        if all_authors:
+            try:
+                category_tasks = [
+                    yandex_service.list_directories(f"disk:/ВИДЕО/{author}", limit=10000)
+                    for author in all_authors
+                ]
+                author_categories = await asyncio.gather(*category_tasks, return_exceptions=True)
+
+                for categories in author_categories:
+                    if isinstance(categories, Exception):
+                        continue
+                    for category in categories:
+                        if category and category != "unknown":
+                            stats["byCategoryRaw"].setdefault(category, 0)
+            except Exception:
+                pass
         
         # Filter and Aggregate
         config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders if f]

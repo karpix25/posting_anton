@@ -843,11 +843,23 @@
                 }, {});
               },
               availableThemes() {
-                // Source strictly from config.themeAliases (which is auto-populated from Yandex Stats)
-                if (this.config && this.config.themeAliases) {
-                  return Object.keys(this.config.themeAliases).sort();
-                }
-                return [];
+                // Prefer exact folder names from Yandex stats (disk:/ВИДЕО/<author>/<category>).
+                // Fallback to config aliases and existing profile categories.
+                const byNorm = {};
+
+                const addTheme = (name) => {
+                  if (!name || typeof name !== 'string') return;
+                  const trimmed = name.trim();
+                  if (!trimmed) return;
+                  const key = trimmed.toLowerCase();
+                  if (!byNorm[key]) byNorm[key] = trimmed;
+                };
+
+                Object.keys(this.stats?.byCategoryRaw || {}).forEach(addTheme);
+                Object.keys(this.config?.themeAliases || {}).forEach(addTheme);
+                (this.config?.profiles || []).forEach(p => addTheme(p.theme_key || ''));
+
+                return Object.values(byNorm).sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }));
               }
             },
             methods: {
