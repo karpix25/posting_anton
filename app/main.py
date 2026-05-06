@@ -205,6 +205,16 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
             "byBrand": {},
             "profilesByCategory": {}
         }
+
+        # Pre-fill all author folders from disk:/ВИДЕО with zero counts,
+        # so UI shows authors even when they currently have no video files.
+        try:
+            all_authors = await yandex_service.list_directories("disk:/ВИДЕО", limit=10000)
+            for author in all_authors:
+                if author and author != "unknown":
+                    stats["byAuthor"].setdefault(author, 0)
+        except Exception:
+            pass
         
         # Filter and Aggregate
         config_folders_norm = [f.replace("disk:", "").strip("/").lower() for f in config.yandexFolders if f]

@@ -3,12 +3,14 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from app.config import settings
 import logging
+import httpx
 
 logger = logging.getLogger(__name__)
 
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
+        self.base_url = "https://cloud-api.yandex.net/v1/disk/resources"
 
     async def check_token(self) -> bool:
         async with yadisk.AsyncClient(token=self.token) as client:
@@ -116,6 +118,35 @@ class YandexDiskService:
             await client.move(source_path, dest_path, overwrite=True)
             logger.info(f"[Yandex] Moved file: {source_path} -> {dest_path}")
             return dest_path
+
+    async def list_directories(self, path: str, limit: int = 10000) -> List[str]:
+        """
+        Return direct child directory names for a given Yandex.Disk path.
+        Example: path='disk:/ВИДЕО' -> ['Автор 1', 'Автор 2', ...]
+        """
+        url = self.base_url
+        params = {
+            "path": path,
+            "limit": limit,
+            "fields": "_embedded.items.name,_embedded.items.type"
+        }
+        headers = {"Authorization": f"OAuth {self.token}"}
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.get(url, params=params, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+
+            items = (data.get("_embedded") or {}).get("items") or []
+            dirs = sorted(
+                [str(i.get("name", "")).strip() for i in items if i.get("type") == "dir" and i.get("name")]
+            )
+            logger.info(f"[Yandex] Found {len(dirs)} directories in {path}.")
+            return dirs
+        except Exception as e:
+            logger.warning(f"[Yandex] Failed to list directories in {path}: {e}")
+            return []
 
 # Singleton-like usage or dependency injection
 yandex_service = YandexDiskService()
