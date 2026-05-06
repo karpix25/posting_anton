@@ -421,14 +421,14 @@
 
                 <!-- Group Content (Table) -->
                 <div v-show="expandedGroups[theme]" class="border-t overflow-x-auto">
-                  <table class="w-full min-w-[1100px] border-collapse">
+                  <table class="w-full border-collapse">
                     <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
                         <th class="p-3 w-8"><input type="checkbox"
                             @change="toggleGroupSelection(profiles, $event.target.checked)"
                             :checked="profiles.every(p => selectedProfiles.includes(p.username))"></th>
                         <th class="text-left p-3 w-12"></th>
-                        <th class="text-left p-3 w-80 min-w-[20rem]">Профиль</th>
+                        <th class="text-left p-3 w-[22rem]">Профиль</th>
                         <th class="text-left p-3">Категория</th>
                         <th class="text-left p-3">Платформы</th>
                         <th class="text-center p-3 w-14" title="Instagram постов/день">📸 IG</th>
@@ -447,9 +447,9 @@
                         <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
                           {{ getProfileStatusDot(profile) }}
                         </td>
-                        <td class="p-2 font-medium w-80 min-w-[20rem]" :title="profile.username">
+                        <td class="p-2 font-medium w-[22rem] max-w-[22rem]" :title="profile.username">
                           <input v-model="profile.username"
-                            class="w-full min-w-[18rem] border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
+                            class="w-full min-w-0 border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
                             placeholder="Username">
                         </td>
                         <td class="p-2">
@@ -527,11 +527,11 @@
                   </div>
                 </div>
                 <div class="border-t overflow-x-auto">
-                  <table class="w-full min-w-[900px] border-collapse">
+                  <table class="w-full border-collapse">
                     <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
                         <th class="text-left p-3 w-12"></th>
-                        <th class="text-left p-3 w-80 min-w-[20rem]">Профиль</th>
+                        <th class="text-left p-3 w-[22rem]">Профиль</th>
                         <th class="text-left p-3">Категория</th>
                         <th class="text-left p-3">Платформы</th>
                         <th class="text-left p-3">Статус</th>
@@ -542,7 +542,7 @@
                         <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
                           {{ getProfileStatusDot(profile) }}
                         </td>
-                        <td class="p-2 font-medium w-80 min-w-[20rem] break-all whitespace-normal" :title="profile.username">{{ profile.username }}</td>
+                        <td class="p-2 font-medium w-[22rem] max-w-[22rem] break-all whitespace-normal" :title="profile.username">{{ profile.username }}</td>
                         <td class="p-2">{{ profile.theme_key || 'Без категории' }}</td>
                         <td class="p-2">
                           <div class="flex gap-1 flex-wrap">
@@ -635,14 +635,14 @@
 
                 <!-- Group Content (Table) -->
                 <div v-show="expandedGroupsDisabled[theme]" class="border-t overflow-x-auto">
-                  <table class="w-full min-w-[1100px] border-collapse">
+                  <table class="w-full border-collapse">
                     <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
                         <th class="p-3 w-8"><input type="checkbox"
                             @change="toggleGroupSelectionDisabled(profiles, $event.target.checked)"
                             :checked="profiles.every(p => selectedDisabledProfiles.includes(p.username))"></th>
                         <th class="text-left p-3 w-12"></th>
-                        <th class="text-left p-3 w-80 min-w-[20rem]">Профиль</th>
+                        <th class="text-left p-3 w-[22rem]">Профиль</th>
                         <th class="text-left p-3">Категория</th>
                         <th class="text-left p-3">Платформы</th>
                         <th class="text-left p-3 w-20">Лимит</th>
@@ -660,7 +660,7 @@
                         <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
                           {{ getProfileStatusDot(profile) }}
                         </td>
-                        <td class="p-2 font-medium text-gray-500 w-80 min-w-[20rem] break-all whitespace-normal" :title="profile.username">{{ profile.username }}</td>
+                        <td class="p-2 font-medium text-gray-500 w-[22rem] max-w-[22rem] break-all whitespace-normal" :title="profile.username">{{ profile.username }}</td>
                         <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
                         <td class="p-2">
                           <div class="flex gap-2">
