@@ -302,7 +302,15 @@ async def generate_daily_schedule(test_mode: bool = False):
         active_profiles = validated_profiles
         
     except Exception as e:
-        logger.error(f"⚠️ [Worker] Failed to validate profiles with API: {e}. Proceeding with config-based list (RISKY).")
+        logger.error(f"⚠️ [Worker] Failed to validate profiles with API: {e}. Falling back to cached profile statuses.")
+        safe_profiles = []
+        for p in active_profiles:
+            cached_status = (getattr(p, "profile_status", None) or "unknown").lower()
+            if cached_status in {"disconnected", "reauth_required", "not_found"}:
+                logger.warning(f"⚠️ [Worker] Skipping '{p.username}' by cached status='{cached_status}'")
+                continue
+            safe_profiles.append(p)
+        active_profiles = safe_profiles
 
     if active_profiles:
         for p in active_profiles[:5]:  # Show first 5 after validation

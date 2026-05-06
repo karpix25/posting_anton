@@ -4,19 +4,24 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, Depends, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.config import settings, LegacyConfig
-from app.database import get_session, init_db
+from app.database import get_session, init_db, async_session_maker
 from app.models import BrandStats
 from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
+from app.services.platforms import upload_post_client
+from app.services.profile_status import (
+    apply_webhook_event_to_profile,
+    merge_api_profiles_into_config,
+)
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
 
@@ -41,6 +46,45 @@ STATS_CACHE_TTL = 60  # seconds
 files_cache: List[Dict[str, Any]] = []
 files_cache_time: float = 0.0
 FILES_CACHE_TTL = 30 * 60  # 30 minutes
+
+profile_status_sync_task: Optional[asyncio.Task] = None
+
+
+async def reconcile_profile_statuses_once(upsert_missing_profiles: bool = True) -> Dict[str, Any]:
+    """Fetch profile statuses from Upload Post and persist them into DB config."""
+    if not settings.UPLOAD_POST_API_KEY:
+        return {"success": False, "error": "UPLOAD_POST_API_KEY is missing"}
+
+    api_profiles = await upload_post_client.get_profiles()
+
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+        config_data = config.dict()
+        summary = merge_api_profiles_into_config(
+            config_data,
+            api_profiles,
+            status_source="uploadpost_sync",
+            upsert_missing_profiles=upsert_missing_profiles,
+        )
+        await save_db_config(session, config_data)
+
+    return {"success": True, "summary": summary, "profiles_count": len(api_profiles)}
+
+
+async def profile_status_sync_loop():
+    """Background self-healing loop for profile statuses."""
+    if not settings.PROFILE_STATUS_SYNC_ENABLED:
+        logger.info("[ProfileStatusSync] Disabled by settings.")
+        return
+
+    interval = max(60, int(settings.PROFILE_STATUS_SYNC_INTERVAL_SECONDS or 600))
+    logger.info(f"[ProfileStatusSync] Started (interval={interval}s).")
+    while True:
+        try:
+            await reconcile_profile_statuses_once(upsert_missing_profiles=False)
+        except Exception as e:
+            logger.warning(f"[ProfileStatusSync] Reconcile failed: {e}")
+        await asyncio.sleep(interval)
 
 # Startup event
 @app.on_event("startup")
@@ -77,9 +121,26 @@ async def on_startup():
              from app.background_publisher import background_publisher
              asyncio.create_task(background_publisher())
              logger.info("🚀 Started background post publisher")
+
+             # Run one immediate profile-status sync and then keep self-healing loop.
+             try:
+                 await reconcile_profile_statuses_once(upsert_missing_profiles=False)
+                 logger.info("✅ Initial profile status reconcile complete.")
+             except Exception as e:
+                 logger.warning(f"Initial profile status reconcile failed: {e}")
+
+             global profile_status_sync_task
+             profile_status_sync_task = asyncio.create_task(profile_status_sync_loop())
              
     except Exception as e:
         logger.error(f"Startup failed: {e}")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    global profile_status_sync_task
+    if profile_status_sync_task and not profile_status_sync_task.done():
+        profile_status_sync_task.cancel()
 
 @app.get("/health")
 async def health_check():
@@ -132,34 +193,102 @@ async def update_config(config_data: Dict[str, Any], session: AsyncSession = Dep
 
 @app.get("/api/profiles/sync")
 async def sync_profiles():
-    import httpx
     logger.info("[API] /api/profiles/sync requested")
-    api_key = settings.UPLOAD_POST_API_KEY
-    if not api_key:
-         logger.error("UPLOAD_POST_API_KEY is missing")
-         return {"success": False, "error": "UPLOAD_POST_API_KEY not configured"}
-
-    url = "https://api.upload-post.com/api/uploadposts/users"
-    headers = {"Authorization": f"Apikey {api_key}"}
-    
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, headers=headers, timeout=20.0)
-            
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("success"):
-                profiles = data.get("profiles", [])
-                logger.info(f"[API] Sync success. Found {len(profiles)} profiles.")
-                return {"success": True, "profiles": profiles}
-            else:
-                return {"success": False, "error": data.get("message", "Unknown error")}
-        else:
-            return {"success": False, "error": f"UploadPost returned {resp.status_code}"}
-            
+        result = await reconcile_profile_statuses_once(upsert_missing_profiles=True)
+        if result.get("success"):
+            logger.info(f"[API] Sync success: {result.get('summary')}")
+            # Backward-compat: return raw profiles for existing UI clients.
+            api_profiles = await upload_post_client.get_profiles()
+            return {"success": True, "profiles": api_profiles, **result}
+        return result
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/profiles/status/reconcile")
+async def reconcile_profile_statuses():
+    """Manual reconcile endpoint for profile statuses."""
+    try:
+        result = await reconcile_profile_statuses_once(upsert_missing_profiles=False)
+        return result
+    except Exception as e:
+        logger.error(f"Manual status reconcile failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/uploadpost/webhook")
+async def upload_post_webhook(request: Request):
+    """
+    Receive Upload Post profile connectivity events and patch local profile statuses.
+    Supported events:
+    - social_account_connected
+    - social_account_disconnected
+    - social_account_reauth_required
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    # Optional shared-token check for safer endpoint exposure.
+    if settings.UPLOAD_POST_WEBHOOK_TOKEN:
+        header_token = request.headers.get("x-uploadpost-webhook-token") or request.headers.get("x-webhook-token")
+        auth_header = request.headers.get("authorization", "")
+        bearer = auth_header.replace("Bearer ", "").strip() if auth_header else ""
+        query_token = request.query_params.get("token")
+        if settings.UPLOAD_POST_WEBHOOK_TOKEN not in {header_token, bearer, query_token}:
+            raise HTTPException(status_code=401, detail="Invalid webhook token")
+
+    event_name = str(
+        body.get("event")
+        or body.get("type")
+        or body.get("event_name")
+        or ""
+    ).strip()
+    username = str(
+        body.get("username")
+        or body.get("profile_username")
+        or body.get("user")
+        or body.get("account")
+        or ""
+    ).strip()
+    platform = str(
+        body.get("platform")
+        or body.get("social_account")
+        or body.get("provider")
+        or ""
+    ).strip()
+
+    if not event_name or not username:
+        raise HTTPException(status_code=400, detail="Missing event or username")
+
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+        config_data = config.dict()
+        profiles = config_data.get("profiles") or []
+        target = None
+        for p in profiles:
+            if str(p.get("username", "")).strip().lower() == username.lower():
+                target = p
+                break
+
+        if not target:
+            logger.warning(f"[Webhook] Profile not found in config: {username}")
+            return {"success": True, "updated": False, "reason": "profile_not_found"}
+
+        changed = apply_webhook_event_to_profile(
+            target,
+            event_name=event_name,
+            platform_name=platform,
+            status_source="uploadpost_webhook",
+        )
+        if changed:
+            await save_db_config(session, config_data)
+            logger.info(f"[Webhook] Updated profile status: user={username} event={event_name} platform={platform}")
+
+    return {"success": True, "updated": changed}
 
 @app.get("/api/stats")
 async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_session)):

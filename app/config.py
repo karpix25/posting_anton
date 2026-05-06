@@ -1,7 +1,7 @@
 import os
 import json
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 class SocialProfile(BaseModel):
@@ -9,6 +9,11 @@ class SocialProfile(BaseModel):
     theme_key: str
     platforms: List[str]
     enabled: bool = True
+    # Profile connectivity status from Upload-Post sync/webhook
+    profile_status: str = "unknown"  # connected, reauth_required, disconnected, not_found, unknown
+    platform_statuses: Dict[str, str] = Field(default_factory=dict)  # platform -> status
+    profile_status_updated_at: Optional[str] = None
+    profile_status_source: Optional[str] = None  # uploadpost_sync / uploadpost_webhook
     
     # Per-platform limits (posts/day for each platform)
     instagramLimit: Optional[int] = None
@@ -56,6 +61,9 @@ class Settings(BaseSettings):
     UPLOAD_POST_API_KEY: str = ""
     DATA_DIR: str = "/data"
     REDIS_URL: str = "redis://tools_redis:6379/0"
+    PROFILE_STATUS_SYNC_ENABLED: bool = True
+    PROFILE_STATUS_SYNC_INTERVAL_SECONDS: int = 600
+    UPLOAD_POST_WEBHOOK_TOKEN: str = ""
     
     # Internal state for legacy config
     _legacy_config: Optional[LegacyConfig] = None

@@ -42,16 +42,22 @@ class UploadPostClient:
                 return []
 
     async def get_profiles(self) -> List[Dict[str, Any]]:
-        async with httpx.AsyncClient() as client:
+        last_error: Optional[Exception] = None
+        for attempt in range(1, 4):
             try:
-                response = await client.get(USER_PROFILES_API_URL, headers=self.headers)
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.get(USER_PROFILES_API_URL, headers=self.headers)
                 data = response.json()
                 if data.get('success'):
                     return data.get('profiles', [])
-                raise Exception(data.get('message', 'Failed to fetch profiles'))
+                raise Exception(data.get('message', f'Failed to fetch profiles (HTTP {response.status_code})'))
             except Exception as e:
-                print(f"[UploadPost] Error fetching profiles: {e}")
-                raise e
+                last_error = e
+                logger.warning(f"[UploadPost] get_profiles attempt {attempt}/3 failed: {e}")
+                if attempt < 3:
+                    await asyncio.sleep(2 ** (attempt - 1))
+        print(f"[UploadPost] Error fetching profiles: {last_error}")
+        raise last_error if last_error else Exception("Failed to fetch profiles")
 
     async def get_scheduled_posts(self) -> List[Dict[str, Any]]:
         """Fetch list of pending scheduled posts from Upload Post API."""

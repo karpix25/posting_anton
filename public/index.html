@@ -324,6 +324,8 @@
               <button @click="syncProfiles"
                 class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">🔄 Синхронизировать
                 (UploadPost)</button>
+              <button @click="reconcileProfileStatuses"
+                class="text-sm bg-green-100 text-green-700 px-3 py-1 rounded hover:bg-green-200">🩺 Обновить статусы</button>
               <button @click="fullResync"
                 class="text-sm bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 border border-red-300">
                 ⚠️ Полный Сброс (Скачать заново)
@@ -430,7 +432,9 @@
                           <input type="checkbox" :checked="selectedProfiles.includes(profile.username)"
                             @click="handleProfileSelect($event, profile, profiles)" class="w-4 h-4 cursor-pointer">
                         </td>
-                        <td class="p-2 text-center text-xl" :title="'Активный профиль'">🟢</td>
+                        <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
+                          {{ getProfileStatusDot(profile) }}
+                        </td>
                         <td class="p-2 font-medium">
                           <input v-model="profile.username"
                             class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent"
@@ -448,11 +452,7 @@
                         <td class="p-2">
                           <div class="flex gap-1 flex-wrap">
                             <span v-for="platform in profile.platforms" :key="platform"
-                              class="px-2 py-0.5 text-xs rounded border" :class="{
-                                    'bg-pink-50 border-pink-200 text-pink-700': platform === 'instagram',
-                                    'bg-blue-50 border-blue-200 text-blue-700': platform === 'tiktok',
-                                    'bg-red-50 border-red-200 text-red-700': platform === 'youtube'
-                                  }">
+                              class="px-2 py-0.5 text-xs rounded border" :class="getPlatformBadgeClass(profile, platform)">
                               {{ platform }}
                             </span>
                             <span v-if="!profile.platforms || profile.platforms.length === 0"
@@ -591,13 +591,15 @@
                             @click="handleProfileSelectDisabled($event, profile, profiles)"
                             class="w-4 h-4 cursor-pointer">
                         </td>
-                        <td class="p-2 text-center text-xl" :title="'Деактивирован'">⚫</td>
+                        <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
+                          {{ getProfileStatusDot(profile) }}
+                        </td>
                         <td class="p-2 font-medium text-gray-500">{{ profile.username }}</td>
                         <td class="p-2 text-gray-500">{{ profile.theme_key }}</td>
                         <td class="p-2">
                           <div class="flex gap-2">
                             <span v-for="platform in profile.platforms" :key="platform"
-                              class="px-2 py-1 text-xs rounded bg-gray-200 text-gray-600">
+                              class="px-2 py-1 text-xs rounded border" :class="getPlatformBadgeClass(profile, platform)">
                               {{ platform === 'instagram' ? 'Instagram' : platform === 'tiktok' ? 'TikTok' : 'YouTube'
                               }}
                             </span>
@@ -863,6 +865,44 @@
               }
             },
             methods: {
+              getProfileStatus(profile) {
+                return (profile?.profile_status || 'unknown').toLowerCase();
+              },
+              getProfileStatusDot(profile) {
+                const state = this.getProfileStatus(profile);
+                if (state === 'connected') return '🟢';
+                if (state === 'reauth_required') return '🟡';
+                if (state === 'disconnected' || state === 'not_found') return '🔴';
+                return '⚪';
+              },
+              getProfileStatusTitle(profile) {
+                const state = this.getProfileStatus(profile);
+                if (state === 'connected') return 'Подключен';
+                if (state === 'reauth_required') return 'Требуется переподключение';
+                if (state === 'disconnected') return 'Отключен';
+                if (state === 'not_found') return 'Не найден в UploadPost';
+                return 'Статус неизвестен';
+              },
+              getPlatformStatus(profile, platform) {
+                const map = profile?.platform_statuses || {};
+                return (map[platform] || 'unknown').toLowerCase();
+              },
+              getPlatformBadgeClass(profile, platform) {
+                const status = this.getPlatformStatus(profile, platform);
+                if (status === 'connected') {
+                  return 'bg-green-50 border-green-200 text-green-700';
+                }
+                if (status === 'reauth_required') {
+                  return 'bg-yellow-50 border-yellow-300 text-yellow-800';
+                }
+                if (status === 'disconnected' || status === 'not_found') {
+                  return 'bg-red-50 border-red-200 text-red-700';
+                }
+                if (platform === 'instagram') return 'bg-pink-50 border-pink-200 text-pink-700';
+                if (platform === 'tiktok') return 'bg-blue-50 border-blue-200 text-blue-700';
+                if (platform === 'youtube') return 'bg-red-50 border-red-200 text-red-700';
+                return 'bg-gray-50 border-gray-200 text-gray-700';
+              },
               getProfilesForCategory(categoryName) {
                 // keys in profilesByCategory are always lowercase/trimmed
                 const key = categoryName.toLowerCase().trim();
@@ -1046,45 +1086,30 @@
                   const data = await res.json();
                   console.log('[UI] Sync response:', data);
 
-                  if (data.success && data.profiles) {
-                    let addedCount = 0;
-
-                    data.profiles.forEach(apiProfile => {
-                      // Find existing profile by username
-                      const existingProfile = this.config.profiles.find(p => p.username === apiProfile.username);
-
-                      // Get platforms from API (keys of social_accounts where value is not empty)
-                      const platforms = Object.entries(apiProfile.social_accounts || {})
-                        .filter(([_, value]) => !!value) // Filter out empty strings/nulls
-                        .map(([key]) => key);
-
-                      if (platforms.length === 0) platforms.push('instagram'); // Default fallback
-
-                      if (existingProfile) {
-                        // Update existing profile's platforms if needed (merge or overwrite)
-                        // We overwrite to ensure it reflects current state
-                        existingProfile.platforms = platforms;
-                      } else {
-                        // Add new profile
-                        this.config.profiles.push({
-                          username: apiProfile.username,
-                          theme_key: '',
-                          platforms: platforms,
-                          enabled: true
-                        });
-                        addedCount++;
-                      }
-                    });
-
-                    alert(`Синхронизация завершена! Добавлено новых: ${addedCount}. Обновлены платформы у существующих.`);
-                    this.saveConfig();
-                  } else {
-                    console.error('[UI] Sync failed:', data.error);
-                    alert('Ошибка синхронизации: ' + (data.error || 'Неизвестная ошибка'));
+                  if (!res.ok || data.success === false) {
+                    throw new Error(data.error || 'sync failed');
                   }
+
+                  await this.loadConfig();
+                  const summary = data.summary || {};
+                  alert(`Синхронизация завершена. Обновлено: ${summary.updated || 0}, добавлено: ${summary.created || 0}`);
                 } catch (e) {
                   console.error('[UI] Fetch error:', e);
                   alert('Не удалось синхронизировать профили (см. консоль)');
+                }
+              },
+              async reconcileProfileStatuses() {
+                try {
+                  const res = await fetch('/api/profiles/status/reconcile', { method: 'POST' });
+                  const data = await res.json();
+                  if (!res.ok || data.success === false) {
+                    throw new Error(data.error || 'reconcile failed');
+                  }
+                  await this.loadConfig();
+                  alert('Статусы профилей обновлены');
+                } catch (e) {
+                  console.error('[UI] Reconcile statuses failed:', e);
+                  alert('Не удалось обновить статусы профилей');
                 }
               },
               async fullResync() {
