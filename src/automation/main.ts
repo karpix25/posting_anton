@@ -78,6 +78,21 @@ function cleanSocialCaption(raw: string): string {
     return uniqueParagraphs.join('\n\n');
 }
 
+function normalizeVideoNameForCaption(rawName: string): string {
+    const decoded = decodeURIComponent(rawName || '').replace(/copy_/gi, '').trim();
+    if (!decoded) return '';
+    return decoded.replace(/\.[a-z0-9]{2,5}$/i, '').trim();
+}
+
+function ensureFilenameInCaption(caption: string, rawVideoName: string): string {
+    const filename = normalizeVideoNameForCaption(rawVideoName);
+    const text = (caption || '').trim();
+
+    if (!filename) return text;
+    if (text.toLowerCase().includes(filename.toLowerCase())) return text;
+    return text ? `${filename}\n\n${text}` : filename;
+}
+
 async function main() {
     // Load Config
     // Load Config
@@ -468,10 +483,10 @@ async function main() {
                         const parsed = parseYoutubeGeneratedText(baseCaption);
                         const fallbackDescription = (parsed.description || baseCaption || '').trim();
                         const fallbackTitle = (parsed.title || fallbackDescription.replace(/\s+/g, ' ').trim());
-                        post.caption = fallbackDescription;
+                        post.caption = ensureFilenameInCaption(fallbackDescription, videoName);
                         post.title = fallbackTitle.length > 100 ? `${fallbackTitle.substring(0, 97)}...` : fallbackTitle;
                     } else {
-                        post.caption = cleanSocialCaption(baseCaption);
+                        post.caption = ensureFilenameInCaption(cleanSocialCaption(baseCaption), videoName);
                         post.title = '';
                     }
 
