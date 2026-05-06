@@ -335,12 +335,24 @@
             </div>
           </div>
 
+          <div class="mb-4 p-3 rounded border bg-slate-50 text-sm">
+            <div class="font-semibold mb-1">Live статус UploadPost</div>
+            <div v-if="uploadPostSummary.success">
+              Подключено: <span class="text-green-700 font-bold">{{ uploadPostSummary.connected }}</span>
+              из <span class="font-bold">{{ uploadPostSummary.total }}</span>
+              <span class="text-amber-700 ml-3">Требуют внимания: {{ uploadPostSummary.attention }}</span>
+            </div>
+            <div v-else class="text-red-600">
+              Не удалось получить live-статус UploadPost
+            </div>
+          </div>
+
           <!-- Active Profiles -->
           <div v-if="activeProfiles.length > 0">
             <div class="flex justify-between items-center mb-3 p-3 bg-gray-50 rounded">
               <button @click="showActiveProfiles = !showActiveProfiles"
                 class="flex-1 text-left text-lg font-semibold hover:text-blue-600 flex items-center gap-2">
-                <span>🟢 Активные Профили ({{ activeProfiles.length }})</span>
+                <span>🟢 Подключенные Профили ({{ activeProfiles.length }})</span>
                 <span class="text-xl">{{ showActiveProfiles ? '▼' : '▶' }}</span>
               </button>
               <div class="flex gap-2 text-sm" v-if="showActiveProfiles">
@@ -489,6 +501,60 @@
                             </div>
                           </label>
                         </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Needs Attention Profiles -->
+          <div v-if="attentionProfiles.length > 0">
+            <button @click="showAttentionProfiles = !showAttentionProfiles"
+              class="w-full flex justify-between items-center text-lg font-semibold mb-3 p-3 bg-amber-50 hover:bg-amber-100 rounded text-amber-800">
+              <span>🟡 Требуют внимания ({{ attentionProfiles.length }})</span>
+              <span class="text-2xl">{{ showAttentionProfiles ? '▼' : '▶' }}</span>
+            </button>
+
+            <div v-if="showAttentionProfiles" class="opacity-90">
+              <div v-for="(profiles, theme) in groupedAttentionProfiles" :key="theme"
+                class="mb-4 border rounded overflow-hidden">
+                <div class="bg-amber-50 p-3 font-semibold flex justify-between items-center">
+                  <div class="flex items-center gap-2">
+                    <span>📁 {{ theme }}</span>
+                    <span class="bg-amber-200 text-amber-900 text-xs px-2 py-1 rounded-full">{{ profiles.length }}</span>
+                  </div>
+                </div>
+                <div class="border-t">
+                  <table class="w-full border-collapse">
+                    <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th class="text-left p-3 w-12"></th>
+                        <th class="text-left p-3">Профиль</th>
+                        <th class="text-left p-3">Категория</th>
+                        <th class="text-left p-3">Платформы</th>
+                        <th class="text-left p-3">Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="profile in profiles" :key="profile.username" class="border-b hover:bg-gray-50">
+                        <td class="p-2 text-center text-xl" :title="getProfileStatusTitle(profile)">
+                          {{ getProfileStatusDot(profile) }}
+                        </td>
+                        <td class="p-2 font-medium">{{ profile.username }}</td>
+                        <td class="p-2">{{ profile.theme_key || 'Без категории' }}</td>
+                        <td class="p-2">
+                          <div class="flex gap-1 flex-wrap">
+                            <span v-for="platform in (profile.platforms || [])" :key="platform"
+                              class="px-2 py-0.5 text-xs rounded border" :class="getPlatformBadgeClass(profile, platform)">
+                              {{ platform }}
+                            </span>
+                            <span v-if="!profile.platforms || profile.platforms.length === 0"
+                              class="text-gray-500 text-xs italic">Нет подключенных платформ</span>
+                          </div>
+                        </td>
+                        <td class="p-2 text-sm">{{ getProfileStatusTitle(profile) }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -756,6 +822,7 @@
                 foldersInput: '',
                 newThemeKey: '',
                 showActiveProfiles: true,    // Collapsible - active by default
+                showAttentionProfiles: true,
                 showDisabledProfiles: false,  // Collapsible - collapsed by default
                 expandedGroups: {}, // For accordion view
                 expandedGroupsDisabled: {}, // For disabled profiles accordion
@@ -775,11 +842,19 @@
                   enabled: false,
                   timezone: 'Europe/Moscow',
                   dailyRunTime: '00:01'
+                },
+                uploadPostSummary: {
+                  success: false,
+                  total: 0,
+                  connected: 0,
+                  attention: 0,
+                  disconnected: 0
                 }
               }
             },
             async mounted() {
               await this.loadConfig();
+              this.loadUploadPostSummary();
               this.loadSchedule();
               this.loadStats();
               this.loadTodayStats();
@@ -788,6 +863,7 @@
 
               // Auto-refresh today stats every 60 seconds
               setInterval(() => this.loadTodayStats(), 60000);
+              setInterval(() => this.loadUploadPostSummary(), 120000);
             },
             computed: {
               currentStatsList() {
@@ -807,7 +883,21 @@
               },
               activeProfiles() {
                 if (!this.config.profiles) return [];
-                return this.config.profiles.filter(p => p.enabled !== false);
+                return this.config.profiles.filter(p => {
+                  if (p.enabled === false) return false;
+                  const profileStatus = (p.profile_status || 'unknown').toLowerCase();
+                  if (profileStatus === 'connected') return true;
+                  const statuses = p.platform_statuses || {};
+                  return Object.values(statuses).some(s => String(s).toLowerCase() === 'connected');
+                });
+              },
+              attentionProfiles() {
+                if (!this.config.profiles) return [];
+                return this.config.profiles.filter(p => {
+                  if (p.enabled === false) return false;
+                  const profileStatus = (p.profile_status || 'unknown').toLowerCase();
+                  return ['reauth_required', 'disconnected', 'not_found', 'unknown'].includes(profileStatus);
+                });
               },
               disabledProfiles() {
                 if (!this.config.profiles) return [];
@@ -834,6 +924,19 @@
               groupedDisabledProfiles() {
                 const groups = {};
                 this.disabledProfiles.forEach(p => {
+                  const key = (p.theme_key || 'Без темы').toLowerCase().trim();
+                  const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
+                  if (!groups[displayKey]) groups[displayKey] = [];
+                  groups[displayKey].push(p);
+                });
+                return Object.keys(groups).sort().reduce((acc, key) => {
+                  acc[key] = groups[key];
+                  return acc;
+                }, {});
+              },
+              groupedAttentionProfiles() {
+                const groups = {};
+                this.attentionProfiles.forEach(p => {
                   const key = (p.theme_key || 'Без темы').toLowerCase().trim();
                   const displayKey = key.charAt(0).toUpperCase() + key.slice(1);
                   if (!groups[displayKey]) groups[displayKey] = [];
@@ -936,6 +1039,20 @@
                   }
                 } catch (e) {
                   console.error('Failed to load today stats:', e);
+                }
+              },
+              async loadUploadPostSummary() {
+                try {
+                  const res = await fetch('/api/profiles/status/summary');
+                  const data = await res.json();
+                  if (res.ok && data.success) {
+                    this.uploadPostSummary = data;
+                  } else {
+                    this.uploadPostSummary = { success: false, total: 0, connected: 0, attention: 0, disconnected: 0 };
+                  }
+                } catch (e) {
+                  console.error('[UI] Failed to load uploadpost summary:', e);
+                  this.uploadPostSummary = { success: false, total: 0, connected: 0, attention: 0, disconnected: 0 };
                 }
               },
               async loadStats() {
@@ -1091,6 +1208,7 @@
                   }
 
                   await this.loadConfig();
+                  await this.loadUploadPostSummary();
                   const summary = data.summary || {};
                   alert(`Синхронизация завершена. Обновлено: ${summary.updated || 0}, добавлено: ${summary.created || 0}`);
                 } catch (e) {
@@ -1106,6 +1224,7 @@
                     throw new Error(data.error || 'reconcile failed');
                   }
                   await this.loadConfig();
+                  await this.loadUploadPostSummary();
                   alert('Статусы профилей обновлены');
                 } catch (e) {
                   console.error('[UI] Reconcile statuses failed:', e);

@@ -20,6 +20,7 @@ from app.services.dynamic_scheduler import dynamic_scheduler
 from app.services.platforms import upload_post_client
 from app.services.profile_status import (
     apply_webhook_event_to_profile,
+    extract_statuses_from_api_profile,
     merge_api_profiles_into_config,
 )
 
@@ -215,6 +216,42 @@ async def reconcile_profile_statuses():
         return result
     except Exception as e:
         logger.error(f"Manual status reconcile failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/profiles/status/summary")
+async def get_profile_status_summary():
+    """Return live Upload Post connectivity summary (connected / total / attention)."""
+    try:
+        api_profiles = await upload_post_client.get_profiles()
+        total = len(api_profiles)
+        connected_profiles = 0
+        attention_profiles = 0
+        disconnected_profiles = 0
+
+        for p in api_profiles:
+            statuses, connected_platforms = extract_statuses_from_api_profile(p)
+            if connected_platforms:
+                connected_profiles += 1
+
+            status_values = [str(v).lower() for v in statuses.values()]
+            has_reauth = any(v == "reauth_required" for v in status_values)
+            has_disconnected = any(v == "disconnected" for v in status_values)
+
+            if has_reauth or has_disconnected or not connected_platforms:
+                attention_profiles += 1
+            if has_disconnected or not connected_platforms:
+                disconnected_profiles += 1
+
+        return {
+            "success": True,
+            "total": total,
+            "connected": connected_profiles,
+            "attention": attention_profiles,
+            "disconnected": disconnected_profiles,
+        }
+    except Exception as e:
+        logger.error(f"Live profile status summary failed: {e}")
         return {"success": False, "error": str(e)}
 
 
