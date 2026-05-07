@@ -12,7 +12,8 @@ from sqlalchemy import select
 
 from app.config import settings, LegacyConfig
 from app.database import get_session, init_db, async_session_maker
-from app.models import BrandStats
+from app.models import BrandStats, PostingHistory
+from app.services.sora2_webhook import canonical_publication_url, send_sora2_webhook_for_post
 from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
@@ -49,6 +50,109 @@ files_cache_time: float = 0.0
 FILES_CACHE_TTL = 30 * 60  # 30 minutes
 
 profile_status_sync_task: Optional[asyncio.Task] = None
+
+
+def _extract_uploadpost_publication_url(body: Dict[str, Any]) -> Optional[str]:
+    result = body.get("result") if isinstance(body.get("result"), dict) else {}
+    for source in (result, body):
+        for key in ("url", "post_url", "postUrl", "publication_url", "publicationUrl", "permalink", "link"):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                return canonical_publication_url(value)
+    return None
+
+
+def _extract_uploadpost_tracking_ids(body: Dict[str, Any]) -> Dict[str, str]:
+    result = body.get("result") if isinstance(body.get("result"), dict) else {}
+    tracking_ids: Dict[str, str] = {}
+    for key in ("job_id", "jobId", "request_id", "requestId"):
+        for source in (body, result):
+            value = source.get(key)
+            if isinstance(value, str) and value.strip():
+                tracking_ids[key] = value.strip()
+                break
+    return tracking_ids
+
+
+def _is_successful_upload_completed_event(body: Dict[str, Any], event_name: str) -> bool:
+    event_compact = event_name.strip().lower().replace("-", "_")
+    if event_compact not in {"upload_completed", "publication_completed", "post_published"}:
+        return False
+
+    result = body.get("result") if isinstance(body.get("result"), dict) else {}
+    success_value = result.get("success", body.get("success"))
+    status_value = str(result.get("status") or body.get("status") or "").strip().lower()
+
+    return success_value is True or status_value in {"success", "successful", "completed", "published"}
+
+
+async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_name: str) -> Optional[Dict[str, Any]]:
+    if not _is_successful_upload_completed_event(body, event_name):
+        return None
+
+    publication_url = _extract_uploadpost_publication_url(body)
+    tracking_ids = _extract_uploadpost_tracking_ids(body)
+    tracking_values = {value for value in tracking_ids.values() if value}
+
+    if not publication_url:
+        logger.warning("[UploadPostWebhook] Successful publication event without publication URL")
+        return {"success": True, "updated": False, "reason": "missing_publication_url"}
+
+    if not tracking_values:
+        logger.warning("[UploadPostWebhook] Successful publication event without job_id/request_id")
+        return {"success": True, "updated": False, "reason": "missing_tracking_id"}
+
+    async with async_session_maker() as session:
+        stmt = select(PostingHistory).where(PostingHistory.status.in_(["queued", "processing", "success"]))
+        result = await session.execute(stmt)
+        posts = result.scalars().all()
+
+        target = None
+        for post in posts:
+            meta = post.meta or {}
+            if meta.get("job_id") in tracking_values or meta.get("request_id") in tracking_values:
+                target = post
+                break
+
+        if not target:
+            logger.warning(f"[UploadPostWebhook] No local post found for tracking IDs: {tracking_ids}")
+            return {"success": True, "updated": False, "reason": "post_not_found"}
+
+        current_meta = target.meta or {}
+        if current_meta.get("sora2_webhook_sent_at"):
+            logger.info(f"[UploadPostWebhook] SOra2 webhook already sent for post #{target.id}")
+            return {"success": True, "updated": False, "reason": "sora2_already_sent", "post_id": target.id}
+
+        was_success = target.status == "success"
+        meta = target.meta.copy() if target.meta else {}
+        meta["publication_url"] = publication_url
+        meta["uploadpost_publication_webhook"] = body
+
+        target.status = "success"
+        target.meta = meta
+        session.add(target)
+        await session.commit()
+        await session.refresh(target)
+
+        sora2_result = await send_sora2_webhook_for_post(target, publication_url)
+        target.meta = sora2_result["meta"]
+        session.add(target)
+        await session.commit()
+
+    if not was_success:
+        try:
+            from app.worker import check_cleanup, increment_brand_stats
+            await increment_brand_stats(target.video_path)
+            await check_cleanup(target.video_path)
+        except Exception as e:
+            logger.warning(f"[UploadPostWebhook] Post-success side effects failed for post #{target.id}: {e}")
+
+    return {
+        "success": True,
+        "updated": True,
+        "post_id": target.id,
+        "sora2": {"sent": sora2_result["sent"], "reason": sora2_result["reason"]},
+    }
 
 
 async def reconcile_profile_statuses_once(upsert_missing_profiles: bool = True) -> Dict[str, Any]:
@@ -284,6 +388,11 @@ async def upload_post_webhook(request: Request):
         or body.get("event_name")
         or ""
     ).strip()
+
+    publication_result = await _handle_uploadpost_publication_webhook(body, event_name)
+    if publication_result is not None:
+        return publication_result
+
     username = str(
         body.get("username")
         or body.get("profile_username")
