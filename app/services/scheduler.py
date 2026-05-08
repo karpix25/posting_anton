@@ -39,9 +39,11 @@ class ContentScheduler:
         self.db_session = db_session
         self.used_video_md5s: Set[str] = set()
 
-    async def generate_schedule(self, videos: List[Dict[str, Any]], 
-                                profiles: List[SocialProfile], 
-                                occupied_slots: Dict[str, List[datetime]]) -> List[Dict[str, Any]]:
+    async def generate_schedule(self, videos: List[Dict[str, Any]],
+                                profiles: List[SocialProfile],
+                                occupied_slots: Dict[str, List[datetime]],
+                                existing_counts: Optional[Dict[str, Dict[str, Dict[str, int]]]] = None,
+                                force_limit: Optional[int] = None) -> List[Dict[str, Any]]:
         # Filter profiles: enabled AND has connected platforms
         active_profiles = [p for p in profiles if p.enabled and p.platforms and len(p.platforms) > 0]
         
@@ -98,7 +100,14 @@ class ContentScheduler:
             random.shuffle(daily_profiles)
             
             # Track profile publish counts per day
-            profile_counts: Dict[str, Dict[str, int]] = {p.username: {pl: 0 for pl in ["instagram", "tiktok", "youtube"]} for p in active_profiles}
+            date_key = current_day_start.strftime("%Y-%m-%d")
+            day_existing_counts = (existing_counts or {}).get(date_key, {})
+            profile_counts: Dict[str, Dict[str, int]] = {}
+            for p in active_profiles:
+                profile_counts[p.username] = {pl: 0 for pl in ["instagram", "tiktok", "youtube"]}
+                existing_for_profile = day_existing_counts.get(p.username, {})
+                for pl in ["instagram", "tiktok", "youtube"]:
+                    profile_counts[p.username][pl] = int(existing_for_profile.get(pl, 0) or 0)
 
             def get_profile_limit(profile: SocialProfile, platform: str) -> int:
                 """Get limit for profile+platform with fallback to global config"""
@@ -115,6 +124,8 @@ class ContentScheduler:
                 # 1. Platform-specific limit (if set)
                 # 2. Deprecated profile.limit (backwards compat)
                 # 3. Global config limit
+                if force_limit is not None:
+                    return force_limit
                 if platform_limit is not None:
                     return platform_limit
                 if profile.limit is not None:
