@@ -98,13 +98,22 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     return LegacyConfig(limits=DEFAULT_LIMITS)
 
 
-async def save_db_config(session: AsyncSession, config_data: dict):
-    logger.info(f"Saving Config to DB. Cron: {config_data.get('cronSchedule')}")
+async def save_db_config(session: AsyncSession, config_data: dict, preserve_schedule: bool = True):
+    incoming_cron = config_data.get("cronSchedule")
+    logger.info(f"Saving Config to DB. Incoming Cron: {incoming_cron}")
     stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
     result = await session.execute(stmt)
     record = result.scalar_one_or_none()
 
     if record:
+        if preserve_schedule:
+            current_value = record.value or {}
+            if "cronSchedule" in current_value:
+                config_data["cronSchedule"] = current_value.get("cronSchedule")
+            if "schedule" in current_value:
+                config_data["schedule"] = current_value.get("schedule")
+            logger.info(f"Preserved DB Schedule. Cron: {config_data.get('cronSchedule')}")
+
         record.value = config_data
         record.updated_at = datetime.utcnow()
     else:
@@ -112,4 +121,4 @@ async def save_db_config(session: AsyncSession, config_data: dict):
         session.add(new_config)
 
     await session.commit()
-    logger.info("DB Commit Successful")
+    logger.info(f"DB Commit Successful. Final Cron: {config_data.get('cronSchedule')}")

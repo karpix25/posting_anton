@@ -755,7 +755,7 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
 
     # Persist
     try:
-        await save_db_config(session, data)
+        await save_db_config(session, data, preserve_schedule=False)
         return {"success": True, "message": "Schedule updated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
