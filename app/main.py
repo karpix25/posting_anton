@@ -841,6 +841,7 @@ async def cleanup_queue(session: AsyncSession = Depends(get_session)):
         cancelled_count = 0
         failed_count = 0
         seen_job_ids = set()
+        job_ids = []
 
         for post in scheduled_posts:
             if not isinstance(post, dict):
@@ -849,11 +850,22 @@ async def cleanup_queue(session: AsyncSession = Depends(get_session)):
             if not job_id or job_id in seen_job_ids:
                 continue
             seen_job_ids.add(job_id)
+            job_ids.append(str(job_id))
 
-            if await upload_post_client.cancel_scheduled_post(str(job_id)):
+        logger.info(f"🗑️ Cleanup: cancelling {len(job_ids)} UploadPost scheduled jobs slowly.")
+
+        for job_id in job_ids:
+            if await upload_post_client.cancel_scheduled_post(job_id):
                 cancelled_count += 1
             else:
                 failed_count += 1
+
+            if (cancelled_count + failed_count) % 10 == 0:
+                logger.info(
+                    f"🗑️ Cleanup progress: processed={cancelled_count + failed_count}/"
+                    f"{len(job_ids)}, cancelled={cancelled_count}, failed={failed_count}"
+                )
+            await asyncio.sleep(2.0)
 
         stmt = delete(PostingHistory).where(PostingHistory.status.in_(["queued", "processing"]))
         result = await session.execute(stmt)
