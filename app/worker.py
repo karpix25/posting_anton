@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Any, Dict, List
 from app.config import settings
@@ -16,6 +17,8 @@ from sqlalchemy import select, update
 logger = logging.getLogger(__name__)
 
 CANONICAL_PLATFORMS = {"instagram", "tiktok", "youtube"}
+UPLOAD_POST_CONCURRENCY = 2
+UPLOAD_POST_MIN_INTERVAL_SECONDS = 1.0
 
 
 def _normalize_platform_name(value: str) -> str:
@@ -405,14 +408,13 @@ async def generate_daily_schedule(test_mode: bool = False):
             session.add(history)
             await session.commit()  # Commit immediately so it's visible to background workers
             
-            # Send to Upload Post API with scheduled time
-            logger.info(f"📤 Sending to Upload Post: {profile.username} → {platform} | Brand: {brand_name} | Schedule: {publish_time_iso} (ID: {history.id})")
+            logger.info(f"📥 Queued for Upload Post: {profile.username} → {platform} | Brand: {brand_name} | Schedule: {publish_time_iso} (ID: {history.id})")
             
             asyncio.create_task(
                 post_content(history.id, video["path"], profile.username, platform, publish_time_iso)
             )
         
-        logger.info(f"✅ [Worker] Sent {len(schedule)} posts to Upload Post API with scheduling")
+        logger.info(f"✅ [Worker] Queued {len(schedule)} posts for Upload Post scheduling")
         logger.info("🏁 [Worker] Schedule generation task finished.")
 
 async def schedule_post_with_delay(delay: float, history_id: int, video_path: str, 
@@ -421,9 +423,20 @@ async def schedule_post_with_delay(delay: float, history_id: int, video_path: st
     await asyncio.sleep(delay)
     await post_content(history_id, video_path, profile_username, platform, publish_time_iso)
 
-# Global concurrency limiter to prevent "Too many open files"
-# Limits concurrent execution of post_content (DB connections + HTTP requests)
-deploy_semaphore = asyncio.Semaphore(5)
+# Global limiters to avoid overwhelming Upload Post and local resources.
+deploy_semaphore = asyncio.Semaphore(UPLOAD_POST_CONCURRENCY)
+upload_post_rate_lock = asyncio.Lock()
+last_upload_post_call_at = 0.0
+
+
+async def throttle_upload_post_api():
+    global last_upload_post_call_at
+    async with upload_post_rate_lock:
+        now = time.monotonic()
+        wait_for = UPLOAD_POST_MIN_INTERVAL_SECONDS - (now - last_upload_post_call_at)
+        if wait_for > 0:
+            await asyncio.sleep(wait_for)
+        last_upload_post_call_at = time.monotonic()
 
 async def post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
                        publish_time_iso: str):
@@ -549,8 +562,12 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
     error_msg = None
     try:
         if schedule_param:
+            logger.info(f"   ⏳ Waiting for Upload Post API throttle (min {UPLOAD_POST_MIN_INTERVAL_SECONDS}s between calls)")
+            await throttle_upload_post_api()
             logger.info(f"   📤 Calling Upload Post API with schedule: {schedule_param}")
         else:
+            logger.info(f"   ⏳ Waiting for Upload Post API throttle (min {UPLOAD_POST_MIN_INTERVAL_SECONDS}s between calls)")
+            await throttle_upload_post_api()
             logger.info(f"   📤 Calling Upload Post API (immediate publish)")
             
         resp = await platform_manager.publish_post(
