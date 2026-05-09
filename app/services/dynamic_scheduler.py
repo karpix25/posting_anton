@@ -16,6 +16,7 @@ class DynamicScheduler:
         self._task = None
         self._running = False
         self._last_run_minute = None
+        self._last_skip_reason = None
 
     def start(self):
         if self._running: return
@@ -58,12 +59,19 @@ class DynamicScheduler:
             schedule_config = config.schedule
             
             if not cron_expression:
+                self._last_skip_reason = None
                 return
 
-            if schedule_config and schedule_config.enabled is False:
-                return
+            has_inconsistent_schedule = schedule_config and schedule_config.enabled is False
+            if has_inconsistent_schedule:
+                reason = f"schedule.enabled=false while cron is set to '{cron_expression}'; using cronSchedule as source of truth"
+                if self._last_skip_reason != reason:
+                    logger.warning(f"[DynamicScheduler] Inconsistent schedule config: {reason}")
+                    self._last_skip_reason = reason
 
-            timezone_name = schedule_config.timezone if schedule_config else 'Europe/Moscow'
+            if not has_inconsistent_schedule:
+                self._last_skip_reason = None
+            timezone_name = 'Europe/Moscow' if has_inconsistent_schedule else (schedule_config.timezone if schedule_config else 'Europe/Moscow')
             try:
                 tz = pytz.timezone(timezone_name)
             except Exception:

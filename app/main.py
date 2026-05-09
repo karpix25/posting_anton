@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+import pytz
 from fastapi import FastAPI, Depends, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -675,19 +676,27 @@ async def get_schedule(session: AsyncSession = Depends(get_session)):
     config = await get_db_config(session)
     cron = config.cronSchedule or ""
     logger.info(f"[API] get_schedule loaded cron: '{cron}'")
-    
+
+    schedule_config = config.schedule
+
     # Default state
     enabled = False
     daily_time = "00:00"
-    timezone = "Europe/Moscow" # Hardcode or add to config if needed
-    
+    timezone = "Europe/Moscow"
+
+    if schedule_config:
+        enabled = schedule_config.enabled and bool(cron)
+        daily_time = schedule_config.dailyRunTime or daily_time
+        timezone = schedule_config.timezone or timezone
+
     # Parse Cron: "min hour * * *"
     # Simple check: does it have 5 parts?
     parts = cron.split(" ")
     if len(parts) >= 5:
         # Check if it looks like a daily schedule: "* * * * *" is not enabled per se, but "M H * * *" is.
         # We assume if it's set, it's enabled.
-        enabled = True
+        if not schedule_config:
+            enabled = True
         try:
             minute = parts[0].zfill(2)
             hour = parts[1].zfill(2)
@@ -705,6 +714,18 @@ async def get_schedule(session: AsyncSession = Depends(get_session)):
 async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSession = Depends(get_session)):
     enabled = payload.get("enabled", False)
     daily_time = payload.get("dailyRunTime", "00:00")
+    timezone_name = payload.get("timezone", "Europe/Moscow")
+
+    if not isinstance(enabled, bool):
+        raise HTTPException(status_code=400, detail="enabled must be a boolean")
+
+    if not isinstance(timezone_name, str):
+        raise HTTPException(status_code=400, detail="timezone must be a string")
+
+    try:
+        pytz.timezone(timezone_name)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid timezone")
     
     # get current config data (dict)
     current_config_obj = await get_db_config(session)
@@ -724,6 +745,13 @@ async def save_schedule(payload: Dict[str, Any] = Body(...), session: AsyncSessi
     else:
         # Disable
         data["cronSchedule"] = ""
+
+    data["schedule"] = {
+        **(data.get("schedule") or {}),
+        "enabled": enabled,
+        "timezone": timezone_name,
+        "dailyRunTime": daily_time,
+    }
 
     # Persist
     try:
