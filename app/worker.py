@@ -184,43 +184,10 @@ async def generate_daily_schedule(test_mode: bool = False):
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
     logger.info(f"[Worker] Global limits: IG={config.limits.instagram}, TT={config.limits.tiktok}, YT={config.limits.youtube}")
     
-    # Auto-include folders for configured AI clients only when the user configured
-    # narrow folder names. If a root path like disk:/ВИДЕО is present, adding client
-    # names would accidentally turn the Yandex filter into:
-    # "inside disk:/ВИДЕО AND path contains client.name".
-    # That breaks clients whose files are matched by regex rather than by a folder
-    # equal to the client name.
-    has_root_folder = any(
-        str(f).replace("\\", "/").strip().strip("/").lower().startswith("disk:/")
-        for f in folders
-    )
-    if folders and not has_root_folder:
-        # Create a set of normalized existing folders for checks
-        existing_norm = {f.replace("disk:", "").strip("/").lower() for f in folders}
-        
-        added_count = 0
-        for client in config.clients:
-            # 1. Use Client Name as folder
-            c_name = client.name.strip()
-            if c_name.lower() not in existing_norm:
-                folders.append(c_name)
-                existing_norm.add(c_name.lower())
-                added_count += 1
-                
-            # 2. If regex looks like a folder path (no special chars), use it
-            if client.regex and "/" in client.regex:
-                # remove typical regex chars if simple path
-                clean_reg = client.regex.replace("^", "").replace("$", "").strip()
-                # If it looks like a path segment
-                if clean_reg and "\\" not in clean_reg and "[" not in clean_reg:
-                     parts = clean_reg.split("/")
-                     # Add invalid/root parts logic if needed, but for now just add the top level if meaningful
-                     # e.g. /Category/Brand -> scan Category? 
-                     # Better to stick to Name for safety.
-                     pass
-        
-        if added_count > 0:
-            logger.info(f"[Worker] 🔧 Auto-added {added_count} client folders to scan list: {folders}")
+    # Do not auto-add AI client names to the Yandex folder filter.
+    # UploadPost profiles are bound to categories, while AI clients match brands
+    # by regex after files are scanned. Mixing brand names into the folder filter
+    # can exclude valid category files before regex matching ever runs.
 
     try:
         # Force refresh for scheduler to get latest files
