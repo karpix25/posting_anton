@@ -464,7 +464,7 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
         config = await get_db_config(session)
         break
     
-    client_config = find_ai_client(config.clients, brand_name)
+    client_config = find_ai_client(config.clients, brand_name, video_path)
     
     if client_config:
         logger.info(f"   ✅ AI Client found: {client_config.name}")
@@ -793,7 +793,7 @@ def normalize_client(name: str) -> str:
     """Normalize client name for comparison (lowercase, no spaces)"""
     return name.lower().replace(" ", "").replace("-", "")
 
-def find_ai_client(clients, brand_name: str):
+def find_ai_client(clients, brand_name: str, video_path: str = ""):
     """
     Find AI client for brand using:
     1. Exact name match (normalized)
@@ -802,21 +802,32 @@ def find_ai_client(clients, brand_name: str):
     import re
     
     normalized_brand = normalize_client(brand_name)
-    
-    normalized_brand = normalize_client(brand_name)
+    path_parts = [
+        normalize_client(part)
+        for part in (video_path or "").replace("\\", "/").split("/")
+        if part and part != "disk:"
+    ]
     
     # Sort clients by regex length descending to prevent substring collisions
     sorted_clients = sorted(clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
     
     for client in sorted_clients:
+        normalized_client = normalize_client(client.name)
+
         # Method 1: Exact name match (normalized)
-        if normalize_client(client.name) == normalized_brand:
+        if normalized_client == normalized_brand:
+            return client
+
+        # Method 2: Exact folder match anywhere in the Yandex path.
+        # Some layouts are /VIDEO/Author/Client/Product/file, where positional
+        # brand extraction returns Product but the AI client is Client.
+        if normalized_client in path_parts:
             return client
         
-        # Method 2: Regex match
+        # Method 3: Regex match against both extracted brand and full path
         if client.regex:
             try:
-                if re.search(client.regex, brand_name, re.IGNORECASE):
+                if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
                     return client
             except re.error as e:
                 logger.warning(f"Invalid regex for client {client.name}: {client.regex} - {e}")
