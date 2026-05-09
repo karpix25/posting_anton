@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 # Moscow timezone (UTC+3)
 MSK = timezone(timedelta(hours=3))
+VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
+ROOT_PRODUCT_GROUP = "_root"
 
 def has_ai_client(clients: list, brand_name: str) -> bool:
     """Check if brand has a matching AI client (by name or regex)."""
@@ -153,6 +155,7 @@ class ContentScheduler:
             )
             
             last_brand_used_per_theme: Dict[str, str] = {}
+            last_product_used_per_brand: Dict[str, str] = {}
 
             for pass_idx in range(max_limit):
                 for profile in daily_profiles:
@@ -183,26 +186,14 @@ class ContentScheduler:
                     last_brand_used_per_theme[canonical_theme] = selected_brand
                     
                     brand_videos = theme_brands[selected_brand]
-                    video_for_slot = None
-                    
-                    # USER REQ: Randomize file selection within brand
-                    available_brand_videos = [v for v in brand_videos]
-                    random.shuffle(available_brand_videos)
+                    product_rr_key = f"{canonical_theme}:{selected_brand}"
+                    video_for_slot, selected_product = self.select_video_by_product_round_robin(
+                        brand_videos,
+                        last_product_used_per_brand.get(product_rr_key),
+                    )
 
-                    for i, v in enumerate(available_brand_videos):
-                        vid_id = v.get("md5") or v.get("path")
-                        if vid_id not in self.used_video_md5s:
-                            video_for_slot = v
-                            # Remove from the ORIGINAL list to avoid re-picking
-                            # We need to find index in original list or just remove by value logic
-                            # Since dicts are by ref, we can traverse original and remove
-                            
-                            # Simplest: remove from theme_brands[selected_brand] by reference
-                            if v in theme_brands[selected_brand]:
-                                theme_brands[selected_brand].remove(v)
-                                
-                            self.used_video_md5s.add(vid_id)
-                            break
+                    if video_for_slot and selected_product:
+                        last_product_used_per_brand[product_rr_key] = selected_product
                     
                     if not video_for_slot:
                         continue
@@ -272,6 +263,10 @@ class ContentScheduler:
                     except:
                          pass
                 logger.info(f"[Scheduler] Theme '{theme}' / Brand '{br}': {len(vids)} videos from {len(authors)} authors: {list(authors)}")
+                product_groups = self.group_brand_videos_by_product(vids)
+                if len(product_groups) > 1:
+                    product_counts = {name: len(group) for name, group in product_groups.items()}
+                    logger.info(f"[Scheduler] Product folders for {theme}/{br}: {product_counts}")
 
         if skipped_brands:
             logger.info(f"[Scheduler] Skipped {len(skipped_brands)} brands without AI client: {list(skipped_brands)[:10]}...")
@@ -318,6 +313,78 @@ class ContentScheduler:
             return brands[0]
         idx = brands.index(last)
         return brands[(idx + 1) % len(brands)]
+
+    def select_video_by_product_round_robin(
+        self,
+        brand_videos: List[Dict[str, Any]],
+        last_product: Optional[str],
+    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+        product_groups = self.group_brand_videos_by_product(brand_videos)
+        available_products = [
+            product
+            for product, videos in product_groups.items()
+            if any((v.get("md5") or v.get("path")) not in self.used_video_md5s for v in videos)
+        ]
+
+        if not available_products:
+            return None, None
+
+        selected_product = self.round_robin(available_products, last_product)
+        available_videos = [
+            v
+            for v in product_groups[selected_product]
+            if (v.get("md5") or v.get("path")) not in self.used_video_md5s
+        ]
+        random.shuffle(available_videos)
+
+        if not available_videos:
+            return None, None
+
+        selected_video = available_videos[0]
+        if selected_video in brand_videos:
+            brand_videos.remove(selected_video)
+        self.used_video_md5s.add(selected_video.get("md5") or selected_video.get("path"))
+
+        return selected_video, selected_product
+
+    def group_brand_videos_by_product(
+        self,
+        brand_videos: List[Dict[str, Any]],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        groups: Dict[str, List[Dict[str, Any]]] = {}
+        for video in brand_videos:
+            product = self.extract_product_group(video.get("path") or "")
+            if product not in groups:
+                groups[product] = []
+            groups[product].append(video)
+        return groups
+
+    def extract_product_group(self, path: str) -> str:
+        parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
+        try:
+            v_idx = -1
+            for i, p in enumerate(parts):
+                if p.lower() in ["video", "видео"]:
+                    v_idx = i
+                    break
+
+            # /ВИДЕО/Author/Category/Brand/file.mp4 -> _root
+            # /ВИДЕО/Author/Category/Brand/Product/file.mp4 -> Product
+            product_idx = v_idx + 4
+            if v_idx != -1 and product_idx < len(parts):
+                product = parts[product_idx].strip()
+                if product and not self.looks_like_video_file(product):
+                    return product
+        except:
+            pass
+        return ROOT_PRODUCT_GROUP
+
+    def looks_like_video_file(self, segment: str) -> bool:
+        value = (segment or "").strip().lower()
+        if "." not in value:
+            return False
+        ext = value.rsplit(".", 1)[-1]
+        return ext in VIDEO_EXTENSIONS
 
     def extract_theme(self, path: str) -> str:
         # Simplified port of extractTheme from main.ts/scheduler.ts
