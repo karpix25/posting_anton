@@ -179,13 +179,22 @@ async def generate_daily_schedule(test_mode: bool = False):
         return
     
     # Get ALL videos from Yandex (list_files doesn't support path filtering)
-    folders = config.yandexFolders
+    folders = list(config.yandexFolders or [])
     logger.info(f"[Worker] Configured folders (for reference): {folders}")
     logger.info(f"[Worker] Days to generate: {config.daysToGenerate}")
     logger.info(f"[Worker] Global limits: IG={config.limits.instagram}, TT={config.limits.tiktok}, YT={config.limits.youtube}")
     
-    # Auto-include folders for all configured AI Clients to ensure we scan their files
-    if folders:
+    # Auto-include folders for configured AI clients only when the user configured
+    # narrow folder names. If a root path like disk:/ВИДЕО is present, adding client
+    # names would accidentally turn the Yandex filter into:
+    # "inside disk:/ВИДЕО AND path contains client.name".
+    # That breaks clients whose files are matched by regex rather than by a folder
+    # equal to the client name.
+    has_root_folder = any(
+        str(f).replace("\\", "/").strip().strip("/").lower().startswith("disk:/")
+        for f in folders
+    )
+    if folders and not has_root_folder:
         # Create a set of normalized existing folders for checks
         existing_norm = {f.replace("disk:", "").strip("/").lower() for f in folders}
         
