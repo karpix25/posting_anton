@@ -7,6 +7,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+ARCHIVE_PATH_PREFIXES = ("disk:/опубликовано",)
+
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
@@ -98,9 +100,14 @@ class YandexDiskService:
         folder_names = [folder for folder in normalized_folders if not folder.startswith("disk:/")]
 
         filtered = []
+        skipped_archive = 0
         for file in files:
             path = self._normalize_disk_path(str(file.get("path") or ""))
             parts = [part for part in path.replace("disk:/", "").split("/") if part]
+
+            if any(path.startswith(prefix) for prefix in ARCHIVE_PATH_PREFIXES):
+                skipped_archive += 1
+                continue
 
             if root_folders and not any(path.startswith(root) for root in root_folders):
                 continue
@@ -114,7 +121,10 @@ class YandexDiskService:
                     filtered.append(file)
                     break
 
-        logger.info(f"[Yandex] Filtered files by folders: {len(filtered)}/{len(files)} matched.")
+        logger.info(
+            f"[Yandex] Filtered files by folders: {len(filtered)}/{len(files)} matched "
+            f"(skipped_archive={skipped_archive})."
+        )
         return filtered
 
     def _normalize_disk_path(self, path: str) -> str:
