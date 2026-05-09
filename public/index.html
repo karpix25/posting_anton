@@ -27,7 +27,7 @@
     <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
       <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
       <button @click="saveConfig" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">
-        Сохранить изменения
+        {{ currentTab === 'settings' ? 'Сохранить общие настройки' : 'Сохранить изменения' }}
       </button>
     </div>
 
@@ -1134,10 +1134,14 @@
               },
               async saveConfig() {
                 try {
+                  const payload = { ...this.config };
+                  delete payload.cronSchedule;
+                  delete payload.schedule;
+
                   await fetch('/api/config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.config)
+                    body: JSON.stringify(payload)
                   });
                   alert('Сохранено успешно!');
                 } catch (e) {

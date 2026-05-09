@@ -16,7 +16,12 @@ class YandexDiskService:
         async with yadisk.AsyncClient(token=self.token) as client:
             return await client.check_token()
 
-    async def list_files(self, limit: int = 100000) -> List[Dict[str, Any]]:
+    async def list_files(
+        self,
+        limit: int = 100000,
+        force_refresh: bool = False,
+        folders: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         List video files with robust retry logic matching TypeScript implementation.
         Strategies:
@@ -53,6 +58,7 @@ class YandexDiskService:
                         })
                     
                     logger.info(f"[Yandex] Fetched {len(files)} files.")
+                    files = self._filter_files_by_folders(files, folders)
                     files.sort(key=lambda x: x["name"])
                     return files
 
@@ -75,6 +81,37 @@ class YandexDiskService:
             if last_error:
                 raise last_error
             return []
+
+    def _filter_files_by_folders(
+        self,
+        files: List[Dict[str, Any]],
+        folders: Optional[List[str]],
+    ) -> List[Dict[str, Any]]:
+        if not folders:
+            return files
+
+        normalized_folders = [self._normalize_disk_path(folder) for folder in folders if folder]
+        if not normalized_folders:
+            return files
+
+        filtered = []
+        for file in files:
+            path = self._normalize_disk_path(str(file.get("path") or ""))
+            parts = [part for part in path.replace("disk:/", "").split("/") if part]
+
+            for folder in normalized_folders:
+                if folder.startswith("disk:/") and path.startswith(folder):
+                    filtered.append(file)
+                    break
+                if folder in parts:
+                    filtered.append(file)
+                    break
+
+        logger.info(f"[Yandex] Filtered files by folders: {len(filtered)}/{len(files)} matched.")
+        return filtered
+
+    def _normalize_disk_path(self, path: str) -> str:
+        return path.replace("\\", "/").strip().strip("/").lower()
 
     async def get_download_link(self, path: str) -> str:
         """Get a temporary download link for a file."""
