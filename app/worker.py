@@ -506,15 +506,18 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
                     caption = generated.strip()
             else:
                 caption = _clean_social_caption(generated)
+                title = caption
 
             logger.info(f"   📝 AI Generated: Title='{title[:30]}...', Caption='{caption[:100]}...'")
         else:
             # AI completely failed - use informative fallback
             logger.error(f"   💥 [Post #{history_id}] AI FAILED for brand '{brand_name}' - using fallback")
             caption = f"Новинка от {brand_name}! 🔥 #shorts #новинка #by{author_name.replace(' ', '') if author_name else ''}"
+            title = caption
             logger.warning(f"   ⚠️ Using fallback caption")
     else:
         caption = f"{author_name} video #shorts"
+        title = caption
         logger.info(f"   📝 Using default caption (no AI client)")
     
     # Get download link
