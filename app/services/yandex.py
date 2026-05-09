@@ -94,15 +94,22 @@ class YandexDiskService:
         if not normalized_folders:
             return files
 
+        root_folders = [folder for folder in normalized_folders if folder.startswith("disk:/")]
+        folder_names = [folder for folder in normalized_folders if not folder.startswith("disk:/")]
+
         filtered = []
         for file in files:
             path = self._normalize_disk_path(str(file.get("path") or ""))
             parts = [part for part in path.replace("disk:/", "").split("/") if part]
 
-            for folder in normalized_folders:
-                if folder.startswith("disk:/") and path.startswith(folder):
-                    filtered.append(file)
-                    break
+            if root_folders and not any(path.startswith(root) for root in root_folders):
+                continue
+
+            if not folder_names:
+                filtered.append(file)
+                continue
+
+            for folder in folder_names:
                 if folder in parts:
                     filtered.append(file)
                     break

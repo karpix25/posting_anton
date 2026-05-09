@@ -84,6 +84,26 @@ class UploadPostClient:
                 logger.error(f"[UploadPost] Error fetching scheduled posts: {e}")
                 return []
 
+    async def cancel_scheduled_post(self, job_id: str) -> bool:
+        """Cancel a pending scheduled post in Upload Post by job ID."""
+        if not job_id:
+            return False
+
+        url = f"{SCHEDULE_API_URL}/{job_id}"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.delete(url, headers=self.headers)
+                data = response.json() if response.content else {}
+                if response.status_code < 400 and data.get("success", True):
+                    logger.info(f"[UploadPost] Cancelled scheduled job {job_id}")
+                    return True
+
+                logger.warning(f"[UploadPost] Failed to cancel job {job_id}: {response.status_code} {data}")
+                return False
+            except Exception as e:
+                logger.error(f"[UploadPost] Error cancelling job {job_id}: {e}")
+                return False
+
     async def get_analytics(self, profile_username: str, platforms: List[str]) -> Dict[str, Any]:
         """Fetch analytics for specific profile and platforms."""
         url = f"https://api.upload-post.com/api/analytics/{profile_username}"

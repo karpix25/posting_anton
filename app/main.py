@@ -833,16 +833,48 @@ async def get_today_stats(session: AsyncSession = Depends(get_session)):
 
 @app.post("/api/cleanup")
 async def cleanup_queue(session: AsyncSession = Depends(get_session)):
-    """Delete all queued (not yet published) posts."""
+    """Cancel Upload Post scheduled jobs and delete local queued posts."""
     try:
         from sqlalchemy import delete
-        stmt = delete(PostingHistory).where(PostingHistory.status == "queued")
+
+        scheduled_posts = await upload_post_client.get_scheduled_posts()
+        cancelled_count = 0
+        failed_count = 0
+        seen_job_ids = set()
+
+        for post in scheduled_posts:
+            if not isinstance(post, dict):
+                continue
+            job_id = post.get("job_id") or post.get("jobId") or post.get("id")
+            if not job_id or job_id in seen_job_ids:
+                continue
+            seen_job_ids.add(job_id)
+
+            if await upload_post_client.cancel_scheduled_post(str(job_id)):
+                cancelled_count += 1
+            else:
+                failed_count += 1
+
+        stmt = delete(PostingHistory).where(PostingHistory.status.in_(["queued", "processing"]))
         result = await session.execute(stmt)
         await session.commit()
         
         deleted_count = result.rowcount
-        logger.info(f"🗑️ Cleanup: Deleted {deleted_count} queued posts")
-        return {"success": True, "message": f"Удалено {deleted_count} запланированных постов", "deleted": deleted_count}
+        logger.info(
+            f"🗑️ Cleanup: cancelled={cancelled_count}, failed_cancel={failed_count}, "
+            f"deleted_local={deleted_count}"
+        )
+        return {
+            "success": failed_count == 0,
+            "message": (
+                f"Отменено в UploadPost: {cancelled_count}. "
+                f"Не удалось отменить: {failed_count}. "
+                f"Удалено локально: {deleted_count}."
+            ),
+            "cancelled": cancelled_count,
+            "failed_cancel": failed_count,
+            "deleted": deleted_count,
+        }
     except Exception as e:
         logger.error(f"Cleanup failed: {e}")
         return {"success": False, "message": f"Ошибка: {str(e)}"}
