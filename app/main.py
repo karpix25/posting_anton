@@ -364,7 +364,8 @@ async def get_profile_status_summary():
 @app.head("/api/uploadpost/webhook")
 @app.get("/api/webhooks/upload-post")
 @app.head("/api/webhooks/upload-post")
-async def upload_post_webhook_health():
+async def upload_post_webhook_health(request: Request):
+    logger.info(f"[UploadPostWebhook] Health check hit: method={request.method} path={request.url.path}")
     return {"success": True, "status": "ok", "message": "UploadPost webhook is ready"}
 
 
@@ -378,10 +379,22 @@ async def upload_post_webhook(request: Request):
     - social_account_disconnected
     - social_account_reauth_required
     """
+    logger.info(
+        f"[UploadPostWebhook] Incoming request: method={request.method} path={request.url.path} "
+        f"query={dict(request.query_params)}"
+    )
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    logger.info(
+        "[UploadPostWebhook] Payload received: "
+        f"event={body.get('event') or body.get('type') or body.get('event_name') or ''} "
+        f"username={body.get('username') or body.get('profile_username') or body.get('user') or body.get('account') or ''} "
+        f"platform={body.get('platform') or body.get('social_account') or body.get('provider') or ''} "
+        f"keys={sorted(list(body.keys()))}"
+    )
 
     # Optional shared-token check for safer endpoint exposure.
     if settings.UPLOAD_POST_WEBHOOK_TOKEN:
