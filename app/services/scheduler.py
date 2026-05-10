@@ -1,5 +1,6 @@
 import random
 import logging
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Set, Optional, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +67,25 @@ class ContentScheduler:
         for theme, brands in videos_by_theme.items():
             total = sum(len(v) for v in brands.values())
             logger.info(f"  - Theme '{theme}': {total} videos across {len(brands)} brands: {list(brands.keys())[:10]}")  # Show first 10 brands
+
+        profile_theme_counts = Counter(self.normalize_theme(p.theme_key) for p in active_profiles)
+        unmatched_profiles = [
+            {
+                "username": p.username,
+                "theme_key": p.theme_key,
+                "normalized_theme": self.normalize_theme(p.theme_key),
+                "platforms": p.platforms,
+            }
+            for p in active_profiles
+            if self.normalize_theme(p.theme_key) not in videos_by_theme
+        ]
+        logger.info(f"[Scheduler] Active profile themes requested: {dict(profile_theme_counts.most_common())}")
+        if unmatched_profiles:
+            logger.warning(
+                f"[Scheduler] Profiles with no matching Yandex theme "
+                f"({len(unmatched_profiles)}): {unmatched_profiles}"
+            )
+            logger.warning(f"[Scheduler] Available Yandex themes: {list(videos_by_theme.keys())}")
         
         profile_slots: Dict[str, List[datetime]] = occupied_slots.copy()
         for p in active_profiles:
