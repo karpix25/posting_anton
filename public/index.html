@@ -372,7 +372,7 @@
                 <span>Применить категорию ко всем:</span>
                 <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
                   <option disabled value="">Выберите...</option>
-                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                  <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
                     {{ theme }}
                   </option>
                 </select>
@@ -456,7 +456,10 @@
                           <select v-model="profile.theme_key"
                             class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
                             <option value="" class="text-gray-400">Без категории</option>
-                            <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                            <option v-if="profile.theme_key && !isSchedulerTheme(profile.theme_key)" :value="profile.theme_key" disabled>
+                              {{ profile.theme_key }} (нет файлов)
+                            </option>
+                            <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
                               {{ theme }}
                             </option>
                           </select>
@@ -581,7 +584,7 @@
                 <span>Применить категорию ко всем:</span>
                 <select v-model="bulkThemeKeyDisabled" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
                   <option disabled value="">Выберите...</option>
-                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
+                  <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
                     {{ theme }}
                   </option>
                 </select>
@@ -965,9 +968,31 @@
                 (this.config?.profiles || []).forEach(p => addTheme(p.theme_key || ''));
 
                 return Object.values(byNorm).sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }));
+              },
+              schedulerThemes() {
+                // Categories backed by actual files in the current Yandex scan.
+                // Existing profile theme_key values are intentionally not added here,
+                // because they can be stale and produce zero scheduled posts.
+                const byNorm = {};
+                const addTheme = (name) => {
+                  if (!name || typeof name !== 'string') return;
+                  const trimmed = name.trim();
+                  if (!trimmed) return;
+                  const key = trimmed.toLowerCase();
+                  if (!byNorm[key]) byNorm[key] = trimmed;
+                };
+
+                Object.keys(this.stats?.byCategory || {}).forEach(addTheme);
+
+                return Object.values(byNorm).sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }));
               }
             },
             methods: {
+              isSchedulerTheme(theme) {
+                if (!theme || typeof theme !== 'string') return false;
+                const value = theme.trim().toLowerCase();
+                return this.schedulerThemes.some(t => t.trim().toLowerCase() === value);
+              },
               getProfileStatus(profile) {
                 return (profile?.profile_status || 'unknown').toLowerCase();
               },
