@@ -53,38 +53,99 @@ FILES_CACHE_TTL = 30 * 60  # 30 minutes
 profile_status_sync_task: Optional[asyncio.Task] = None
 
 
+def _walk_uploadpost_payload(value: Any):
+    if isinstance(value, dict):
+        yield value
+        for nested in value.values():
+            yield from _walk_uploadpost_payload(nested)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_uploadpost_payload(item)
+
+
+def _first_uploadpost_value(body: Dict[str, Any], keys: set[str]) -> Optional[str]:
+    normalized_keys = {key.lower() for key in keys}
+    for source in _walk_uploadpost_payload(body):
+        for key, value in source.items():
+            if str(key).lower() not in normalized_keys:
+                continue
+            if isinstance(value, (str, int, float)) and str(value).strip():
+                return str(value).strip()
+    return None
+
+
 def _extract_uploadpost_publication_url(body: Dict[str, Any]) -> Optional[str]:
-    result = body.get("result") if isinstance(body.get("result"), dict) else {}
-    for source in (result, body):
-        for key in ("url", "post_url", "postUrl", "publication_url", "publicationUrl", "permalink", "link"):
-            value = source.get(key)
-            if isinstance(value, str) and value.strip():
-                return canonical_publication_url(value)
+    publication_url = _first_uploadpost_value(
+        body,
+        {
+            "url",
+            "post_url",
+            "postUrl",
+            "publication_url",
+            "publicationUrl",
+            "published_url",
+            "publishedUrl",
+            "permalink",
+            "link",
+            "share_url",
+            "shareUrl",
+        },
+    )
+    if publication_url:
+        return canonical_publication_url(publication_url)
     return None
 
 
 def _extract_uploadpost_tracking_ids(body: Dict[str, Any]) -> Dict[str, str]:
-    result = body.get("result") if isinstance(body.get("result"), dict) else {}
     tracking_ids: Dict[str, str] = {}
-    for key in ("job_id", "jobId", "request_id", "requestId"):
-        for source in (body, result):
-            value = source.get(key)
-            if isinstance(value, str) and value.strip():
-                tracking_ids[key] = value.strip()
-                break
+    keys = {
+        "job_id",
+        "jobId",
+        "request_id",
+        "requestId",
+        "schedule_id",
+        "scheduleId",
+        "post_id",
+        "postId",
+        "publication_id",
+        "publicationId",
+        "upload_id",
+        "uploadId",
+        "upload_post_id",
+        "uploadPostId",
+    }
+    normalized_keys = {key.lower() for key in keys}
+    for source in _walk_uploadpost_payload(body):
+        for key, value in source.items():
+            if str(key).lower() not in normalized_keys:
+                continue
+            if isinstance(value, (str, int, float)) and str(value).strip():
+                tracking_ids[str(key)] = str(value).strip()
     return tracking_ids
 
 
 def _is_successful_upload_completed_event(body: Dict[str, Any], event_name: str) -> bool:
     event_compact = event_name.strip().lower().replace("-", "_")
-    if event_compact not in {"upload_completed", "publication_completed", "post_published"}:
+    publication_url = _extract_uploadpost_publication_url(body)
+    tracking_ids = _extract_uploadpost_tracking_ids(body)
+    if publication_url and tracking_ids:
+        return True
+
+    success_events = {
+        "upload_completed",
+        "publication_completed",
+        "post_published",
+        "publish_completed",
+        "publication_success",
+        "upload_post_published",
+    }
+    if event_compact not in success_events and "publish" not in event_compact:
         return False
 
-    result = body.get("result") if isinstance(body.get("result"), dict) else {}
-    success_value = result.get("success", body.get("success"))
-    status_value = str(result.get("status") or body.get("status") or "").strip().lower()
+    success_value = _first_uploadpost_value(body, {"success", "ok"})
+    status_value = str(_first_uploadpost_value(body, {"status", "state"}) or "").strip().lower()
 
-    return success_value is True or status_value in {"success", "successful", "completed", "published"}
+    return str(success_value).lower() == "true" or status_value in {"success", "successful", "completed", "published"}
 
 
 async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_name: str) -> Optional[Dict[str, Any]]:
@@ -111,7 +172,14 @@ async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_nam
         target = None
         for post in posts:
             meta = post.meta or {}
-            if meta.get("job_id") in tracking_values or meta.get("request_id") in tracking_values:
+            meta_tracking_values = {
+                str(value).strip()
+                for key, value in meta.items()
+                if key in {"job_id", "request_id", "schedule_id", "post_id", "publication_id", "upload_id", "upload_post_id"}
+                and value is not None
+                and str(value).strip()
+            }
+            if meta_tracking_values.intersection(tracking_values):
                 target = post
                 break
 
@@ -139,6 +207,8 @@ async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_nam
         target.meta = sora2_result["meta"]
         session.add(target)
         await session.commit()
+
+    logger.info(f"[UploadPostWebhook] Publication URL saved for post #{target.id}: {publication_url}")
 
     if not was_success:
         try:
