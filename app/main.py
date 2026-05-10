@@ -360,7 +360,16 @@ async def get_profile_status_summary():
         return {"success": False, "error": str(e)}
 
 
+@app.get("/api/uploadpost/webhook")
+@app.head("/api/uploadpost/webhook")
+@app.get("/api/webhooks/upload-post")
+@app.head("/api/webhooks/upload-post")
+async def upload_post_webhook_health():
+    return {"success": True, "status": "ok", "message": "UploadPost webhook is ready"}
+
+
 @app.post("/api/uploadpost/webhook")
+@app.post("/api/webhooks/upload-post")
 async def upload_post_webhook(request: Request):
     """
     Receive Upload Post profile connectivity events and patch local profile statuses.
