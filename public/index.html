@@ -372,7 +372,7 @@
                 <span>Применить категорию ко всем:</span>
                 <select v-model="bulkThemeKey" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
                   <option disabled value="">Выберите...</option>
-                  <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
                     {{ theme }}
                   </option>
                 </select>
@@ -456,10 +456,7 @@
                           <select v-model="profile.theme_key"
                             class="w-full border-b border-transparent hover:border-gray-300 p-1 bg-transparent text-sm">
                             <option value="" class="text-gray-400">Без категории</option>
-                            <option v-if="profile.theme_key && !isSchedulerTheme(profile.theme_key)" :value="profile.theme_key" disabled>
-                              {{ profile.theme_key }} (нет файлов)
-                            </option>
-                            <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
+                            <option v-for="theme in availableThemes" :key="theme" :value="theme">
                               {{ theme }}
                             </option>
                           </select>
@@ -584,7 +581,7 @@
                 <span>Применить категорию ко всем:</span>
                 <select v-model="bulkThemeKeyDisabled" class="p-1 px-2 rounded text-black w-40 border border-gray-300">
                   <option disabled value="">Выберите...</option>
-                  <option v-for="theme in schedulerThemes" :key="theme" :value="theme">
+                  <option v-for="theme in availableThemes" :key="theme" :value="theme">
                     {{ theme }}
                   </option>
                 </select>
