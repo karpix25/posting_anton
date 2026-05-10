@@ -57,6 +57,7 @@ class ContentScheduler:
         logger.info(f"[Scheduler] Active profiles with platforms: {len(active_profiles)}/{len(profiles)}")
         
         schedule = []
+        scheduled_profile_counts: Counter[str] = Counter()
         
         # Helper to extract metadata from path
         # Assuming simple extraction for now, mirroring the complex regex logic from TS if needed
@@ -242,7 +243,31 @@ class ContentScheduler:
                                 "platform": pl,
                                 "publish_at": publish_time.isoformat()
                             })
+                            scheduled_profile_counts[profile.username] += 1
                             profile_counts[profile.username][pl] += 1
+
+        zero_scheduled_profiles = []
+        for profile in active_profiles:
+            if scheduled_profile_counts.get(profile.username, 0) > 0:
+                continue
+
+            normalized_theme = self.normalize_theme(profile.theme_key)
+            theme_brands = videos_by_theme.get(normalized_theme, {})
+            zero_scheduled_profiles.append({
+                "username": profile.username,
+                "theme_key": profile.theme_key,
+                "normalized_theme": normalized_theme,
+                "platforms": profile.platforms,
+                "theme_found": normalized_theme in videos_by_theme,
+                "available_brands": list(theme_brands.keys()),
+                "available_video_count": sum(len(videos) for videos in theme_brands.values()),
+            })
+
+        if zero_scheduled_profiles:
+            logger.warning(
+                f"[Scheduler] Active profiles that received 0 scheduled posts "
+                f"({len(zero_scheduled_profiles)}): {zero_scheduled_profiles}"
+            )
 
         return schedule
 
