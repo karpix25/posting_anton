@@ -82,6 +82,7 @@ def _summarize_profiles_for_log(profiles: List[Any]) -> List[Dict[str, Any]]:
 
 def _short_youtube_title_from_text(text: str) -> str:
     """Build a compact YouTube title from free-form text."""
+    text = _strip_youtube_template_tokens(text)
     clean = re.sub(r"#\S+", "", text or "")
     clean = re.sub(r"\s+", " ", clean).strip()
     if not clean:
@@ -98,6 +99,20 @@ def _extract_tagged_section(text: str, tag_name: str) -> str:
     return match.group(1).strip() if match else ""
 
 
+def _strip_youtube_template_tokens(text: str) -> str:
+    text = text or ""
+    text = re.sub(r"(?is)\[/?YT_(?:TITLE|DESCRIPTION)\]", " ", text)
+    text = re.sub(r"(?i)/?YT_(?:TITLE|DESCRIPTION)\b", " ", text)
+    text = re.sub(r"(?im)^\s*(?:YT_TITLE|YT_DESCRIPTION)\s*$", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _is_youtube_placeholder(text: str) -> bool:
+    compact = re.sub(r"[\s\[\]/_:-]+", "", (text or "").strip().lower())
+    return compact in {"yttitle", "ytdescription"}
+
+
 def _clean_social_caption(generated: str) -> str:
     text = (generated or "").strip()
     if not text:
@@ -111,7 +126,7 @@ def _clean_social_caption(generated: str) -> str:
         parts = [p.strip() for p in text.split("$$$") if p.strip()]
         return ("\n\n".join(parts[1:]).strip() if len(parts) > 1 else (parts[0] if parts else text)).strip()
 
-    return text
+    return _strip_youtube_template_tokens(text)
 
 
 def _parse_youtube_text(generated: str) -> tuple[str, str]:
@@ -163,6 +178,13 @@ def _parse_youtube_text(generated: str) -> tuple[str, str]:
             description = "\n".join(lines[1:]).strip()
         else:
             description = text
+
+    title = _strip_youtube_template_tokens(title)
+    description = _strip_youtube_template_tokens(description)
+    if _is_youtube_placeholder(title):
+        title = ""
+    if _is_youtube_placeholder(description):
+        description = ""
 
     # If title clearly looks like full description, move it to description
     looks_like_description = (
@@ -540,21 +562,23 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
                 title, caption = _parse_youtube_text(generated)
                 if not caption:
                     # Never leave description empty for YouTube
-                    caption = generated.strip()
+                    caption = _strip_youtube_template_tokens(generated)
+                if not title:
+                    title = _short_youtube_title_from_text(caption) or "Видео Shorts"
             else:
                 caption = _clean_social_caption(generated)
-                title = caption
+                title = ""
 
             logger.info(f"   📝 AI Generated: Title='{title[:30]}...', Caption='{caption[:100]}...'")
         else:
             # AI completely failed - use informative fallback
             logger.error(f"   💥 [Post #{history_id}] AI FAILED for brand '{brand_name}' - using fallback")
             caption = f"Новинка от {brand_name}! 🔥 #shorts #новинка #by{author_name.replace(' ', '') if author_name else ''}"
-            title = caption
+            title = _short_youtube_title_from_text(caption) if platform == 'youtube' else ""
             logger.warning(f"   ⚠️ Using fallback caption")
     else:
         caption = f"{author_name} video #shorts"
-        title = caption
+        title = _short_youtube_title_from_text(caption) if platform == 'youtube' else ""
         logger.info(f"   📝 Using default caption (no AI client)")
     
     # Get download link

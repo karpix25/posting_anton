@@ -159,13 +159,13 @@ class UploadPostClient:
             'async_upload': 'true'  # Keep lowercase string form-data value expected by API
         }
 
-        # Upload Post docs: global `title` is the default text field, while
-        # platform-specific title fields override it. Send both so UploadPost UI
-        # never shows "No title" for scheduled posts.
-        if fallback_title:
+        # For YouTube the global title is useful as a fallback. For TikTok and
+        # Instagram it can be rendered in addition to the platform-specific text,
+        # which makes the caption look duplicated after publishing.
+        if is_youtube and fallback_title:
             data['title'] = _normalize_text(
                 fallback_title,
-                YOUTUBE_TITLE_MAX_CHARS if is_youtube else max(INSTAGRAM_TITLE_MAX_CHARS, TIKTOK_TITLE_MAX_CHARS)
+                YOUTUBE_TITLE_MAX_CHARS
             )
 
         # Add scheduled_date in ISO format
