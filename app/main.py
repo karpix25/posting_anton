@@ -468,7 +468,11 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         if use_cached_files:
             files = files_cache
         else:
-            files = await yandex_service.list_files(limit=100000)
+            files = await yandex_service.list_files(
+                limit=100000,
+                force_refresh=refresh,
+                folders=config.yandexFolders,
+            )
             files_cache = files
             files_cache_time = now_ts
         

@@ -1080,10 +1080,10 @@
                   this.uploadPostSummary = { success: false, total: 0, connected: 0, attention: 0, disconnected: 0 };
                 }
               },
-              async loadStats() {
+              async loadStats(refresh = false) {
                 this.statsLoading = true;
                 try {
-                  const res = await fetch('/api/stats');
+                  const res = await fetch(`/api/stats${refresh ? '?refresh=true' : ''}`);
                   if (res.ok) {
                     this.stats = await res.json();
 
