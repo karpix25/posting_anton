@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import time
+from collections import Counter
 from datetime import datetime
 from typing import Any, Dict, List
 from app.config import settings
@@ -55,6 +56,17 @@ def _extract_post_platforms(post: Dict[str, Any]) -> List[str]:
             normalized.append(norm)
 
     return normalized
+
+
+def _summarize_ai_clients_for_log(clients: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "name": client.name,
+            "regex": client.regex,
+            "quota": client.quota,
+        }
+        for client in clients
+    ]
 
 
 def _short_youtube_title_from_text(text: str) -> str:
@@ -174,6 +186,10 @@ async def generate_daily_schedule(test_mode: bool = False):
             config = await get_db_config(session)
             break
         logger.info("   ✅ Config loaded from DB")
+        logger.info(
+            f"[Worker] AI clients configured for matching after Yandex scan "
+            f"({len(config.clients)}): {_summarize_ai_clients_for_log(config.clients)}"
+        )
     except Exception as e:
         logger.error(f"   ❌ Failed to load config: {e}")
         return
@@ -353,6 +369,15 @@ async def generate_daily_schedule(test_mode: bool = False):
         force_limit = 1 if test_mode else None
         schedule = await scheduler.generate_schedule(all_videos, active_profiles, occupied_slots, existing_counts, force_limit=force_limit)
         logger.info(f"📅 [Worker] Schedule generated with {len(schedule)} posts")
+        if schedule:
+            profile_counts = Counter(post["profile"].username for post in schedule)
+            platform_counts = Counter(post["platform"] for post in schedule)
+            brand_counts = Counter(extract_brand(post["video"]["path"]) for post in schedule)
+            theme_counts = Counter(extract_theme(post["video"]["path"], config.themeAliases) for post in schedule)
+            logger.info(f"[Worker] Schedule distribution by profile: {dict(profile_counts.most_common())}")
+            logger.info(f"[Worker] Schedule distribution by platform: {dict(platform_counts.most_common())}")
+            logger.info(f"[Worker] Schedule distribution by theme: {dict(theme_counts.most_common())}")
+            logger.info(f"[Worker] Schedule distribution by brand: {dict(brand_counts.most_common())}")
         logger.info(f"✅ [Worker] Generated {len(schedule)} new posts to schedule.")
         
         for post in schedule:
