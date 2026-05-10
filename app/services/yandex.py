@@ -277,6 +277,11 @@ class YandexDiskService:
         async with yadisk.AsyncClient(token=self.token) as client:
             return await client.get_download_link(path)
 
+    async def exists(self, path: str) -> bool:
+        """Check whether a Yandex.Disk resource exists."""
+        async with yadisk.AsyncClient(token=self.token) as client:
+            return await client.exists(path)
+
     async def delete_file(self, path: str, permanently: bool = True):
         """Delete a file."""
         async with yadisk.AsyncClient(token=self.token) as client:

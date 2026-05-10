@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional
 from app.config import settings
+import re
 
 VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
 
@@ -33,6 +34,21 @@ def extract_brand(path: str) -> str:
     except:
             pass
     return "unknown"
+
+def extract_brand_with_regex(path: str, client_regexes) -> str:
+    """
+    Match a brand against configured client regexes first, then fall back to positional extraction.
+    Returns the normalized client name when matched.
+    """
+    for client_name, client_regex in client_regexes or []:
+        try:
+            if client_regex and client_regex.search(path):
+                return normalize(client_name)
+        except re.error:
+            continue
+
+    raw = extract_brand(path)
+    return raw
 
 def extract_author(path: str) -> str:
     parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
