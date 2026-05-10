@@ -435,24 +435,7 @@ class ContentScheduler:
         # Simplified port of extractTheme from main.ts/scheduler.ts
         # Logic: /ВИДЕО/Author/Category/Brand/file.mp4
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
-        
-        # Strategy 1: Search for known theme aliases in path
-        aliases = self.config.themeAliases or {}
-        for canonical, list_ in aliases.items():
-            # Check canonical first
-            norm_canonical = self.normalize(canonical)
-            for p in parts:
-                if self.normalize(p) == norm_canonical:
-                    return canonical
-            
-            # Check aliases
-            for alias in list_:
-                norm_alias = self.normalize(alias)
-                for p in parts:
-                    if self.normalize(p) == norm_alias:
-                        return canonical
 
-        # Strategy 2: Positional
         try:
             # Find index of "video"
             v_idx = -1
@@ -464,6 +447,10 @@ class ContentScheduler:
             if v_idx != -1 and v_idx + 2 < len(parts):
                  raw = parts[v_idx + 2].split("(")[0].strip() # remove comments like (old)
                  return self.normalize_theme(raw)
+            elif len(parts) >= 2:
+                 raw = parts[-2].split("(")[0].strip()
+                 if not self.looks_like_video_file(raw):
+                     return self.normalize_theme(raw)
         except:
             pass
         return "unknown"
