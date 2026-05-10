@@ -185,9 +185,14 @@ def _parse_youtube_text(generated: str) -> tuple[str, str]:
 
     return title, description.strip()
 
-async def generate_daily_schedule(test_mode: bool = False):
+async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False):
     """Main automation function - generates schedule and queues posts."""
-    test_str = " (TEST MODE: 1 post per platform)" if test_mode else ""
+    mode_labels = []
+    if test_mode:
+        mode_labels.append("TEST MODE: 1 post per platform")
+    if dry_run:
+        mode_labels.append("DRY RUN: no DB writes or UploadPost calls")
+    test_str = f" ({'; '.join(mode_labels)})" if mode_labels else ""
     logger.info(f"🚀 [Worker] Starting schedule generation task{test_str}...")
     
     # Load config from DATABASE, not file!
@@ -394,6 +399,22 @@ async def generate_daily_schedule(test_mode: bool = False):
             logger.info(f"[Worker] Schedule distribution by theme: {dict(theme_counts.most_common())}")
             logger.info(f"[Worker] Schedule distribution by brand: {dict(brand_counts.most_common())}")
         logger.info(f"✅ [Worker] Generated {len(schedule)} new posts to schedule.")
+
+        if dry_run:
+            preview = [
+                {
+                    "profile": post["profile"].username,
+                    "platform": post["platform"],
+                    "theme": extract_theme(post["video"]["path"], config.themeAliases),
+                    "brand": extract_brand(post["video"]["path"]),
+                    "publish_at": post["publish_at"],
+                    "video": post["video"]["path"],
+                }
+                for post in schedule[:20]
+            ]
+            logger.info(f"🧪 [Worker] Dry run preview (first {len(preview)}/{len(schedule)} posts): {preview}")
+            logger.info("🧪 [Worker] Dry run complete - no DB records created and no UploadPost requests sent.")
+            return
         
         for post in schedule:
             video = post["video"]

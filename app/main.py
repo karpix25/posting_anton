@@ -892,12 +892,18 @@ async def cleanup_queue(session: AsyncSession = Depends(get_session)):
         return {"success": False, "message": f"Ошибка: {str(e)}"}
 
 @app.post("/api/run")
-async def run_automation():
+async def run_automation(test_mode: bool = False, dry_run: bool = False):
     """Manually trigger the daily schedule generation."""
     from app.worker import generate_daily_schedule
     # Run in background without blocking
-    asyncio.create_task(generate_daily_schedule())
-    return {"success": True, "message": "Automation started in background"}
+    asyncio.create_task(generate_daily_schedule(test_mode=test_mode, dry_run=dry_run))
+    if dry_run:
+        message = "Dry-run started in background. No DB records or UploadPost requests will be created."
+    elif test_mode:
+        message = "Test automation started in background."
+    else:
+        message = "Automation started in background"
+    return {"success": True, "message": message, "test_mode": test_mode, "dry_run": dry_run}
 
 @app.get("/api/logs")
 async def get_logs(lines: int = 100):
