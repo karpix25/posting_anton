@@ -69,6 +69,17 @@ def _summarize_ai_clients_for_log(clients: List[Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _summarize_profiles_for_log(profiles: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "username": profile.username,
+            "theme_key": profile.theme_key,
+            "platforms": profile.platforms,
+        }
+        for profile in profiles
+    ]
+
+
 def _short_youtube_title_from_text(text: str) -> str:
     """Build a compact YouTube title from free-form text."""
     clean = re.sub(r"#\S+", "", text or "")
@@ -230,6 +241,9 @@ async def generate_daily_schedule(test_mode: bool = False):
                 normalized.append(norm)
         p.platforms = normalized
     logger.info(f"[Worker] Active profiles: {len(active_profiles)}")
+    if active_profiles:
+        active_theme_counts = Counter(p.theme_key for p in active_profiles)
+        logger.info(f"[Worker] Active profiles by theme before API validation: {dict(active_theme_counts.most_common())}")
     # Fetch profiles from API to validate connections
     from app.services.platforms import upload_post_client
     try:
@@ -308,8 +322,9 @@ async def generate_daily_schedule(test_mode: bool = False):
         active_profiles = safe_profiles
 
     if active_profiles:
-        for p in active_profiles[:5]:  # Show first 5 after validation
-            logger.info(f"  - {p.username}: theme_key='{p.theme_key}', platforms={p.platforms}")
+        validated_theme_counts = Counter(p.theme_key for p in active_profiles)
+        logger.info(f"[Worker] Validated profiles by theme: {dict(validated_theme_counts.most_common())}")
+        logger.info(f"[Worker] Validated profiles for publishing: {_summarize_profiles_for_log(active_profiles)}")
 
     # Fetch existing scheduled posts from Upload Post API to avoid conflicts
     from app.services.platforms import upload_post_client
