@@ -8,6 +8,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 ARCHIVE_PATH_PREFIXES = ("disk:/опубликовано",)
+VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
 
 class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
@@ -61,6 +62,7 @@ class YandexDiskService:
                     
                     logger.info(f"[Yandex] Fetched {len(files)} files.")
                     files = self._filter_files_by_folders(files, folders)
+                    files = await self._augment_files_from_folder_tree(files, folders)
                     files.sort(key=lambda x: x["name"])
                     return files
 
@@ -126,6 +128,146 @@ class YandexDiskService:
             f"(skipped_archive={skipped_archive})."
         )
         return filtered
+
+    async def _augment_files_from_folder_tree(
+        self,
+        files: List[Dict[str, Any]],
+        folders: Optional[List[str]],
+    ) -> List[Dict[str, Any]]:
+        root_folders = [
+            folder.strip().strip("/")
+            for folder in (folders or [])
+            if folder and self._normalize_disk_path(folder).startswith("disk:/")
+        ]
+        if not root_folders:
+            return files
+
+        existing_paths = {
+            self._normalize_disk_path(str(file.get("path") or ""))
+            for file in files
+            if file.get("path")
+        }
+        existing_md5s = {
+            str(file.get("md5"))
+            for file in files
+            if file.get("md5")
+        }
+
+        extra_files = await self._list_video_files_by_folder_tree(root_folders)
+        added = []
+        for file in extra_files:
+            path_key = self._normalize_disk_path(str(file.get("path") or ""))
+            md5 = str(file.get("md5")) if file.get("md5") else ""
+            if not path_key or path_key in existing_paths:
+                continue
+            if md5 and md5 in existing_md5s:
+                continue
+            existing_paths.add(path_key)
+            if md5:
+                existing_md5s.add(md5)
+            added.append(file)
+
+        if added:
+            logger.info(
+                f"[Yandex] Folder tree scan added {len(added)} videos missing from global media index "
+                f"(tree_total={len(extra_files)})."
+            )
+            return files + added
+
+        logger.info(f"[Yandex] Folder tree scan found no additional videos (tree_total={len(extra_files)}).")
+        return files
+
+    async def _list_video_files_by_folder_tree(
+        self,
+        root_folders: List[str],
+        concurrency: int = 8,
+    ) -> List[Dict[str, Any]]:
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        for folder in root_folders:
+            await queue.put(folder)
+
+        headers = {"Authorization": f"OAuth {self.token}"}
+        visited = set()
+        files: List[Dict[str, Any]] = []
+        lock = asyncio.Lock()
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async def worker():
+                while True:
+                    path = await queue.get()
+                    try:
+                        normalized_path = self._normalize_disk_path(path)
+                        async with lock:
+                            if normalized_path in visited:
+                                continue
+                            visited.add(normalized_path)
+
+                        if any(normalized_path.startswith(prefix) for prefix in ARCHIVE_PATH_PREFIXES):
+                            continue
+
+                        items = await self._list_resource_items(client, path, headers)
+                        for item in items:
+                            item_type = item.get("type")
+                            item_path = item.get("path")
+                            if not item_path:
+                                continue
+                            if item_type == "dir":
+                                await queue.put(str(item_path))
+                            elif self._is_video_file_item(item):
+                                files.append(self._resource_item_to_file(item))
+                    finally:
+                        queue.task_done()
+
+            tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+            await queue.join()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        logger.info(f"[Yandex] Folder tree scan visited {len(visited)} directories and found {len(files)} videos.")
+        return files
+
+    async def _list_resource_items(
+        self,
+        client: httpx.AsyncClient,
+        path: str,
+        headers: Dict[str, str],
+    ) -> List[Dict[str, Any]]:
+        params = {
+            "path": path,
+            "limit": 10000,
+            "fields": "_embedded.items.name,_embedded.items.type,_embedded.items.media_type,"
+                      "_embedded.items.path,_embedded.items.md5,_embedded.items.size,_embedded.items.created",
+        }
+        try:
+            resp = await client.get(self.base_url, params=params, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            return (data.get("_embedded") or {}).get("items") or []
+        except Exception as e:
+            logger.warning(f"[Yandex] Failed to list resource items in {path}: {e}")
+            return []
+
+    def _is_video_file_item(self, item: Dict[str, Any]) -> bool:
+        if item.get("type") != "file":
+            return False
+        if item.get("media_type") == "video":
+            return True
+        name = str(item.get("name") or "").strip().lower()
+        if "." not in name:
+            return False
+        return name.rsplit(".", 1)[-1] in VIDEO_EXTENSIONS
+
+    def _resource_item_to_file(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        path = str(item.get("path") or "")
+        return {
+            "name": str(item.get("name") or path.rsplit("/", 1)[-1]),
+            "path": path,
+            "url": path,
+            "md5": item.get("md5"),
+            "size": item.get("size"),
+            "created": item.get("created"),
+        }
 
     def _normalize_disk_path(self, path: str) -> str:
         return path.replace("\\", "/").strip().strip("/").lower()
