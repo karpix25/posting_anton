@@ -567,7 +567,7 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
                     title = _short_youtube_title_from_text(caption) or "Видео Shorts"
             else:
                 caption = _clean_social_caption(generated)
-                title = ""
+                title = caption
 
             logger.info(f"   📝 AI Generated: Title='{title[:30]}...', Caption='{caption[:100]}...'")
         else:

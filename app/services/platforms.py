@@ -159,13 +159,13 @@ class UploadPostClient:
             'async_upload': 'true'  # Keep lowercase string form-data value expected by API
         }
 
-        # For YouTube the global title is useful as a fallback. For TikTok and
-        # Instagram it can be rendered in addition to the platform-specific text,
-        # which makes the caption look duplicated after publishing.
-        if is_youtube and fallback_title:
+        # UploadPost uses the global title as the primary publication text.
+        # Platform-specific fields are kept as compatibility hints, but sending
+        # only those can result in "No title" posts.
+        if fallback_title:
             data['title'] = _normalize_text(
                 fallback_title,
-                YOUTUBE_TITLE_MAX_CHARS
+                YOUTUBE_TITLE_MAX_CHARS if is_youtube else max(INSTAGRAM_TITLE_MAX_CHARS, TIKTOK_TITLE_MAX_CHARS)
             )
 
         # Add scheduled_date in ISO format
