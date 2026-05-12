@@ -3,7 +3,7 @@ import os
 import re
 from datetime import datetime
 from typing import Any, Dict, Optional
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 
@@ -35,6 +35,20 @@ def canonical_publication_url(publication_url: Optional[str]) -> Optional[str]:
         parsed = urlsplit(raw)
         if not parsed.scheme or not parsed.netloc:
             return raw
+
+        hostname = parsed.hostname.lower() if parsed.hostname else ""
+        normalized_path = parsed.path.rstrip("/") or parsed.path
+
+        # YouTube watch URLs keep the video id in the query string.
+        # Dropping every query parameter turns /watch?v=abc into /watch.
+        if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"} and normalized_path == "/watch":
+            video_id = next((value for key, value in parse_qsl(parsed.query) if key == "v" and value), "")
+            query = urlencode({"v": video_id}) if video_id else ""
+            return urlunsplit((parsed.scheme, parsed.netloc, normalized_path, query, ""))
+
+        if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"}:
+            return urlunsplit((parsed.scheme, parsed.netloc, normalized_path, "", ""))
+
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
     except Exception:
         return raw

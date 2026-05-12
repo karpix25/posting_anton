@@ -4,6 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlsplit
 import pytz
 from fastapi import FastAPI, Depends, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,23 +75,84 @@ def _first_uploadpost_value(body: Dict[str, Any], keys: set[str]) -> Optional[st
     return None
 
 
-def _extract_uploadpost_publication_url(body: Dict[str, Any]) -> Optional[str]:
-    publication_url = _first_uploadpost_value(
-        body,
-        {
-            "url",
-            "post_url",
-            "postUrl",
-            "publication_url",
-            "publicationUrl",
-            "published_url",
-            "publishedUrl",
-            "permalink",
-            "link",
-            "share_url",
-            "shareUrl",
-        },
-    )
+PUBLICATION_URL_KEYS = {
+    "url",
+    "post_url",
+    "postUrl",
+    "publication_url",
+    "publicationUrl",
+    "published_url",
+    "publishedUrl",
+    "permalink",
+    "link",
+    "share_url",
+    "shareUrl",
+}
+
+PREFERRED_PUBLICATION_URL_KEYS = {
+    "post_url",
+    "posturl",
+    "publication_url",
+    "publicationurl",
+    "published_url",
+    "publishedurl",
+    "permalink",
+    "share_url",
+    "shareurl",
+}
+
+
+def _iter_uploadpost_publication_url_candidates(body: Dict[str, Any]):
+    normalized_keys = {key.lower() for key in PUBLICATION_URL_KEYS}
+    for source in _walk_uploadpost_payload(body):
+        for key, value in source.items():
+            if str(key).lower() not in normalized_keys:
+                continue
+            if isinstance(value, (str, int, float)) and str(value).strip():
+                yield str(key), str(value).strip()
+
+
+def _publication_url_score(key: str, value: str, platform: Optional[str]) -> int:
+    score = 0
+    normalized_key = key.lower()
+    if normalized_key in PREFERRED_PUBLICATION_URL_KEYS:
+        score += 10
+
+    try:
+        parsed = urlsplit(value)
+        hostname = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+        query = parsed.query or ""
+    except Exception:
+        hostname = ""
+        path = ""
+        query = ""
+
+    if platform == "youtube":
+        if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path.rstrip("/") == "/watch" and "v=" in query:
+            score += 100
+        elif hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path.startswith("/shorts/"):
+            score += 95
+        elif hostname == "youtu.be" and path.strip("/"):
+            score += 90
+        elif "youtube" in hostname or hostname == "youtu.be":
+            score += 50
+    elif platform == "instagram":
+        if "instagram.com" in hostname:
+            score += 100
+    elif platform == "tiktok":
+        if "tiktok.com" in hostname:
+            score += 100
+
+    return score
+
+
+def _extract_uploadpost_publication_url(body: Dict[str, Any], platform: Optional[str] = None) -> Optional[str]:
+    candidates = list(_iter_uploadpost_publication_url_candidates(body))
+    if not candidates:
+        return None
+
+    publication_url = max(candidates, key=lambda item: _publication_url_score(item[0], item[1], platform))[1]
     if publication_url:
         return canonical_publication_url(publication_url)
     return None
@@ -186,6 +248,10 @@ async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_nam
         if not target:
             logger.warning(f"[UploadPostWebhook] No local post found for tracking IDs: {tracking_ids}")
             return {"success": True, "updated": False, "reason": "post_not_found"}
+
+        platform_publication_url = _extract_uploadpost_publication_url(body, target.platform)
+        if platform_publication_url:
+            publication_url = platform_publication_url
 
         current_meta = target.meta or {}
         if current_meta.get("sora2_webhook_sent_at"):
