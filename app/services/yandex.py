@@ -7,7 +7,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-ARCHIVE_PATH_PREFIXES = ("disk:/опубликовано",)
+ARCHIVE_PATH_PREFIXES = (
+    "disk:/опубликовано",
+    "disk:/опубликованно",
+)
 VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
 
 class YandexDiskService:
