@@ -210,6 +210,52 @@ def _is_successful_upload_completed_event(body: Dict[str, Any], event_name: str)
     return str(success_value).lower() == "true" or status_value in {"success", "successful", "completed", "published"}
 
 
+def _preserve_profile_categories_on_bulk_empty_update(
+    incoming_config: Dict[str, Any],
+    current_config: Dict[str, Any],
+) -> int:
+    incoming_profiles = incoming_config.get("profiles")
+    current_profiles = current_config.get("profiles") or []
+    if not isinstance(incoming_profiles, list) or not incoming_profiles or not current_profiles:
+        return 0
+
+    current_by_username = {
+        str(profile.get("username", "")).strip().lower(): profile
+        for profile in current_profiles
+        if str(profile.get("username", "")).strip()
+    }
+    existing_bound_count = sum(
+        1
+        for profile in current_by_username.values()
+        if str(profile.get("theme_key") or "").strip()
+    )
+    if existing_bound_count == 0:
+        return 0
+
+    incoming_empty_count = sum(
+        1
+        for profile in incoming_profiles
+        if isinstance(profile, dict) and not str(profile.get("theme_key") or "").strip()
+    )
+    if incoming_empty_count < max(3, len(incoming_profiles) // 2):
+        return 0
+
+    restored = 0
+    for profile in incoming_profiles:
+        if not isinstance(profile, dict):
+            continue
+        if str(profile.get("theme_key") or "").strip():
+            continue
+        username_key = str(profile.get("username", "")).strip().lower()
+        current_profile = current_by_username.get(username_key)
+        current_theme_key = str((current_profile or {}).get("theme_key") or "").strip()
+        if current_theme_key:
+            profile["theme_key"] = current_theme_key
+            restored += 1
+
+    return restored
+
+
 async def _handle_uploadpost_publication_webhook(body: Dict[str, Any], event_name: str) -> Optional[Dict[str, Any]]:
     if not _is_successful_upload_completed_event(body, event_name):
         return None
@@ -395,6 +441,14 @@ async def get_config(session: AsyncSession = Depends(get_session)):
 
 @app.post("/api/config")
 async def update_config(config_data: Dict[str, Any], session: AsyncSession = Depends(get_session)):
+    current_config = (await get_db_config(session)).dict()
+    restored_categories = _preserve_profile_categories_on_bulk_empty_update(config_data, current_config)
+    if restored_categories:
+        logger.warning(
+            "[Config] Prevented bulk profile category wipe: restored %s theme_key values from DB",
+            restored_categories,
+        )
+
     # Sync 'clients' quotas to 'brandQuotas' for scheduler compatibility
     if "clients" in config_data:
         if "brandQuotas" not in config_data:
