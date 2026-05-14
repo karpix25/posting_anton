@@ -17,6 +17,35 @@ CONFIG_KEY = "main_config"
 DEFAULT_LIMITS = {"instagram": 10, "tiktok": 10, "youtube": 2}
 
 
+def preserve_profile_theme_keys(config_data: dict, current_value: dict) -> int:
+    """Restore existing profile category bindings when an incoming save omits them."""
+    incoming_profiles = config_data.get("profiles")
+    current_profiles = (current_value or {}).get("profiles") or []
+    if not isinstance(incoming_profiles, list) or not current_profiles:
+        return 0
+
+    current_by_username = {
+        str(profile.get("username", "")).strip().lower(): profile
+        for profile in current_profiles
+        if isinstance(profile, dict) and str(profile.get("username", "")).strip()
+    }
+
+    restored = 0
+    for profile in incoming_profiles:
+        if not isinstance(profile, dict):
+            continue
+        if str(profile.get("theme_key") or "").strip():
+            continue
+
+        username_key = str(profile.get("username", "")).strip().lower()
+        current_theme_key = str((current_by_username.get(username_key) or {}).get("theme_key") or "").strip()
+        if current_theme_key:
+            profile["theme_key"] = current_theme_key
+            restored += 1
+
+    return restored
+
+
 async def migrate_file_to_db():
     from app.database import async_session_maker
     async with async_session_maker() as session:
@@ -106,8 +135,15 @@ async def save_db_config(session: AsyncSession, config_data: dict, preserve_sche
     record = result.scalar_one_or_none()
 
     if record:
+        current_value = record.value or {}
+        restored_theme_keys = preserve_profile_theme_keys(config_data, current_value)
+        if restored_theme_keys:
+            logger.warning(
+                "Preserved %s profile category binding(s) while saving config.",
+                restored_theme_keys,
+            )
+
         if preserve_schedule:
-            current_value = record.value or {}
             if "cronSchedule" in current_value:
                 config_data["cronSchedule"] = current_value.get("cronSchedule")
             if "schedule" in current_value:

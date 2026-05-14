@@ -134,23 +134,27 @@ def merge_api_profiles_into_config(
             existing_by_username[key] = new_profile
             created += 1
 
-    # Mark profiles that disappeared from Upload Post as not_found.
-    missing_marked = 0
-    for key, profile in existing_by_username.items():
-        if key in api_seen:
-            continue
-        _ensure_profile_status_defaults(profile)
-        profile["profile_status"] = "not_found"
-        profile["profile_status_updated_at"] = now
-        profile["profile_status_source"] = status_source
-        missing_marked += 1
+    # Keep the configured profile list aligned with Upload Post. Category bindings
+    # for profiles still returned by the API are preserved above; profiles that
+    # disappeared from Upload Post should not keep inflating the UI/profile count.
+    removed = 0
+    if api_profiles is not None:
+        kept_profiles = []
+        for profile in profiles:
+            key = str(profile.get("username", "")).strip().lower()
+            if key in api_seen:
+                kept_profiles.append(profile)
+            else:
+                removed += 1
+        profiles = kept_profiles
 
     config_data["profiles"] = profiles
     return {
         "processed": len(api_profiles or []),
         "created": created,
         "updated": updated,
-        "missing_marked": missing_marked,
+        "missing_marked": 0,
+        "removed": removed,
     }
 
 
@@ -196,4 +200,3 @@ def apply_webhook_event_to_profile(
         profile["profile_status_source"] = status_source
 
     return changed
-
