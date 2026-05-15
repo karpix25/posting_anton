@@ -383,7 +383,7 @@ async def on_startup():
     
     # Log current schedule state and Force-Check Clients
     try:
-        from app.services.config_db import get_db_config, save_db_config
+        from app.services.config_db import get_ai_clients_from_table, get_db_config, save_db_config
         from app.database import async_session_maker
         from app.seed_data import CLIENTS_SEED
         
@@ -391,7 +391,8 @@ async def on_startup():
              cfg = await get_db_config(session)
              
              # AGGRESSIVE AUTO-SEED
-             if not cfg.clients and CLIENTS_SEED:
+             table_clients = await get_ai_clients_from_table(session)
+             if table_clients is None and not cfg.clients and CLIENTS_SEED:
                  logger.warning(f"⚠️ Startup: No clients found in DB. Injecting {len(CLIENTS_SEED)} default clients...")
                  cfg_dict = cfg.dict()
                  cfg_dict["clients"] = CLIENTS_SEED
