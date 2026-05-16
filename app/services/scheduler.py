@@ -19,48 +19,26 @@ def _normalize_client_key(value: str) -> str:
     return (value or "").lower().replace(" ", "").replace("-", "")
 
 
-def _compact_match_key(value: str) -> str:
-    import re
-    return re.sub(r"[\W_]+", "", (value or "").lower())
-
-
 def has_ai_client(clients: list, brand_name: str, video_path: str = "") -> bool:
-    """Check if brand has a matching AI client (by name or regex)."""
+    """Check if extracted brand has a matching AI client."""
     import re
     normalized_brand = _normalize_client_key(brand_name)
-    compact_brand = _compact_match_key(brand_name)
-    compact_path = _compact_match_key(video_path)
-    path_parts = [
-        _normalize_client_key(part)
-        for part in (video_path or "").replace("\\", "/").split("/")
-        if part and part != "disk:"
-    ]
     
-    # Match with the same broad rules used later by worker.find_ai_client().
-    sorted_clients = sorted(clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
-
-    for client in sorted_clients:
-        # Method 1: Exact name match (normalized)
+    for client in clients:
+        # Method 1: Exact client name match against the extracted brand.
         client_normalized = _normalize_client_key(client.name)
-        client_compact = _compact_match_key(client.name)
         if client_normalized == normalized_brand:
             return True
-        if client_compact and client_compact == compact_brand:
-            return True
-
-        # Method 2: Exact folder match anywhere in the Yandex path.
-        if client_normalized in path_parts:
-            return True
-        if client_compact and client_compact in compact_path:
-            return True
         
-        # Method 3: Regex match against both extracted brand and full path.
+        # Method 2: Strict regex match against the extracted brand only.
         if client.regex:
-            regex_compact = _compact_match_key(client.regex)
-            if regex_compact and (regex_compact in compact_brand or regex_compact in compact_path):
-                return True
             try:
-                if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
+                if re.fullmatch(client.regex, brand_name, re.IGNORECASE):
+                    return True
+                # Most extracted brands are normalized by the scheduler (spaces removed).
+                # Keep regex strict by applying it to the same normalized brand value,
+                # not to the full path or as a substring search.
+                if re.fullmatch(_normalize_client_key(client.regex), normalized_brand, re.IGNORECASE):
                     return True
             except re.error:
                 pass  # Invalid regex, skip
@@ -488,27 +466,8 @@ class ContentScheduler:
 
     def extract_brand(self, path: str) -> str:
         parts = [p for p in path.replace("\\", "/").split("/") if p and p != "disk:"]
-        
-        # Strategy 1: Search for known client names/regex matches in the path
-        # This is more robust than fixed indices
-        for client in self.config.clients:
-            normalized_client = self.normalize(client.name)
-            
-            # Check for exact name match in path parts
-            for p in parts:
-                if self.normalize(p) == normalized_client:
-                    return normalized_client
-                    
-            # Check regex if available
-            import re
-            if client.regex:
-                try:
-                    if re.search(client.regex, path, re.IGNORECASE):
-                        return normalized_client
-                except:
-                    pass
 
-        # Strategy 2: Fallback to positional (Index 3 after 'video')
+        # Brand is the folder at index 3 after 'video':
         # /Video/Author/Category/Brand/file
         try:
             v_idx = -1

@@ -12,37 +12,34 @@ sys.modules.setdefault("app.config", fake_config)
 from app.services.scheduler import has_ai_client
 
 
-def test_has_ai_client_matches_client_folder_in_full_path():
+def test_has_ai_client_matches_brand_name_case_insensitive():
     clients = [
         SimpleNamespace(name="MOLEKULAR", regex="MOLEKULAR", quota=None),
     ]
 
     assert has_ai_client(
         clients,
-        brand_name="Крем для лица",
-        video_path="disk:/ВИДЕО/SORA2/MOLEKULAR/Крем для лица/video.mp4",
+        brand_name="molekular",
     )
 
 
-def test_has_ai_client_matches_regex_against_full_path():
+def test_has_ai_client_matches_regex_against_extracted_brand_only():
     clients = [
         SimpleNamespace(name="Плати по миру ИИ", regex="Плати по миру ИИ", quota=None),
     ]
 
     assert has_ai_client(
         clients,
-        brand_name="travel",
-        video_path="disk:/ВИДЕО/Автор/PPM-Elena-travel/Плати по миру ИИ/video.mp4",
+        brand_name="платипомируии",
     )
 
 
-def test_has_ai_client_matches_regex_with_spacing_differences():
+def test_has_ai_client_does_not_match_partial_brand():
     clients = [
-        SimpleNamespace(name="Плати по миру ИИ", regex="Плати  по  миру   ИИ", quota=None),
+        SimpleNamespace(name="Плати по миру", regex="Плати по миру", quota=None),
     ]
 
-    assert has_ai_client(
+    assert not has_ai_client(
         clients,
-        brand_name="travel",
-        video_path="disk:/ВИДЕО/Автор/PPM-Elena-travel/Плати по миру ИИ/video.mp4",
+        brand_name="платипомируии",
     )

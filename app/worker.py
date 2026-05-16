@@ -857,55 +857,30 @@ def normalize_client(name: str) -> str:
     """Normalize client name for comparison (lowercase, no spaces)"""
     return (name or "").lower().replace(" ", "").replace("-", "")
 
-def compact_client_key(value: str) -> str:
-    """Normalize user-facing names/regex literals across spacing and punctuation."""
-    return re.sub(r"[\W_]+", "", (value or "").lower())
-
 def find_ai_client(clients, brand_name: str, video_path: str = ""):
     """
-    Find AI client for brand using:
-    1. Exact name match (normalized)
-    2. Regex pattern match (if regex field is set)
+    Find AI client using the extracted brand only.
     """
     import re
     
     normalized_brand = normalize_client(brand_name)
-    compact_brand = compact_client_key(brand_name)
-    compact_path = compact_client_key(video_path)
-    path_parts = [
-        normalize_client(part)
-        for part in (video_path or "").replace("\\", "/").split("/")
-        if part and part != "disk:"
-    ]
     
-    # Sort clients by regex length descending to prevent substring collisions
-    sorted_clients = sorted(clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
-    
-    for client in sorted_clients:
+    for client in clients:
         normalized_client = normalize_client(client.name)
-        compact_client = compact_client_key(client.name)
 
-        # Method 1: Exact name match (normalized)
+        # Method 1: Exact client name match against extracted brand.
         if normalized_client == normalized_brand:
             return client
-        if compact_client and compact_client == compact_brand:
-            return client
 
-        # Method 2: Exact folder match anywhere in the Yandex path.
-        # Some layouts are /VIDEO/Author/Client/Product/file, where positional
-        # brand extraction returns Product but the AI client is Client.
-        if normalized_client in path_parts:
-            return client
-        if compact_client and compact_client in compact_path:
-            return client
-        
-        # Method 3: Regex match against both extracted brand and full path
+        # Method 2: Strict regex match against extracted brand only.
         if client.regex:
-            compact_regex = compact_client_key(client.regex)
-            if compact_regex and (compact_regex in compact_brand or compact_regex in compact_path):
-                return client
             try:
-                if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
+                if re.fullmatch(client.regex, brand_name, re.IGNORECASE):
+                    return client
+                # app.utils.extract_brand returns normalized brand names, so also
+                # test the regex normalized the same way. This remains strict:
+                # no path search and no substring matching.
+                if re.fullmatch(normalize_client(client.regex), normalized_brand, re.IGNORECASE):
                     return client
             except re.error as e:
                 logger.warning(f"Invalid regex for client {client.name}: {client.regex} - {e}")
