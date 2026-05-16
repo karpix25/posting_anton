@@ -34,3 +34,15 @@ def test_has_ai_client_matches_regex_against_full_path():
         brand_name="travel",
         video_path="disk:/ВИДЕО/Автор/PPM-Elena-travel/Плати по миру ИИ/video.mp4",
     )
+
+
+def test_has_ai_client_matches_regex_with_spacing_differences():
+    clients = [
+        SimpleNamespace(name="Плати по миру ИИ", regex="Плати  по  миру   ИИ", quota=None),
+    ]
+
+    assert has_ai_client(
+        clients,
+        brand_name="travel",
+        video_path="disk:/ВИДЕО/Автор/PPM-Elena-travel/Плати по миру ИИ/video.mp4",
+    )

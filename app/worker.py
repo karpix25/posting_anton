@@ -855,7 +855,11 @@ async def check_cleanup(video_path: str):
 
 def normalize_client(name: str) -> str:
     """Normalize client name for comparison (lowercase, no spaces)"""
-    return name.lower().replace(" ", "").replace("-", "")
+    return (name or "").lower().replace(" ", "").replace("-", "")
+
+def compact_client_key(value: str) -> str:
+    """Normalize user-facing names/regex literals across spacing and punctuation."""
+    return re.sub(r"[\W_]+", "", (value or "").lower())
 
 def find_ai_client(clients, brand_name: str, video_path: str = ""):
     """
@@ -866,6 +870,8 @@ def find_ai_client(clients, brand_name: str, video_path: str = ""):
     import re
     
     normalized_brand = normalize_client(brand_name)
+    compact_brand = compact_client_key(brand_name)
+    compact_path = compact_client_key(video_path)
     path_parts = [
         normalize_client(part)
         for part in (video_path or "").replace("\\", "/").split("/")
@@ -877,9 +883,12 @@ def find_ai_client(clients, brand_name: str, video_path: str = ""):
     
     for client in sorted_clients:
         normalized_client = normalize_client(client.name)
+        compact_client = compact_client_key(client.name)
 
         # Method 1: Exact name match (normalized)
         if normalized_client == normalized_brand:
+            return client
+        if compact_client and compact_client == compact_brand:
             return client
 
         # Method 2: Exact folder match anywhere in the Yandex path.
@@ -887,9 +896,14 @@ def find_ai_client(clients, brand_name: str, video_path: str = ""):
         # brand extraction returns Product but the AI client is Client.
         if normalized_client in path_parts:
             return client
+        if compact_client and compact_client in compact_path:
+            return client
         
         # Method 3: Regex match against both extracted brand and full path
         if client.regex:
+            compact_regex = compact_client_key(client.regex)
+            if compact_regex and (compact_regex in compact_brand or compact_regex in compact_path):
+                return client
             try:
                 if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
                     return client

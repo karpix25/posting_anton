@@ -19,10 +19,17 @@ def _normalize_client_key(value: str) -> str:
     return (value or "").lower().replace(" ", "").replace("-", "")
 
 
+def _compact_match_key(value: str) -> str:
+    import re
+    return re.sub(r"[\W_]+", "", (value or "").lower())
+
+
 def has_ai_client(clients: list, brand_name: str, video_path: str = "") -> bool:
     """Check if brand has a matching AI client (by name or regex)."""
     import re
     normalized_brand = _normalize_client_key(brand_name)
+    compact_brand = _compact_match_key(brand_name)
+    compact_path = _compact_match_key(video_path)
     path_parts = [
         _normalize_client_key(part)
         for part in (video_path or "").replace("\\", "/").split("/")
@@ -35,15 +42,23 @@ def has_ai_client(clients: list, brand_name: str, video_path: str = "") -> bool:
     for client in sorted_clients:
         # Method 1: Exact name match (normalized)
         client_normalized = _normalize_client_key(client.name)
+        client_compact = _compact_match_key(client.name)
         if client_normalized == normalized_brand:
+            return True
+        if client_compact and client_compact == compact_brand:
             return True
 
         # Method 2: Exact folder match anywhere in the Yandex path.
         if client_normalized in path_parts:
             return True
+        if client_compact and client_compact in compact_path:
+            return True
         
         # Method 3: Regex match against both extracted brand and full path.
         if client.regex:
+            regex_compact = _compact_match_key(client.regex)
+            if regex_compact and (regex_compact in compact_brand or regex_compact in compact_path):
+                return True
             try:
                 if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
                     return True
