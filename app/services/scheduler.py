@@ -15,21 +15,37 @@ MSK = timezone(timedelta(hours=3))
 VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
 ROOT_PRODUCT_GROUP = "_root"
 
-def has_ai_client(clients: list, brand_name: str) -> bool:
+def _normalize_client_key(value: str) -> str:
+    return (value or "").lower().replace(" ", "").replace("-", "")
+
+
+def has_ai_client(clients: list, brand_name: str, video_path: str = "") -> bool:
     """Check if brand has a matching AI client (by name or regex)."""
     import re
-    normalized_brand = brand_name.lower().replace(" ", "").replace("-", "")
+    normalized_brand = _normalize_client_key(brand_name)
+    path_parts = [
+        _normalize_client_key(part)
+        for part in (video_path or "").replace("\\", "/").split("/")
+        if part and part != "disk:"
+    ]
     
-    for client in clients:
+    # Match with the same broad rules used later by worker.find_ai_client().
+    sorted_clients = sorted(clients, key=lambda c: len(c.regex) if c.regex else 0, reverse=True)
+
+    for client in sorted_clients:
         # Method 1: Exact name match (normalized)
-        client_normalized = client.name.lower().replace(" ", "").replace("-", "")
+        client_normalized = _normalize_client_key(client.name)
         if client_normalized == normalized_brand:
             return True
+
+        # Method 2: Exact folder match anywhere in the Yandex path.
+        if client_normalized in path_parts:
+            return True
         
-        # Method 2: Regex match
+        # Method 3: Regex match against both extracted brand and full path.
         if client.regex:
             try:
-                if re.search(client.regex, brand_name, re.IGNORECASE):
+                if re.search(client.regex, brand_name, re.IGNORECASE) or re.search(client.regex, video_path or "", re.IGNORECASE):
                     return True
             except re.error:
                 pass  # Invalid regex, skip
@@ -280,7 +296,7 @@ class ContentScheduler:
             brand = self.extract_brand(v["path"])
             
             # Skip brands without AI client configured
-            if not has_ai_client(self.config.clients, brand):
+            if not has_ai_client(self.config.clients, brand, v["path"]):
                 skipped_brands.add(brand)
                 continue
             
