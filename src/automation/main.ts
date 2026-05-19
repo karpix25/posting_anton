@@ -149,8 +149,8 @@ async function main() {
         };
         config.daysToGenerate = 1; // Only generate for today
     } else {
-        // Default
-        config.daysToGenerate = config.daysToGenerate || 1; // Default to 1 day if not set
+        // Product decision: planning horizon is fixed to one day.
+        config.daysToGenerate = 1;
     }
 
     // Debug: Log custom limits

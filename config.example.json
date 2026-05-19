@@ -31,7 +31,7 @@
     "tiktok": 10,
     "youtube": 2
   },
-  "daysToGenerate": 7,
+  "daysToGenerate": 1,
   "schedule": {
     "enabled": true,
     "timezone": "Europe/Moscow",

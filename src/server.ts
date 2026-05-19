@@ -393,7 +393,7 @@ app.get('/api/config', async (req, res) => {
             const defaultConfig = {
                 profiles: [],
                 limits: { instagram: 10, tiktok: 10, youtube: 2 },
-                daysToGenerate: 7,
+                daysToGenerate: 1,
                 clients: []
             };
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
@@ -409,6 +409,8 @@ app.get('/api/config', async (req, res) => {
             if (!config.profiles) config.profiles = [];
             config.clients = sanitizeClients(config.clients || []);
             if (!config.limits) config.limits = { instagram: 10, tiktok: 10, youtube: 2 };
+            // Product decision: planning horizon is fixed to one day.
+            config.daysToGenerate = 1;
 
             // Migration logic: Sync clients from example if they are missing
             try {
@@ -553,6 +555,8 @@ app.post('/api/config', async (req, res) => {
     try {
         const newConfig = (req.body && typeof req.body === 'object') ? req.body : {};
         newConfig.clients = sanitizeClients(newConfig.clients || []);
+        // Product decision: planning horizon is fixed to one day.
+        newConfig.daysToGenerate = 1;
 
         // Sync client quotas to brandQuotas structure
         if (newConfig.clients && Array.isArray(newConfig.clients)) {

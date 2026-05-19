@@ -40,7 +40,7 @@ export class ContentScheduler {
         console.log(`[Scheduler] Grouped ${videos.length} videos into themes:`, Object.keys(videosByTheme));
 
         // Iterate over days
-        const days = this.config.daysToGenerate || 7;
+        const days = this.config.daysToGenerate || 1;
         for (let dayIndex = 0; dayIndex < days; dayIndex++) {
             // Reset counts for the new day so limits apply PER DAY
             activeProfiles.forEach(p => {
