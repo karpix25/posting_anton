@@ -52,6 +52,9 @@ files_cache_time: float = 0.0
 FILES_CACHE_TTL = 30 * 60  # 30 minutes
 
 profile_status_sync_task: Optional[asyncio.Task] = None
+telegram_bot_polling_task: Optional[asyncio.Task] = None
+telegram_bot_instance: Optional[Any] = None
+telegram_dispatcher_instance: Optional[Any] = None
 
 
 def _walk_uploadpost_payload(value: Any):
@@ -374,6 +377,42 @@ async def profile_status_sync_loop():
             logger.warning(f"[ProfileStatusSync] Reconcile failed: {e}")
         await asyncio.sleep(interval)
 
+
+async def start_telegram_bot_polling_if_configured():
+    """Run Telegram polling inside the API process for single-service deploys."""
+    global telegram_bot_polling_task, telegram_bot_instance, telegram_dispatcher_instance
+
+    if not settings.TELEGRAM_BOT_AUTO_START:
+        logger.info("[TelegramBot] Auto-start disabled.")
+        return
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.info("[TelegramBot] TELEGRAM_BOT_TOKEN is not configured; skipping polling.")
+        return
+    if telegram_bot_polling_task and not telegram_bot_polling_task.done():
+        logger.info("[TelegramBot] Polling is already running.")
+        return
+
+    try:
+        from aiogram import Bot, Dispatcher
+        from aiogram.client.default import DefaultBotProperties
+        from aiogram.enums import ParseMode
+        from app.telegram_bot.handlers import router as telegram_router
+
+        telegram_bot_instance = Bot(
+            token=settings.TELEGRAM_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+        telegram_dispatcher_instance = Dispatcher()
+        telegram_dispatcher_instance.include_router(telegram_router)
+
+        await telegram_bot_instance.delete_webhook(drop_pending_updates=False)
+        telegram_bot_polling_task = asyncio.create_task(
+            telegram_dispatcher_instance.start_polling(telegram_bot_instance)
+        )
+        logger.info("[TelegramBot] Polling started inside API process.")
+    except Exception as e:
+        logger.error(f"[TelegramBot] Failed to start polling: {e}")
+
 # Startup event
 @app.on_event("startup")
 async def on_startup():
@@ -420,6 +459,8 @@ async def on_startup():
 
              global profile_status_sync_task
              profile_status_sync_task = asyncio.create_task(profile_status_sync_loop())
+
+             await start_telegram_bot_polling_if_configured()
              
     except Exception as e:
         logger.error(f"Startup failed: {e}")
@@ -427,9 +468,18 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    global profile_status_sync_task
+    global profile_status_sync_task, telegram_bot_polling_task, telegram_bot_instance, telegram_dispatcher_instance
     if profile_status_sync_task and not profile_status_sync_task.done():
         profile_status_sync_task.cancel()
+    if telegram_dispatcher_instance and telegram_bot_polling_task and not telegram_bot_polling_task.done():
+        try:
+            await telegram_dispatcher_instance.stop_polling()
+        except RuntimeError:
+            pass
+    if telegram_bot_polling_task and not telegram_bot_polling_task.done():
+        telegram_bot_polling_task.cancel()
+    if telegram_bot_instance:
+        await telegram_bot_instance.session.close()
 
 @app.get("/health")
 async def health_check():

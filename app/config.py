@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     UPLOAD_POST_WEBHOOK_TOKEN: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ADMIN_IDS: str = ""
+    TELEGRAM_BOT_AUTO_START: bool = True
     
     # Internal state for legacy config
     _legacy_config: Optional[LegacyConfig] = None
