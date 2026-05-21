@@ -170,12 +170,22 @@ async def prepare_random_video(
             force_refresh=True,
             folders=config.yandexFolders,
         )
+        logger.info(
+            "[TelegramBot] Yandex scan returned %s videos for folders=%s before brand filter.",
+            len(videos),
+            config.yandexFolders,
+        )
         candidates = [
             video for video in videos
             if video.get("path")
             and video["path"] not in used_paths
             and _client_matches_video(client, str(video["path"]))
         ]
+        logger.info(
+            "[TelegramBot] Brand '%s' matched %s candidate videos after regex/path filter.",
+            client.name,
+            len(candidates),
+        )
         if not candidates:
             raise LookupError("no_videos")
 

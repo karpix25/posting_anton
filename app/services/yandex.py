@@ -139,11 +139,16 @@ class YandexDiskService:
         files: List[Dict[str, Any]],
         folders: Optional[List[str]],
     ) -> List[Dict[str, Any]]:
-        root_folders = [
-            folder.strip().strip("/")
-            for folder in (folders or [])
-            if folder and self._normalize_disk_path(folder).startswith("disk:/")
-        ]
+        root_folders = []
+        for folder in folders or []:
+            if not folder:
+                continue
+            normalized = self._normalize_disk_path(folder)
+            if normalized.startswith("disk:/"):
+                root_folders.append(folder.strip().strip("/"))
+            else:
+                root_folders.append(f"disk:/{str(folder).strip().strip('/')}")
+
         if not root_folders:
             return files
 
