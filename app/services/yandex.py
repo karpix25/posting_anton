@@ -145,9 +145,9 @@ class YandexDiskService:
                 continue
             normalized = self._normalize_disk_path(folder)
             if normalized.startswith("disk:/"):
-                root_folders.append(folder.strip().strip("/"))
+                root_folders.append(normalized)
             else:
-                root_folders.append(f"disk:/{str(folder).strip().strip('/')}")
+                root_folders.append(f"disk:/{normalized.strip('/')}")
 
         if not root_folders:
             return files
@@ -280,7 +280,14 @@ class YandexDiskService:
         }
 
     def _normalize_disk_path(self, path: str) -> str:
-        return path.replace("\\", "/").strip().strip("/").lower()
+        return (
+            path.replace("\\", "/")
+            .replace("disk;", "disk:")
+            .replace("Disk;", "disk:")
+            .strip()
+            .strip("/")
+            .lower()
+        )
 
     async def get_download_link(self, path: str) -> str:
         """Get a temporary download link for a file."""
