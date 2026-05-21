@@ -16,6 +16,7 @@ from app.database import async_session_maker
 from app.models import TelegramVideoRequest
 from app.services.config_db import get_db_config
 from app.services.content_generator import content_generator
+from app.services.scheduler import ContentScheduler
 from app.services.yandex import yandex_service
 from app.utils import extract_author
 
@@ -97,16 +98,22 @@ def is_youtube_url(text: str) -> bool:
     return bool(YOUTUBE_URL_RE.match((text or "").strip()))
 
 
-def _client_matches_video(client: ClientConfig, video_path: str) -> bool:
+def _client_matches_extracted_brand(client: ClientConfig, brand_name: str) -> bool:
+    normalized_brand = _normalize(brand_name)
+    normalized_client = _normalize(client.name)
+    if normalized_client == normalized_brand:
+        return True
+
     if client.regex:
         try:
-            if re.search(client.regex, video_path, re.IGNORECASE):
+            if re.fullmatch(client.regex, brand_name, re.IGNORECASE):
+                return True
+            if re.fullmatch(_normalize(client.regex), normalized_brand, re.IGNORECASE):
                 return True
         except re.error:
             logger.warning("Invalid AI client regex for %s: %s", client.name, client.regex)
 
-    normalized_name = _normalize(client.name)
-    return normalized_name and normalized_name in _normalize(video_path)
+    return False
 
 
 async def list_brands() -> list[str]:
@@ -175,14 +182,15 @@ async def prepare_random_video(
             len(videos),
             config.yandexFolders,
         )
+        scheduler = ContentScheduler(config)
         candidates = [
             video for video in videos
             if video.get("path")
             and video["path"] not in used_paths
-            and _client_matches_video(client, str(video["path"]))
+            and _client_matches_extracted_brand(client, scheduler.extract_brand(str(video["path"])))
         ]
         logger.info(
-            "[TelegramBot] Brand '%s' matched %s candidate videos after regex/path filter.",
+            "[TelegramBot] Brand '%s' matched %s candidate videos after scheduler-style brand extraction.",
             client.name,
             len(candidates),
         )
