@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, JSON
-from sqlalchemy import Column
+from sqlalchemy import BigInteger, Column
 from sqlalchemy.dialects.postgresql import JSONB
 
 class PostingHistory(SQLModel, table=True):
@@ -49,3 +49,24 @@ class PostingSystemConfig(SQLModel, table=True):
     key: str = Field(primary_key=True)
     value: Dict[str, Any] = Field(default={}, sa_column=Column(JSONB))
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TelegramVideoRequest(SQLModel, table=True):
+    __tablename__ = "telegram_video_requests"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    telegram_user_id: int = Field(sa_column=Column(BigInteger, index=True, nullable=False))
+    telegram_username: Optional[str] = Field(default=None, index=True)
+    telegram_full_name: Optional[str] = None
+    brand: str = Field(index=True)
+    video_path: str = Field(index=True)
+    video_name: str
+    youtube_title: Optional[str] = None
+    youtube_description: Optional[str] = None
+    status: str = Field(default="sent", index=True)  # sent, reported, archived, cancelled, failed
+    published_url: Optional[str] = None
+    archive_path: Optional[str] = None
+    error_message: Optional[str] = None
+    requested_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    reported_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None

@@ -32,6 +32,20 @@ services:
       - postgres
       - redis
 
+  telegram_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    command: python -m app.telegram_bot.bot
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./data:/data
+    depends_on:
+      - postgres
+      - redis
+
   postgres:
     image: postgres:15
     container_name: tools_postgres

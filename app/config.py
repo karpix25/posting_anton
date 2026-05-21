@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     PROFILE_STATUS_SYNC_ENABLED: bool = True
     PROFILE_STATUS_SYNC_INTERVAL_SECONDS: int = 600
     UPLOAD_POST_WEBHOOK_TOKEN: str = ""
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ADMIN_IDS: str = ""
     
     # Internal state for legacy config
     _legacy_config: Optional[LegacyConfig] = None
@@ -100,5 +102,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

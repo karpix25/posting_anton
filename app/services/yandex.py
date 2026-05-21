@@ -298,9 +298,7 @@ class YandexDiskService:
         async with yadisk.AsyncClient(token=self.token) as client:
             # Ensure destination folder exists
             try:
-                if not await client.exists(dest_folder):
-                    await client.mkdir(dest_folder)
-                    logger.info(f"[Yandex] Created archive folder: {dest_folder}")
+                await self._ensure_folder(client, dest_folder)
             except Exception as e:
                 logger.warning(f"[Yandex] Could not create/check folder {dest_folder}: {e}")
             
@@ -322,6 +320,19 @@ class YandexDiskService:
             await client.move(source_path, dest_path, overwrite=True)
             logger.info(f"[Yandex] Moved file: {source_path} -> {dest_path}")
             return dest_path
+
+    async def _ensure_folder(self, client: yadisk.AsyncClient, folder_path: str):
+        normalized = folder_path.replace("\\", "/").strip().strip("/")
+        if not normalized.startswith("disk:/"):
+            normalized = f"disk:/{normalized}"
+
+        parts = [part for part in normalized.replace("disk:/", "").split("/") if part]
+        current = "disk:"
+        for part in parts:
+            current = f"{current}/{part}"
+            if not await client.exists(current):
+                await client.mkdir(current)
+                logger.info(f"[Yandex] Created folder: {current}")
 
     async def list_directories(self, path: str, limit: int = 10000) -> List[str]:
         """
