@@ -292,6 +292,8 @@ async def accept_publication_report(
 async def user_report(telegram_user_id: int) -> dict:
     async with async_session_maker() as session:
         stmt = select(
+            func.max(TelegramVideoRequest.telegram_username).label("telegram_username"),
+            func.max(TelegramVideoRequest.telegram_full_name).label("telegram_full_name"),
             func.count(TelegramVideoRequest.id).label("requested"),
             func.coalesce(
                 func.sum(
@@ -305,7 +307,13 @@ async def user_report(telegram_user_id: int) -> dict:
         ).where(TelegramVideoRequest.telegram_user_id == telegram_user_id)
         result = await session.execute(stmt)
         row = result.mappings().one()
-        return {"requested": int(row["requested"]), "reported": int(row["reported"])}
+        return {
+            "telegram_user_id": telegram_user_id,
+            "telegram_username": row["telegram_username"],
+            "telegram_full_name": row["telegram_full_name"],
+            "requested": int(row["requested"]),
+            "reported": int(row["reported"]),
+        }
 
 
 async def admin_report() -> list[dict]:

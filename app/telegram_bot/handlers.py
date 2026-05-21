@@ -54,9 +54,16 @@ async def report(message: Message):
         return
     stats = await user_report(message.from_user.id)
     pending = stats["requested"] - stats["reported"]
+    username = stats.get("telegram_username") or message.from_user.username
+    full_name = stats.get("telegram_full_name") or " ".join(
+        part for part in [message.from_user.first_name, message.from_user.last_name] if part
+    )
+    user_label = f"@{username}" if username else (full_name or str(message.from_user.id))
     brands = await list_brands()
     await message.answer(
         "Ваш отчет:\n"
+        f"Пользователь: {user_label}\n"
+        f"Telegram ID: {message.from_user.id}\n"
         f"Запрошено видео: {stats['requested']}\n"
         f"Отчитано ссылками: {stats['reported']}\n"
         f"Ожидает отчета: {pending}",
@@ -82,7 +89,10 @@ async def report_admin(message: Message):
         label = f"@{username}" if username else (name or str(row["telegram_user_id"]))
         requested = int(row["requested"])
         reported = int(row["reported"])
-        lines.append(f"{label}: запросил {requested}, отчитался {reported}, ожидает {requested - reported}")
+        lines.append(
+            f"{label} (ID {row['telegram_user_id']}): "
+            f"запросил {requested}, отчитался {reported}, ожидает {requested - reported}"
+        )
     await message.answer("\n".join(lines))
 
 
