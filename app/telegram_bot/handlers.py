@@ -1,5 +1,6 @@
 import logging
 import os
+from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -152,13 +153,11 @@ async def select_brand(callback: CallbackQuery):
                 except OSError:
                     logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
 
-    await callback.message.answer(
-        "Title:\n"
-        f"{request.youtube_title}\n\n"
-        "Description:\n"
-        f"{request.youtube_description}\n\n"
-        "После публикации пришлите ссылку на YouTube-видео ответным сообщением."
-    )
+    await callback.message.answer("Title:")
+    await callback.message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
+    await callback.message.answer("Description:")
+    await callback.message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
+    await callback.message.answer("После публикации пришлите ссылку на YouTube-видео ответным сообщением.")
 
 
 @router.message(F.text)
