@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from app.config import settings
-from app.telegram_bot.keyboards import BRAND_CALLBACK_PREFIX, brands_keyboard
+from app.telegram_bot.keyboards import BRAND_CALLBACK_PREFIX, brands_keyboard, main_menu_keyboard
 from app.telegram_bot.service import (
     accept_publication_report,
     admin_report,
@@ -44,7 +44,8 @@ async def start(message: Message):
         await message.answer("Бренды пока не настроены.")
         return
 
-    await message.answer("Выберите бренд:", reply_markup=brands_keyboard(brands))
+    await message.answer("Выберите бренд:", reply_markup=main_menu_keyboard(brands))
+    await message.answer("Быстрые кнопки:", reply_markup=brands_keyboard(brands))
 
 
 @router.message(Command("report"))
@@ -53,11 +54,13 @@ async def report(message: Message):
         return
     stats = await user_report(message.from_user.id)
     pending = stats["requested"] - stats["reported"]
+    brands = await list_brands()
     await message.answer(
         "Ваш отчет:\n"
         f"Запрошено видео: {stats['requested']}\n"
         f"Отчитано ссылками: {stats['reported']}\n"
-        f"Ожидает отчета: {pending}"
+        f"Ожидает отчета: {pending}",
+        reply_markup=main_menu_keyboard(brands),
     )
 
 
@@ -87,11 +90,15 @@ async def report_admin(message: Message):
 async def cancel(message: Message):
     if not message.from_user:
         return
+    brands = await list_brands()
     cancelled = await cancel_pending_request(message.from_user.id)
     if cancelled:
-        await message.answer("Ожидание ссылки отменено. Можно запросить новое видео.")
+        await message.answer(
+            "Ожидание ссылки отменено. Можно запросить новое видео.",
+            reply_markup=main_menu_keyboard(brands),
+        )
     else:
-        await message.answer("У вас нет видео, ожидающего отчета.")
+        await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=main_menu_keyboard(brands))
 
 
 @router.callback_query(F.data.startswith(BRAND_CALLBACK_PREFIX))
@@ -101,48 +108,53 @@ async def select_brand(callback: CallbackQuery):
 
     brand = callback.data.removeprefix(BRAND_CALLBACK_PREFIX)
     await callback.answer()
-    await callback.message.answer(f"Ищу случайное видео для {brand}...")
+    await send_brand_video(callback.message, callback.from_user, brand)
+
+
+async def send_brand_video(message: Message, user, brand: str):
+    brands = await list_brands()
+    await message.answer(f"Ищу случайное видео для {brand}...", reply_markup=main_menu_keyboard(brands))
 
     try:
         prepared = await prepare_random_video(
             brand=brand,
-            telegram_user_id=callback.from_user.id,
-            telegram_username=callback.from_user.username,
+            telegram_user_id=user.id,
+            telegram_username=user.username,
             telegram_full_name=" ".join(
-                part for part in [callback.from_user.first_name, callback.from_user.last_name] if part
+                part for part in [user.first_name, user.last_name] if part
             ),
         )
     except RuntimeError as exc:
         if str(exc) == "pending_report":
-            pending = await get_pending_request(callback.from_user.id)
+            pending = await get_pending_request(user.id)
             name = pending.video_name if pending else "предыдущее видео"
-            await callback.message.answer(
+            await message.answer(
                 f"Сначала пришлите ссылку на опубликованное видео для: {name}\n"
                 "Или используйте /cancel, если нужно отменить ожидание."
             )
             return
         raise
     except LookupError:
-        await callback.message.answer("Свободных видео для этого бренда сейчас не нашлось.")
+        await message.answer("Свободных видео для этого бренда сейчас не нашлось.")
         return
     except Exception as exc:
         logger.exception("Failed to prepare Telegram video")
-        await callback.message.answer(f"Не удалось подготовить видео: {exc}")
+        await message.answer(f"Не удалось подготовить видео: {exc}")
         return
 
     request = prepared.request
     temp_path = None
     if prepared.should_send_as_link:
         size_mb = prepared.size / 1024 / 1024 if prepared.size else 0
-        await callback.message.answer(
+        await message.answer(
             f"Файл больше 50 МБ ({size_mb:.1f} МБ), поэтому отправляю прямую ссылку:\n"
             f"{prepared.download_link}"
         )
     else:
         try:
-            await callback.message.answer("Скачиваю файл, чтобы отправить его без сжатия...")
+            await message.answer("Скачиваю файл, чтобы отправить его без сжатия...")
             temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
-            await callback.message.answer_document(
+            await message.answer_document(
                 FSInputFile(temp_path, filename=request.video_name),
                 caption=request.video_name[:1024],
             )
@@ -153,11 +165,14 @@ async def select_brand(callback: CallbackQuery):
                 except OSError:
                     logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
 
-    await callback.message.answer("Title:")
-    await callback.message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
-    await callback.message.answer("Description:")
-    await callback.message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
-    await callback.message.answer("После публикации пришлите ссылку на YouTube-видео ответным сообщением.")
+    await message.answer("Title:")
+    await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
+    await message.answer("Description:")
+    await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
+    await message.answer(
+        "После публикации пришлите ссылку на YouTube-видео ответным сообщением.",
+        reply_markup=main_menu_keyboard(brands),
+    )
 
 
 @router.message(F.text)
@@ -165,21 +180,39 @@ async def handle_text(message: Message):
     if not message.from_user or not message.text:
         return
 
+    brands = await list_brands()
+    if message.text == "Мой отчет":
+        await report(message)
+        return
+    if message.text == "Отменить":
+        await cancel(message)
+        return
+    if message.text in brands:
+        await send_brand_video(message, message.from_user, message.text)
+        return
+
     pending = await get_pending_request(message.from_user.id)
     if not pending:
-        await message.answer("Выберите бренд через /start, чтобы получить видео.")
+        await message.answer("Выберите бренд на клавиатуре, чтобы получить видео.", reply_markup=main_menu_keyboard(brands))
         return
 
     url = message.text.strip()
     if not is_youtube_url(url):
-        await message.answer("Жду ссылку на YouTube, например https://youtube.com/shorts/...")
+        await message.answer(
+            "Жду ссылку на YouTube, например https://youtube.com/shorts/...",
+            reply_markup=main_menu_keyboard(brands),
+        )
         return
 
     request = await accept_publication_report(message.from_user.id, url)
     if request.status == "archived":
-        await message.answer("Спасибо, отчет принят. Видео перенесено в папку опубликовано.")
+        await message.answer(
+            "Спасибо, отчет принят. Видео перенесено в папку опубликовано.",
+            reply_markup=main_menu_keyboard(brands),
+        )
     else:
         await message.answer(
             "Спасибо, отчет принят. Видео помечено как опубликованное, но перенос на Яндекс.Диске не удался. "
-            "Администратор сможет проверить ошибку в логах."
+            "Администратор сможет проверить ошибку в логах.",
+            reply_markup=main_menu_keyboard(brands),
         )
