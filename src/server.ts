@@ -400,10 +400,21 @@ app.get('/api/config', async (req, res) => {
         }
     }
 
-    // Now read it
+    // Now read config (DB first, file fallback)
     if (fs.existsSync(CONFIG_PATH)) {
         try {
-            const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+            let config: any = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+
+            if (db.isReady()) {
+                try {
+                    const dbConfig = await db.getMainConfig();
+                    if (dbConfig && typeof dbConfig === 'object') {
+                        config = dbConfig;
+                    }
+                } catch (e) {
+                    console.error('[Config] Failed to load main config from DB, using file fallback:', e);
+                }
+            }
 
             // Ensure essential structure
             if (!config.profiles) config.profiles = [];
@@ -540,6 +551,12 @@ app.get('/api/config', async (req, res) => {
 
             config.clients = sanitizeClients(config.clients || []);
 
+            // Keep file backup in sync and persist as source of truth in DB.
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+            if (db.isReady()) {
+                await db.saveMainConfig(config);
+            }
+
             res.json(config);
         } catch (e) {
             console.error('[Server] Failed to parse config.json', e);
@@ -557,6 +574,15 @@ app.post('/api/config', async (req, res) => {
         newConfig.clients = sanitizeClients(newConfig.clients || []);
         // Product decision: planning horizon is fixed to one day.
         newConfig.daysToGenerate = 1;
+
+        // Safety guard: prevent accidental empty overwrite of AI clients after deploy/restart races.
+        if (db.isReady()) {
+            const existingClients = await db.getAIClients();
+            if (newConfig.clients.length === 0 && existingClients.length > 0) {
+                console.warn('[Config] Empty clients payload detected; preserving existing DB clients.');
+                newConfig.clients = existingClients;
+            }
+        }
 
         // Sync client quotas to brandQuotas structure
         if (newConfig.clients && Array.isArray(newConfig.clients)) {
@@ -593,6 +619,9 @@ app.post('/api/config', async (req, res) => {
 
         // Basic validation
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
+        if (db.isReady()) {
+            await db.saveMainConfig(newConfig);
+        }
 
         // Clear stats cache so it recalculates with new config
         statsCache = null;
@@ -692,13 +721,25 @@ app.post('/api/brands/quotas', async (req, res) => {
         const month = new Date().toISOString().substring(0, 7);
         await db.updateBrandQuota(category, brand, month, quota);
 
-        // Also update config.json
-        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        // Also update persisted config (DB-first, file fallback)
+        let config: any = {};
+        if (db.isReady()) {
+            const dbConfig = await db.getMainConfig();
+            if (dbConfig && typeof dbConfig === 'object') {
+                config = dbConfig;
+            }
+        }
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            config = fs.existsSync(CONFIG_PATH) ? JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8')) : {};
+        }
         if (!config.brandQuotas) config.brandQuotas = {};
         if (!config.brandQuotas[category]) config.brandQuotas[category] = {};
         config.brandQuotas[category][brand] = quota;
 
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        if (db.isReady()) {
+            await db.saveMainConfig(config);
+        }
 
         res.json({ success: true, message: `Updated quota for ${category}:${brand} to ${quota}` });
     } catch (error: any) {
@@ -739,13 +780,21 @@ app.get('/api/profiles/sync', async (req, res) => {
 });
 
 // Get Schedule Configuration
-app.get('/api/schedule', (req, res) => {
+app.get('/api/schedule', async (req, res) => {
     try {
-        if (!fs.existsSync(CONFIG_PATH)) {
-            return res.status(404).json({ error: 'Config file not found' });
+        let config: any = null;
+
+        if (db.isReady()) {
+            config = await db.getMainConfig();
         }
 
-        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            if (!fs.existsSync(CONFIG_PATH)) {
+                return res.status(404).json({ error: 'Config file not found' });
+            }
+            config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        }
+
         const schedule = config.schedule || {
             enabled: false,
             timezone: 'Europe/Moscow',
@@ -760,7 +809,7 @@ app.get('/api/schedule', (req, res) => {
 });
 
 // Save Schedule Configuration
-app.post('/api/schedule', (req, res) => {
+app.post('/api/schedule', async (req, res) => {
     try {
         const { enabled, timezone, dailyRunTime } = req.body;
 
@@ -779,12 +828,18 @@ app.post('/api/schedule', (req, res) => {
             return res.status(400).json({ error: 'dailyRunTime must be in HH:MM format (00:00 - 23:59)' });
         }
 
-        // Read config
-        if (!fs.existsSync(CONFIG_PATH)) {
-            return res.status(404).json({ error: 'Config file not found' });
+        // Read persisted config (DB-first, file fallback)
+        let config: any = null;
+        if (db.isReady()) {
+            config = await db.getMainConfig();
         }
 
-        const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            if (!fs.existsSync(CONFIG_PATH)) {
+                return res.status(404).json({ error: 'Config file not found' });
+            }
+            config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+        }
 
         // Update schedule
         config.schedule = {
@@ -795,6 +850,9 @@ app.post('/api/schedule', (req, res) => {
 
         // Save config
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        if (db.isReady()) {
+            await db.saveMainConfig(config);
+        }
 
         console.log(`[API] Schedule updated: enabled=${enabled}, time=${dailyRunTime}, timezone=${timezone}`);
         res.json({ success: true, schedule: config.schedule });

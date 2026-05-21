@@ -94,9 +94,7 @@ function ensureFilenameInCaption(caption: string, rawVideoName: string): string 
 }
 
 async function main() {
-    // Load Config
-    // Load Config
-    // const configPath = path.join(__dirname, '../../config.json');
+    // Load Config (file fallback only; DB can override below)
     const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
 
     // Ensure data dir exists
@@ -112,13 +110,29 @@ async function main() {
         // But if running standalone CLI, maybe not.
         process.exit(1);
     }
-    const config: AutomationConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    let config: AutomationConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
     // DB Init
     const fullDbUrl = 'postgres://admin:admin@tools_postgres:5432/postgres?sslmode=disable';
     const dbUrl = process.env.DATABASE_URL || fullDbUrl;
     const db = new DatabaseService(dbUrl);
     await db.init();
+
+    // DB source of truth for the full config when available.
+    if (db.isReady()) {
+        try {
+            const dbConfig = await db.getMainConfig();
+            if (dbConfig && typeof dbConfig === 'object') {
+                config = { ...config, ...dbConfig } as AutomationConfig;
+                console.log('[Main] Loaded config from DB (posting_system_config.main_config).');
+            } else {
+                await db.saveMainConfig(config);
+                console.log('[Main] Bootstrapped DB config from file config.json.');
+            }
+        } catch (e) {
+            console.warn('[Main] Failed to load/save DB main config, using file config:', e);
+        }
+    }
 
     // DB source of truth for AI clients/prompts.
     if (db.isReady()) {

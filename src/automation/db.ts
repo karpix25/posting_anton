@@ -78,7 +78,16 @@ export class DatabaseService {
             await client.query(`CREATE INDEX IF NOT EXISTS idx_brand_stats_category_brand ON brand_stats(category, brand);`);
             await client.query(`CREATE INDEX IF NOT EXISTS idx_brand_stats_lookup ON brand_stats(category, brand, month);`);
 
-            console.log('[DB] Schema initialized (posting_history and brand_stats tables ready).');
+            // Unified JSON config storage (source of truth candidate)
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS posting_system_config (
+                    key TEXT PRIMARY KEY,
+                    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                );
+            `);
+
+            console.log('[DB] Schema initialized (posting_history, brand_stats, posting_system_config ready).');
             this.initialized = true;
         } catch (error) {
             console.error('[DB] Failed to initialize database:', error);
@@ -263,6 +272,15 @@ export class DatabaseService {
         const safeClients = this.sanitizeClients(clients);
         const storage = await this.detectAIClientsStorage();
 
+        // Safety guard: never wipe existing clients with an accidental empty payload.
+        if (safeClients.length === 0) {
+            const existing = await this.getAIClients();
+            if (existing.length > 0) {
+                console.warn('[DB] Refusing to replace non-empty AI clients with empty payload.');
+                return;
+            }
+        }
+
         if (storage.kind === 'none') {
             console.warn('[DB] No AI clients storage detected.');
             return;
@@ -303,6 +321,48 @@ export class DatabaseService {
             throw error;
         } finally {
             dbClient.release();
+        }
+    }
+
+    public async getMainConfig(): Promise<any | null> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping getMainConfig because DB is not initialized.');
+            return null;
+        }
+
+        try {
+            const result = await this.pool.query(
+                'SELECT value FROM posting_system_config WHERE key = $1',
+                ['main_config']
+            );
+            const row = result.rows[0];
+            if (!row || !row.value || typeof row.value !== 'object') return null;
+            return row.value;
+        } catch (error) {
+            console.error('[DB] Failed to get main config:', error);
+            return null;
+        }
+    }
+
+    public async saveMainConfig(config: any): Promise<void> {
+        if (!this.initialized) {
+            console.warn('[DB] Skipping saveMainConfig because DB is not initialized.');
+            return;
+        }
+
+        try {
+            await this.pool.query(
+                `
+                INSERT INTO posting_system_config (key, value, updated_at)
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (key)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                `,
+                ['main_config', config || {}]
+            );
+        } catch (error) {
+            console.error('[DB] Failed to save main config:', error);
+            throw error;
         }
     }
 
@@ -365,6 +425,13 @@ export class DatabaseService {
     private async detectAIClientsStorage(): Promise<AIClientsStorage> {
         if (this.aiClientsStorageCache) return this.aiClientsStorageCache;
 
+        const postingConfigTable = await this.findTableByNames(['posting_system_config']);
+        if (postingConfigTable) {
+            this.aiClientsStorageCache = { kind: 'posting_system_config' };
+            console.log('[DB] AI clients source: posting_system_config(main_config).');
+            return this.aiClientsStorageCache;
+        }
+
         const aiClientsDbTable = await this.findTableByNames(['ai_clients_db', 'Ai Clients Db', 'ai clients db']);
         if (aiClientsDbTable) {
             this.aiClientsStorageCache = {
@@ -373,13 +440,6 @@ export class DatabaseService {
                 tableName: aiClientsDbTable.tableName
             };
             console.log(`[DB] AI clients source: table ${aiClientsDbTable.schemaName}.${aiClientsDbTable.tableName}`);
-            return this.aiClientsStorageCache;
-        }
-
-        const postingConfigTable = await this.findTableByNames(['posting_system_config']);
-        if (postingConfigTable) {
-            this.aiClientsStorageCache = { kind: 'posting_system_config' };
-            console.log('[DB] AI clients source: posting_system_config(main_config).');
             return this.aiClientsStorageCache;
         }
 

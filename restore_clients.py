@@ -2,14 +2,18 @@ import json
 import urllib.request
 import urllib.error
 import sys
+import os
 
 # Configuration
 DEFAULT_API_URL = "http://posting.focusmarket.su"
+DEFAULT_LOCAL_CONFIG_PATH = os.path.join("data", "config.json")
 
 def restore_clients():
-    print(f"Reading local config from {LOCAL_CONFIG_PATH}...")
+    local_config_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_LOCAL_CONFIG_PATH
+
+    print(f"Reading local config from {local_config_path}...")
     try:
-        with open(LOCAL_CONFIG_PATH, 'r', encoding='utf-8') as f:
+        with open(local_config_path, 'r', encoding='utf-8') as f:
             local_data = json.load(f)
             local_clients = local_data.get('clients', [])
             print(f"Found {len(local_clients)} clients in local config.")
