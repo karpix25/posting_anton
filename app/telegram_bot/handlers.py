@@ -44,8 +44,8 @@ async def start(message: Message):
         await message.answer("Бренды пока не настроены.")
         return
 
-    await message.answer("Выберите бренд:", reply_markup=main_menu_keyboard(brands))
-    await message.answer("Быстрые кнопки:", reply_markup=brands_keyboard(brands))
+    await message.answer("Системные кнопки снизу обновлены.", reply_markup=main_menu_keyboard())
+    await message.answer("Выберите бренд:", reply_markup=brands_keyboard(brands))
 
 
 @router.message(Command("report"))
@@ -59,7 +59,6 @@ async def report(message: Message):
         part for part in [message.from_user.first_name, message.from_user.last_name] if part
     )
     user_label = f"@{username}" if username else (full_name or str(message.from_user.id))
-    brands = await list_brands()
     await message.answer(
         "Ваш отчет:\n"
         f"Пользователь: {user_label}\n"
@@ -67,7 +66,7 @@ async def report(message: Message):
         f"Запрошено видео: {stats['requested']}\n"
         f"Отчитано ссылками: {stats['reported']}\n"
         f"Ожидает отчета: {pending}",
-        reply_markup=main_menu_keyboard(brands),
+        reply_markup=main_menu_keyboard(),
     )
 
 
@@ -100,15 +99,14 @@ async def report_admin(message: Message):
 async def cancel(message: Message):
     if not message.from_user:
         return
-    brands = await list_brands()
     cancelled = await cancel_pending_request(message.from_user.id)
     if cancelled:
         await message.answer(
             "Ожидание ссылки отменено. Можно запросить новое видео.",
-            reply_markup=main_menu_keyboard(brands),
+            reply_markup=main_menu_keyboard(),
         )
     else:
-        await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=main_menu_keyboard(brands))
+        await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data.startswith(BRAND_CALLBACK_PREFIX))
@@ -123,7 +121,7 @@ async def select_brand(callback: CallbackQuery):
 
 async def send_brand_video(message: Message, user, brand: str):
     brands = await list_brands()
-    await message.answer(f"Ищу случайное видео для {brand}...", reply_markup=main_menu_keyboard(brands))
+    await message.answer(f"Ищу случайное видео для {brand}...", reply_markup=main_menu_keyboard())
 
     try:
         prepared = await prepare_random_video(
@@ -181,8 +179,9 @@ async def send_brand_video(message: Message, user, brand: str):
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
         "После публикации пришлите ссылку на YouTube-видео ответным сообщением.",
-        reply_markup=main_menu_keyboard(brands),
+        reply_markup=main_menu_keyboard(),
     )
+    await message.answer("Можно выбрать следующий бренд:", reply_markup=brands_keyboard(brands))
 
 
 @router.message(F.text)
@@ -203,14 +202,14 @@ async def handle_text(message: Message):
 
     pending = await get_pending_request(message.from_user.id)
     if not pending:
-        await message.answer("Выберите бренд на клавиатуре, чтобы получить видео.", reply_markup=main_menu_keyboard(brands))
+        await message.answer("Выберите бренд кнопками выше или нажмите /start.", reply_markup=main_menu_keyboard())
         return
 
     url = message.text.strip()
     if not is_youtube_url(url):
         await message.answer(
             "Жду ссылку на YouTube, например https://youtube.com/shorts/...",
-            reply_markup=main_menu_keyboard(brands),
+            reply_markup=main_menu_keyboard(),
         )
         return
 
@@ -218,11 +217,11 @@ async def handle_text(message: Message):
     if request.status == "archived":
         await message.answer(
             "Спасибо, отчет принят. Видео перенесено в папку опубликовано.",
-            reply_markup=main_menu_keyboard(brands),
+            reply_markup=main_menu_keyboard(),
         )
     else:
         await message.answer(
             "Спасибо, отчет принят. Видео помечено как опубликованное, но перенос на Яндекс.Диске не удался. "
             "Администратор сможет проверить ошибку в логах.",
-            reply_markup=main_menu_keyboard(brands),
+            reply_markup=main_menu_keyboard(),
         )
