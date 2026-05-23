@@ -8,7 +8,8 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ClientConfig
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_FILE_LIMIT_BYTES = 50 * 1024 * 1024
 REPORTABLE_STATUSES = ("sent", "reported")
 RESERVED_STATUSES = ("sent", "reported", "archived")
+ACTIVE_VIDEO_UNIQUE_INDEX_SQL = """
+CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_video_requests_active_video_path
+ON telegram_video_requests(video_path)
+WHERE status IN ('sent', 'reported', 'archived')
+"""
 YOUTUBE_URL_RE = re.compile(
     r"^https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+$",
     re.IGNORECASE,
@@ -155,7 +161,9 @@ async def prepare_random_video(
     telegram_username: Optional[str],
     telegram_full_name: Optional[str],
 ) -> PreparedVideo:
+    selected_video = None
     async with async_session_maker() as session:
+        await ensure_active_video_unique_index(session)
         config = await get_db_config(session)
         client = next((item for item in config.clients if item.name == brand), None)
         if not client:
@@ -197,8 +205,25 @@ async def prepare_random_video(
         if not candidates:
             raise LookupError("no_videos")
 
-        video = random.choice(candidates)
-        video_path = str(video["path"])
+        random.shuffle(candidates)
+        request = None
+        for video in candidates:
+            request = await _try_reserve_video(
+                session=session,
+                video=video,
+                client=client,
+                telegram_user_id=telegram_user_id,
+                telegram_username=telegram_username,
+                telegram_full_name=telegram_full_name,
+            )
+            if request:
+                selected_video = video
+                break
+
+        if not request or not selected_video:
+            raise LookupError("no_videos")
+
+        video_path = str(selected_video["path"])
         author_name = extract_author(video_path)
         generated = await content_generator.generate_caption(
             video_path,
@@ -210,27 +235,53 @@ async def prepare_random_video(
         if not description:
             description = f"{title}\n\n#shorts"
 
-        request = TelegramVideoRequest(
-            telegram_user_id=telegram_user_id,
-            telegram_username=telegram_username,
-            telegram_full_name=telegram_full_name,
-            brand=client.name,
-            video_path=video_path,
-            video_name=str(video.get("name") or video_path.rsplit("/", 1)[-1]),
-            youtube_title=title,
-            youtube_description=description,
-        )
+        request.youtube_title = title
+        request.youtube_description = description
         session.add(request)
         await session.commit()
         await session.refresh(request)
 
     download_link = await yandex_service.get_download_link(video_path)
-    size = video.get("size")
+    size = selected_video.get("size") if selected_video else None
     return PreparedVideo(
         request=request,
         download_link=download_link,
         size=int(size) if size is not None else None,
     )
+
+
+async def ensure_active_video_unique_index(session: AsyncSession):
+    await session.execute(text(ACTIVE_VIDEO_UNIQUE_INDEX_SQL))
+    await session.commit()
+
+
+async def _try_reserve_video(
+    session: AsyncSession,
+    video: dict,
+    client: ClientConfig,
+    telegram_user_id: int,
+    telegram_username: Optional[str],
+    telegram_full_name: Optional[str],
+) -> Optional[TelegramVideoRequest]:
+    video_path = str(video["path"])
+    request = TelegramVideoRequest(
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+        brand=client.name,
+        video_path=video_path,
+        video_name=str(video.get("name") or video_path.rsplit("/", 1)[-1]),
+        status="sent",
+    )
+    session.add(request)
+    try:
+        await session.commit()
+        await session.refresh(request)
+        return request
+    except IntegrityError:
+        await session.rollback()
+        logger.info("[TelegramBot] Video was reserved concurrently, trying another: %s", video_path)
+        return None
 
 
 async def download_video_to_temp(download_link: str, video_name: str) -> str:

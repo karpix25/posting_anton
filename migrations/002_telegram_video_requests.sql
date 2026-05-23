@@ -25,3 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_brand ON telegram_video_r
 CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_video_path ON telegram_video_requests(video_path);
 CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_status ON telegram_video_requests(status);
 CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_requested_at ON telegram_video_requests(requested_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_video_requests_active_video_path
+ON telegram_video_requests(video_path)
+WHERE status IN ('sent', 'reported', 'archived');
