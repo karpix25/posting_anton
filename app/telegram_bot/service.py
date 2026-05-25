@@ -49,6 +49,22 @@ class PreparedVideo:
         return self.size is not None and self.size > TELEGRAM_BOT_FILE_LIMIT_BYTES
 
 
+@dataclass(frozen=True)
+class FolderOption:
+    name: str
+    prefix: tuple[str, ...]
+    video_count: int
+    child_count: int
+
+
+@dataclass(frozen=True)
+class FolderView:
+    prefix: tuple[str, ...]
+    title: str
+    total_videos: int
+    children: list[FolderOption]
+
+
 def _normalize(text: str) -> str:
     return (text or "").lower().replace("ё", "е").replace(" ", "").replace("-", "").strip()
 
@@ -134,6 +150,22 @@ def _client_matches_video_path(client: ClientConfig, video_path: str) -> bool:
     return _normalize(client.name) in _normalize(video_path)
 
 
+def _find_client_for_video(
+    clients: list[ClientConfig],
+    scheduler: ContentScheduler,
+    video: dict,
+) -> Optional[ClientConfig]:
+    video_path = str(video.get("path") or "")
+    extracted_brand = scheduler.extract_brand(video_path)
+    for client in clients:
+        if _client_matches_extracted_brand(client, extracted_brand):
+            return client
+    for client in clients:
+        if _client_matches_video_path(client, video_path):
+            return client
+    return None
+
+
 async def list_brands() -> list[str]:
     async with async_session_maker() as session:
         config = await get_db_config(session)
@@ -178,7 +210,78 @@ async def build_video_inventory_text() -> str:
     return "\n".join(lines).strip()
 
 
+async def get_video_folder_view(prefix: tuple[str, ...] = ()) -> FolderView:
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+
+    videos = await yandex_service.list_files(
+        limit=100000,
+        force_refresh=False,
+        folders=config.yandexFolders,
+    )
+    prefix = tuple(prefix)
+    child_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"videos": 0, "children": 0})
+    child_names: dict[str, str] = {}
+    total_videos = 0
+
+    for video in videos:
+        segments = _extract_navigation_segments(str(video.get("path") or ""))
+        if not _segments_match_prefix(segments, prefix):
+            continue
+        total_videos += 1
+        if len(segments) <= len(prefix):
+            continue
+        child_name = segments[len(prefix)]
+        child_key = _normalize(child_name)
+        child_names.setdefault(child_key, child_name)
+        child_stats[child_key]["videos"] += 1
+        if len(segments) > len(prefix) + 1:
+            child_stats[child_key]["children"] += 1
+
+    children = [
+        FolderOption(
+            name=child_names[key],
+            prefix=prefix + (child_names[key],),
+            video_count=stats["videos"],
+            child_count=stats["children"],
+        )
+        for key, stats in child_stats.items()
+    ]
+    children.sort(key=lambda item: (-item.video_count, item.name.casefold()))
+
+    title = "Выберите папку после автора" if not prefix else " / ".join(prefix)
+    return FolderView(prefix=prefix, title=title, total_videos=total_videos, children=children)
+
+
 ROOT_PRODUCT_GROUP_LABEL = "_root"
+
+
+def _extract_navigation_segments(path: str) -> tuple[str, ...]:
+    parts = [part for part in path.replace("\\", "/").split("/") if part and part != "disk:"]
+    try:
+        video_idx = next(i for i, part in enumerate(parts) if part.lower() in {"video", "видео"})
+    except StopIteration:
+        return ()
+
+    folders_after_author = parts[video_idx + 2 :]
+    if not folders_after_author:
+        return ()
+    if folders_after_author and _looks_like_video_file(folders_after_author[-1]):
+        folders_after_author = folders_after_author[:-1]
+    return tuple(part.strip() for part in folders_after_author if part.strip())
+
+
+def _segments_match_prefix(segments: tuple[str, ...], prefix: tuple[str, ...]) -> bool:
+    if len(segments) < len(prefix):
+        return False
+    return all(_normalize(left) == _normalize(right) for left, right in zip(segments, prefix))
+
+
+def _looks_like_video_file(segment: str) -> bool:
+    value = (segment or "").strip().lower()
+    if "." not in value:
+        return False
+    return value.rsplit(".", 1)[-1] in {"mp4", "mov", "avi", "mkv", "webm", "m4v"}
 
 
 def _extract_inventory_parts(path: str, scheduler: ContentScheduler) -> tuple[str, str, str]:
@@ -232,12 +335,45 @@ async def prepare_random_video(
     telegram_username: Optional[str],
     telegram_full_name: Optional[str],
 ) -> PreparedVideo:
+    return await _prepare_random_video(
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+        brand=brand,
+        folder_prefix=None,
+    )
+
+
+async def prepare_random_video_from_folder(
+    folder_prefix: tuple[str, ...],
+    telegram_user_id: int,
+    telegram_username: Optional[str],
+    telegram_full_name: Optional[str],
+) -> PreparedVideo:
+    return await _prepare_random_video(
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+        brand=None,
+        folder_prefix=folder_prefix,
+    )
+
+
+async def _prepare_random_video(
+    *,
+    telegram_user_id: int,
+    telegram_username: Optional[str],
+    telegram_full_name: Optional[str],
+    brand: Optional[str],
+    folder_prefix: Optional[tuple[str, ...]],
+) -> PreparedVideo:
     selected_video = None
+    selected_client = None
     async with async_session_maker() as session:
         await ensure_active_video_unique_index(session)
         config = await get_db_config(session)
-        client = next((item for item in config.clients if item.name == brand), None)
-        if not client:
+        client = next((item for item in config.clients if item.name == brand), None) if brand else None
+        if brand and not client:
             raise ValueError(f"Бренд не найден: {brand}")
 
         pending = await _get_pending_request_for_update(session, telegram_user_id)
@@ -262,20 +398,37 @@ async def prepare_random_video(
             config.yandexFolders,
         )
         scheduler = ContentScheduler(config)
-        candidates = [
-            video for video in videos
-            if video.get("path")
-            and video["path"] not in used_paths
-            and _client_matches_extracted_brand(client, scheduler.extract_brand(str(video["path"])))
-        ]
+        if folder_prefix is not None:
+            candidates = [
+                (video, matched_client)
+                for video in videos
+                if video.get("path")
+                and video["path"] not in used_paths
+                and _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix)
+                for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
+                if matched_client
+            ]
+            logger.info(
+                "[TelegramBot] Folder '%s' matched %s candidate videos.",
+                " / ".join(folder_prefix),
+                len(candidates),
+            )
+        else:
+            candidates = [
+                (video, client) for video in videos
+                if video.get("path")
+                and video["path"] not in used_paths
+                and client
+                and _client_matches_extracted_brand(client, scheduler.extract_brand(str(video["path"])))
+            ]
         logger.info(
             "[TelegramBot] Brand '%s' matched %s candidate videos after scheduler-style brand extraction.",
-            client.name,
+            client.name if client else "folder",
             len(candidates),
         )
-        if not candidates:
+        if not candidates and client:
             candidates = [
-                video for video in videos
+                (video, client) for video in videos
                 if video.get("path")
                 and video["path"] not in used_paths
                 and _client_matches_video_path(client, str(video["path"]))
@@ -290,20 +443,21 @@ async def prepare_random_video(
 
         random.shuffle(candidates)
         request = None
-        for video in candidates:
+        for video, candidate_client in candidates:
             request = await _try_reserve_video(
                 session=session,
                 video=video,
-                client=client,
+                client=candidate_client,
                 telegram_user_id=telegram_user_id,
                 telegram_username=telegram_username,
                 telegram_full_name=telegram_full_name,
             )
             if request:
                 selected_video = video
+                selected_client = candidate_client
                 break
 
-        if not request or not selected_video:
+        if not request or not selected_video or not selected_client:
             raise LookupError("no_videos")
 
         video_path = str(selected_video["path"])
@@ -311,7 +465,7 @@ async def prepare_random_video(
         generated = await content_generator.generate_caption(
             video_path,
             "youtube",
-            client,
+            selected_client,
             author_name if author_name != "unknown" else None,
         )
         title, description = parse_youtube_text(generated or "")

@@ -8,16 +8,24 @@ from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from app.config import settings
 from app.telegram_bot.keyboards import BRAND_CALLBACK_PREFIX, brands_keyboard, main_menu_keyboard
+from app.telegram_bot.keyboards import (
+    FOLDER_CALLBACK_PREFIX,
+    FOLDER_VIDEO_CALLBACK_PREFIX,
+    folder_navigation_keyboard,
+    resolve_folder_token,
+)
 from app.telegram_bot.service import (
     accept_publication_report,
     admin_report,
     build_video_inventory_text,
     cancel_pending_request,
     download_video_to_temp,
+    get_video_folder_view,
     get_pending_request,
     is_youtube_url,
     list_brands,
     prepare_random_video,
+    prepare_random_video_from_folder,
     user_report,
 )
 
@@ -40,13 +48,8 @@ def _admin_ids() -> set[int]:
 
 @router.message(Command("start"))
 async def start(message: Message):
-    brands = await list_brands()
-    if not brands:
-        await message.answer("Бренды пока не настроены.")
-        return
-
     await message.answer("Системные кнопки снизу обновлены.", reply_markup=main_menu_keyboard())
-    await message.answer("Выберите бренд:", reply_markup=brands_keyboard(brands))
+    await send_folder_navigation(message, ())
 
 
 @router.message(Command("report"))
@@ -125,6 +128,37 @@ async def select_brand(callback: CallbackQuery):
     await send_brand_video(callback.message, callback.from_user, brand)
 
 
+@router.callback_query(F.data.startswith(FOLDER_CALLBACK_PREFIX))
+async def select_folder(callback: CallbackQuery):
+    if not callback.message or not callback.data:
+        return
+
+    token = callback.data.removeprefix(FOLDER_CALLBACK_PREFIX)
+    prefix = resolve_folder_token(token)
+    if prefix is None:
+        await callback.answer("Кнопка устарела, обновляю список.", show_alert=True)
+        await send_folder_navigation(callback.message, ())
+        return
+
+    await callback.answer()
+    await send_folder_navigation(callback.message, prefix)
+
+
+@router.callback_query(F.data.startswith(FOLDER_VIDEO_CALLBACK_PREFIX))
+async def select_folder_video(callback: CallbackQuery):
+    if not callback.message or not callback.from_user or not callback.data:
+        return
+
+    token = callback.data.removeprefix(FOLDER_VIDEO_CALLBACK_PREFIX)
+    prefix = resolve_folder_token(token)
+    if prefix is None:
+        await callback.answer("Кнопка устарела, обновите список через /start.", show_alert=True)
+        return
+
+    await callback.answer()
+    await send_folder_video(callback.message, callback.from_user, prefix)
+
+
 async def send_brand_video(message: Message, user, brand: str):
     brands = await list_brands()
     await message.answer(f"Ищу случайное видео для {brand}...", reply_markup=main_menu_keyboard())
@@ -190,6 +224,75 @@ async def send_brand_video(message: Message, user, brand: str):
     await message.answer("Можно выбрать следующий бренд:", reply_markup=brands_keyboard(brands))
 
 
+async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ...]):
+    label = " / ".join(folder_prefix)
+    await message.answer(f"Ищу случайное видео в папке: {label}", reply_markup=main_menu_keyboard())
+
+    try:
+        prepared = await prepare_random_video_from_folder(
+            folder_prefix=folder_prefix,
+            telegram_user_id=user.id,
+            telegram_username=user.username,
+            telegram_full_name=" ".join(
+                part for part in [user.first_name, user.last_name] if part
+            ),
+        )
+    except RuntimeError as exc:
+        if str(exc) == "pending_report":
+            pending = await get_pending_request(user.id)
+            name = pending.video_name if pending else "предыдущее видео"
+            await message.answer(
+                f"Сначала пришлите ссылку на опубликованное видео для: {name}\n"
+                "Или используйте /cancel, если нужно отменить ожидание."
+            )
+            return
+        raise
+    except LookupError:
+        await message.answer("Свободных видео в этой папке сейчас не нашлось.")
+        return
+    except Exception as exc:
+        logger.exception("Failed to prepare Telegram folder video")
+        await message.answer(f"Не удалось подготовить видео: {exc}")
+        return
+
+    await send_prepared_video(message, prepared)
+    await send_folder_navigation(message, folder_prefix)
+
+
+async def send_prepared_video(message: Message, prepared):
+    request = prepared.request
+    temp_path = None
+    if prepared.should_send_as_link:
+        size_mb = prepared.size / 1024 / 1024 if prepared.size else 0
+        await message.answer(
+            f"Файл больше 50 МБ ({size_mb:.1f} МБ), поэтому отправляю прямую ссылку:\n"
+            f"{prepared.download_link}"
+        )
+    else:
+        try:
+            await message.answer("Скачиваю файл, чтобы отправить его без сжатия...")
+            temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
+            await message.answer_document(
+                FSInputFile(temp_path, filename=request.video_name),
+                caption=request.video_name[:1024],
+            )
+        finally:
+            if temp_path:
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
+
+    await message.answer("Title:")
+    await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
+    await message.answer("Description:")
+    await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
+    await message.answer(
+        "После публикации пришлите ссылку на YouTube-видео ответным сообщением.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
 @router.message(F.text)
 async def handle_text(message: Message):
     if not message.from_user or not message.text:
@@ -203,7 +306,7 @@ async def handle_text(message: Message):
         await cancel(message)
         return
     if message.text == "Структура":
-        await send_inventory(message)
+        await send_folder_navigation(message, ())
         return
     if message.text in brands:
         await send_brand_video(message, message.from_user, message.text)
@@ -211,7 +314,7 @@ async def handle_text(message: Message):
 
     pending = await get_pending_request(message.from_user.id)
     if not pending:
-        await message.answer("Выберите бренд кнопками выше или нажмите /start.", reply_markup=main_menu_keyboard())
+        await message.answer("Выберите папку кнопками выше или нажмите /start.", reply_markup=main_menu_keyboard())
         return
 
     url = message.text.strip()
@@ -234,6 +337,26 @@ async def handle_text(message: Message):
             "Администратор сможет проверить ошибку в логах.",
             reply_markup=main_menu_keyboard(),
         )
+
+
+async def send_folder_navigation(message: Message, prefix: tuple[str, ...]):
+    try:
+        view = await get_video_folder_view(prefix)
+    except Exception as exc:
+        logger.exception("Failed to build Telegram folder navigation")
+        await message.answer(f"Не удалось собрать папки: {exc}", reply_markup=main_menu_keyboard())
+        return
+
+    if not view.children and not view.total_videos:
+        await message.answer("В этой папке видео не нашлись.", reply_markup=main_menu_keyboard())
+        return
+
+    if view.prefix:
+        text = f"Папка:\n{view.title}\n\nВидео внутри: {view.total_videos}"
+    else:
+        text = "Выберите папку:"
+    await message.answer(text, reply_markup=folder_navigation_keyboard(view))
+
 
 async def send_inventory(message: Message):
     await message.answer("Сканирую структуру видео на диске...", reply_markup=main_menu_keyboard())
