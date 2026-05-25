@@ -143,11 +143,11 @@ class YandexDiskService:
         for folder in folders or []:
             if not folder:
                 continue
-            normalized = self._normalize_disk_path(folder)
-            if normalized.startswith("disk:/"):
-                root_folders.append(normalized)
+            api_path = self._normalize_disk_api_path(str(folder))
+            if api_path.startswith("disk:/"):
+                root_folders.append(api_path)
             else:
-                root_folders.append(f"disk:/{normalized.strip('/')}")
+                root_folders.append(f"disk:/{api_path.strip('/')}")
 
         if not root_folders:
             return files
@@ -287,6 +287,16 @@ class YandexDiskService:
             .strip()
             .strip("/")
             .lower()
+        )
+
+    def _normalize_disk_api_path(self, path: str) -> str:
+        """Normalize user-configured paths without changing case for Yandex resource API."""
+        return (
+            path.replace("\\", "/")
+            .replace("disk;", "disk:")
+            .replace("Disk;", "disk:")
+            .strip()
+            .strip("/")
         )
 
     async def get_download_link(self, path: str) -> str:
