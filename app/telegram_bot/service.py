@@ -1,8 +1,10 @@
+import asyncio
 import logging
 import os
 import random
 import re
 import tempfile
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,6 +38,9 @@ YOUTUBE_URL_RE = re.compile(
     r"^https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+$",
     re.IGNORECASE,
 )
+FOLDER_INVENTORY_TTL_SECONDS = 10 * 60
+_folder_inventory_cache: dict[tuple[str, ...], tuple[float, list[dict]]] = {}
+_folder_inventory_lock = None
 
 
 @dataclass
@@ -214,11 +219,7 @@ async def get_video_folder_view(prefix: tuple[str, ...] = ()) -> FolderView:
     async with async_session_maker() as session:
         config = await get_db_config(session)
 
-    videos = await yandex_service.list_files(
-        limit=100000,
-        force_refresh=False,
-        folders=config.yandexFolders,
-    )
+    videos = await _get_cached_folder_inventory(config.yandexFolders)
     prefix = tuple(prefix)
     child_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"videos": 0, "children": 0})
     child_names: dict[str, str] = {}
@@ -251,6 +252,32 @@ async def get_video_folder_view(prefix: tuple[str, ...] = ()) -> FolderView:
 
     title = "Выберите папку после автора" if not prefix else " / ".join(prefix)
     return FolderView(prefix=prefix, title=title, total_videos=total_videos, children=children)
+
+
+async def _get_cached_folder_inventory(folders: list[str] | None) -> list[dict]:
+    global _folder_inventory_lock
+    if _folder_inventory_lock is None:
+        _folder_inventory_lock = asyncio.Lock()
+
+    key = tuple(sorted(str(folder) for folder in (folders or []) if folder))
+    now = time.monotonic()
+    cached = _folder_inventory_cache.get(key)
+    if cached and now - cached[0] < FOLDER_INVENTORY_TTL_SECONDS:
+        return cached[1]
+
+    async with _folder_inventory_lock:
+        now = time.monotonic()
+        cached = _folder_inventory_cache.get(key)
+        if cached and now - cached[0] < FOLDER_INVENTORY_TTL_SECONDS:
+            return cached[1]
+
+        videos = await yandex_service.list_files(
+            limit=100000,
+            force_refresh=False,
+            folders=list(key),
+        )
+        _folder_inventory_cache[key] = (time.monotonic(), videos)
+        return videos
 
 
 ROOT_PRODUCT_GROUP_LABEL = "_root"
