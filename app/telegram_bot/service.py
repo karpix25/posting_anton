@@ -122,6 +122,17 @@ def _client_matches_extracted_brand(client: ClientConfig, brand_name: str) -> bo
     return False
 
 
+def _client_matches_video_path(client: ClientConfig, video_path: str) -> bool:
+    if client.regex:
+        try:
+            if re.search(client.regex, video_path, re.IGNORECASE):
+                return True
+        except re.error:
+            logger.warning("Invalid AI client regex for %s: %s", client.name, client.regex)
+
+    return _normalize(client.name) in _normalize(video_path)
+
+
 async def list_brands() -> list[str]:
     async with async_session_maker() as session:
         config = await get_db_config(session)
@@ -202,6 +213,18 @@ async def prepare_random_video(
             client.name,
             len(candidates),
         )
+        if not candidates:
+            candidates = [
+                video for video in videos
+                if video.get("path")
+                and video["path"] not in used_paths
+                and _client_matches_video_path(client, str(video["path"]))
+            ]
+            logger.info(
+                "[TelegramBot] Brand '%s' matched %s candidate videos after full-path fallback.",
+                client.name,
+                len(candidates),
+            )
         if not candidates:
             raise LookupError("no_videos")
 
