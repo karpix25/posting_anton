@@ -3,6 +3,7 @@ import os
 from html import escape
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
@@ -137,11 +138,11 @@ async def select_folder(callback: CallbackQuery):
     prefix, page = parse_folder_callback_data(callback.data)
     if prefix is None:
         await callback.answer("Кнопка устарела, обновляю список.", show_alert=True)
-        await send_folder_navigation(callback.message, ())
+        await send_folder_navigation(callback.message, (), edit=True)
         return
 
     await callback.answer()
-    await send_folder_navigation(callback.message, prefix, page=page)
+    await send_folder_navigation(callback.message, prefix, page=page, edit=True)
 
 
 @router.callback_query(F.data.startswith(FOLDER_VIDEO_CALLBACK_PREFIX))
@@ -339,7 +340,7 @@ async def handle_text(message: Message):
         )
 
 
-async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page: int = 0):
+async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page: int = 0, edit: bool = False):
     try:
         view = await get_video_folder_view(prefix)
     except Exception as exc:
@@ -355,7 +356,16 @@ async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page
         text = f"Папка:\n{view.title}\n\nВидео внутри: {view.total_videos}"
     else:
         text = "Выберите папку:"
-    await message.answer(text, reply_markup=folder_navigation_keyboard(view, page=page))
+    reply_markup = folder_navigation_keyboard(view, page=page)
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=reply_markup)
+            return
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
+            logger.warning("Failed to edit Telegram folder navigation, sending new message: %s", exc)
+    await message.answer(text, reply_markup=reply_markup)
 
 
 async def send_inventory(message: Message):
