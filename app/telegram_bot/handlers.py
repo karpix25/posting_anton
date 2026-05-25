@@ -12,6 +12,7 @@ from app.telegram_bot.keyboards import (
     FOLDER_CALLBACK_PREFIX,
     FOLDER_VIDEO_CALLBACK_PREFIX,
     folder_navigation_keyboard,
+    parse_folder_callback_data,
     resolve_folder_token,
 )
 from app.telegram_bot.service import (
@@ -133,15 +134,14 @@ async def select_folder(callback: CallbackQuery):
     if not callback.message or not callback.data:
         return
 
-    token = callback.data.removeprefix(FOLDER_CALLBACK_PREFIX)
-    prefix = resolve_folder_token(token)
+    prefix, page = parse_folder_callback_data(callback.data)
     if prefix is None:
         await callback.answer("Кнопка устарела, обновляю список.", show_alert=True)
         await send_folder_navigation(callback.message, ())
         return
 
     await callback.answer()
-    await send_folder_navigation(callback.message, prefix)
+    await send_folder_navigation(callback.message, prefix, page=page)
 
 
 @router.callback_query(F.data.startswith(FOLDER_VIDEO_CALLBACK_PREFIX))
@@ -339,7 +339,7 @@ async def handle_text(message: Message):
         )
 
 
-async def send_folder_navigation(message: Message, prefix: tuple[str, ...]):
+async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page: int = 0):
     try:
         view = await get_video_folder_view(prefix)
     except Exception as exc:
@@ -355,7 +355,7 @@ async def send_folder_navigation(message: Message, prefix: tuple[str, ...]):
         text = f"Папка:\n{view.title}\n\nВидео внутри: {view.total_videos}"
     else:
         text = "Выберите папку:"
-    await message.answer(text, reply_markup=folder_navigation_keyboard(view))
+    await message.answer(text, reply_markup=folder_navigation_keyboard(view, page=page))
 
 
 async def send_inventory(message: Message):
