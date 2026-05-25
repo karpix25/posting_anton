@@ -28,6 +28,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     rows = [[
         KeyboardButton(text="Мой отчет", style="primary"),
         KeyboardButton(text="Отменить", style="danger"),
+    ], [
+        KeyboardButton(text="Структура", style="success"),
     ]]
 
     return ReplyKeyboardMarkup(

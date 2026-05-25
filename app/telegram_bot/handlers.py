@@ -11,6 +11,7 @@ from app.telegram_bot.keyboards import BRAND_CALLBACK_PREFIX, brands_keyboard, m
 from app.telegram_bot.service import (
     accept_publication_report,
     admin_report,
+    build_video_inventory_text,
     cancel_pending_request,
     download_video_to_temp,
     get_pending_request,
@@ -93,6 +94,11 @@ async def report_admin(message: Message):
             f"запросил {requested}, отчитался {reported}, ожидает {requested - reported}"
         )
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("inventory"))
+async def inventory(message: Message):
+    await send_inventory(message)
 
 
 @router.message(Command("cancel"))
@@ -196,6 +202,9 @@ async def handle_text(message: Message):
     if message.text == "Отменить":
         await cancel(message)
         return
+    if message.text == "Структура":
+        await send_inventory(message)
+        return
     if message.text in brands:
         await send_brand_video(message, message.from_user, message.text)
         return
@@ -225,3 +234,30 @@ async def handle_text(message: Message):
             "Администратор сможет проверить ошибку в логах.",
             reply_markup=main_menu_keyboard(),
         )
+
+async def send_inventory(message: Message):
+    await message.answer("Сканирую структуру видео на диске...", reply_markup=main_menu_keyboard())
+    try:
+        text = await build_video_inventory_text()
+    except Exception as exc:
+        logger.exception("Failed to build Telegram video inventory")
+        await message.answer(f"Не удалось собрать структуру: {exc}", reply_markup=main_menu_keyboard())
+        return
+
+    for chunk in split_telegram_text(text):
+        await message.answer(f"<pre>{escape(chunk)}</pre>", reply_markup=main_menu_keyboard())
+
+
+def split_telegram_text(text: str, limit: int = 3500) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+    for line in text.splitlines():
+        next_value = f"{current}\n{line}" if current else line
+        if len(next_value) > limit and current:
+            chunks.append(current)
+            current = line
+        else:
+            current = next_value
+    if current:
+        chunks.append(current)
+    return chunks

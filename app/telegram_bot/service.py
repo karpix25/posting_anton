@@ -3,6 +3,7 @@ import os
 import random
 import re
 import tempfile
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -137,6 +138,65 @@ async def list_brands() -> list[str]:
     async with async_session_maker() as session:
         config = await get_db_config(session)
     return [client.name for client in config.clients if client.name]
+
+
+async def build_video_inventory_text() -> str:
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+
+    videos = await yandex_service.list_files(
+        limit=100000,
+        force_refresh=True,
+        folders=config.yandexFolders,
+    )
+    scheduler = ContentScheduler(config)
+    tree = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+
+    for video in videos:
+        path = str(video.get("path") or "")
+        category, brand, product = _extract_inventory_parts(path, scheduler)
+        if category == "unknown" or brand == "unknown":
+            continue
+        tree[category][brand][product] += 1
+
+    if not tree:
+        return "Видео по структуре категорий не найдены."
+
+    lines = [f"Видео на диске: {len(videos)}", ""]
+    for category in sorted(tree):
+        lines.append(category)
+        for brand in sorted(tree[category]):
+            brand_total = sum(tree[category][brand].values())
+            lines.append(f"  {brand} — {brand_total} видео")
+            for product, count in sorted(tree[category][brand].items()):
+                if product == ROOT_PRODUCT_GROUP_LABEL:
+                    lines.append(f"    Без продуктовой папки — {count} видео")
+                else:
+                    lines.append(f"    {product} — {count} видео")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+ROOT_PRODUCT_GROUP_LABEL = "_root"
+
+
+def _extract_inventory_parts(path: str, scheduler: ContentScheduler) -> tuple[str, str, str]:
+    parts = [part for part in path.replace("\\", "/").split("/") if part and part != "disk:"]
+    try:
+        video_idx = next(i for i, part in enumerate(parts) if part.lower() in {"video", "видео"})
+    except StopIteration:
+        return "unknown", "unknown", ROOT_PRODUCT_GROUP_LABEL
+
+    category = parts[video_idx + 2].split("(")[0].strip() if video_idx + 2 < len(parts) else "unknown"
+    brand = parts[video_idx + 3].split("*")[0].split("(")[0].strip() if video_idx + 3 < len(parts) else "unknown"
+    product = ROOT_PRODUCT_GROUP_LABEL
+    if video_idx + 4 < len(parts):
+        candidate = parts[video_idx + 4].strip()
+        if candidate and not scheduler.looks_like_video_file(candidate):
+            product = candidate
+
+    return category or "unknown", brand or "unknown", product
 
 
 async def get_pending_request(telegram_user_id: int) -> Optional[TelegramVideoRequest]:
