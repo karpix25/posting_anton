@@ -38,7 +38,7 @@ YOUTUBE_URL_RE = re.compile(
     r"^https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+$",
     re.IGNORECASE,
 )
-FOLDER_INVENTORY_TTL_SECONDS = 10 * 60
+FOLDER_INVENTORY_TTL_SECONDS = 30 * 60
 _folder_inventory_cache: dict[tuple[str, ...], tuple[float, list[dict]]] = {}
 _folder_inventory_lock = None
 
