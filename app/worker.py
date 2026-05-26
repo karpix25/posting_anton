@@ -59,6 +59,92 @@ def _extract_post_platforms(post: Dict[str, Any]) -> List[str]:
     return normalized
 
 
+def _to_msk_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is not None:
+        return dt.astimezone(MSK).replace(tzinfo=None)
+    return dt
+
+
+def _merge_existing_counts(
+    base: Dict[str, Dict[str, Dict[str, int]]],
+    extra: Dict[str, Dict[str, Dict[str, int]]],
+) -> Dict[str, Dict[str, Dict[str, int]]]:
+    merged = {
+        date_key: {
+            profile: dict(platforms)
+            for profile, platforms in profiles.items()
+        }
+        for date_key, profiles in base.items()
+    }
+    for date_key, profiles in extra.items():
+        if date_key not in merged:
+            merged[date_key] = {}
+        for profile, platforms in profiles.items():
+            if profile not in merged[date_key]:
+                merged[date_key][profile] = {}
+            for platform, count in platforms.items():
+                merged[date_key][profile][platform] = max(
+                    int(merged[date_key][profile].get(platform, 0) or 0),
+                    int(count or 0),
+                )
+    return merged
+
+
+def _add_existing_count(
+    counts: Dict[str, Dict[str, Dict[str, int]]],
+    scheduled_dt: datetime,
+    profile: str,
+    platform: str,
+) -> None:
+    platform = _normalize_platform_name(platform)
+    if not profile or platform not in CANONICAL_PLATFORMS:
+        return
+
+    date_key = _to_msk_naive(scheduled_dt).strftime("%Y-%m-%d")
+    counts.setdefault(date_key, {}).setdefault(profile, {})
+    counts[date_key][profile][platform] = counts[date_key][profile].get(platform, 0) + 1
+
+
+async def _load_local_schedule_reservations(session, days_to_generate: int):
+    """
+    Treat local rows in the planning window as occupied schedule slots.
+
+    Only queued/processing videos are reserved from the source pool. Old
+    successful posts are already moved out of disk:/ВИДЕО, so keeping every
+    historical success reserved forever can incorrectly exhaust large brands.
+    """
+    today_msk = datetime.now(MSK).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    end_msk = today_msk + timedelta(days=max(int(days_to_generate or 1), 1) + 1)
+    occupied_statuses = ["queued", "processing", "success"]
+    video_reserved_statuses = ["queued", "processing"]
+
+    count_stmt = select(PostingHistory).where(
+        PostingHistory.status.in_(occupied_statuses),
+        PostingHistory.posted_at >= today_msk,
+        PostingHistory.posted_at < end_msk,
+    )
+    result = await session.execute(count_stmt)
+    rows = result.scalars().all()
+
+    occupied_slots: Dict[str, List[datetime]] = {}
+    existing_counts: Dict[str, Dict[str, Dict[str, int]]] = {}
+    for row in rows:
+        scheduled_dt = _to_msk_naive(row.posted_at)
+        occupied_slots.setdefault(row.profile_username, []).append(scheduled_dt)
+        _add_existing_count(existing_counts, scheduled_dt, row.profile_username, row.platform)
+
+    video_stmt = select(PostingHistory.video_path).where(
+        PostingHistory.status.in_(video_reserved_statuses),
+        PostingHistory.posted_at >= today_msk,
+        PostingHistory.posted_at < end_msk,
+        PostingHistory.video_path.is_not(None),
+    )
+    video_result = await session.execute(video_stmt)
+    reserved_video_paths = {path for path in video_result.scalars().all() if path}
+
+    return occupied_slots, existing_counts, reserved_video_paths
+
+
 def _summarize_ai_clients_for_log(clients: List[Any]) -> List[Dict[str, Any]]:
     return [
         {
@@ -376,24 +462,14 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
                 if profile not in occupied_slots:
                     occupied_slots[profile] = []
                 try:
-                    # Parse ISO datetime
-                    scheduled_dt = datetime.fromisoformat(scheduled_date_str.replace('Z', '+00:00'))
-                    # Convert to naive datetime for comparison
-                    if scheduled_dt.tzinfo:
-                        scheduled_dt = scheduled_dt.replace(tzinfo=None)
+                    # Parse UploadPost ISO datetime and compare in the same MSK-naive
+                    # timeline used by our scheduler.
+                    scheduled_dt = _to_msk_naive(datetime.fromisoformat(scheduled_date_str.replace('Z', '+00:00')))
                     occupied_slots[profile].append(scheduled_dt)
                     
                     # Populate existing_counts for backfilling
-                    date_key = scheduled_dt.strftime("%Y-%m-%d")
-                    if date_key not in existing_counts:
-                         existing_counts[date_key] = {}
-                    if profile not in existing_counts[date_key]:
-                         existing_counts[date_key][profile] = {}
-
                     for platform in platforms:
-                        existing_counts[date_key][profile][platform] = (
-                            existing_counts[date_key][profile].get(platform, 0) + 1
-                        )
+                        _add_existing_count(existing_counts, scheduled_dt, profile, platform)
                     
                 except Exception as parse_err:
                     logger.warning(f"[Worker] Failed to parse date '{scheduled_date_str}': {parse_err}")
@@ -406,6 +482,22 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
     logger.info("[Worker] 🏁 Starting scheduler generation...")
 
     async for session in get_session():
+        local_slots, local_counts, reserved_video_paths = await _load_local_schedule_reservations(
+            session,
+            config.daysToGenerate or 1,
+        )
+        for profile, slots in local_slots.items():
+            occupied_slots.setdefault(profile, []).extend(slots)
+        existing_counts = _merge_existing_counts(existing_counts, local_counts)
+        if reserved_video_paths:
+            before_filter = len(all_videos)
+            all_videos = [v for v in all_videos if v.get("path") not in reserved_video_paths]
+            removed = before_filter - len(all_videos)
+            logger.info(
+                f"[Worker] Local reservations: slots={sum(len(v) for v in local_slots.values())}, "
+                f"reserved_videos={len(reserved_video_paths)}, filtered_from_yandex={removed}"
+            )
+
         scheduler = ContentScheduler(config, session)
         # Use active_profiles (already validated against API) instead of config.profiles
         # Generate Schedule
@@ -497,6 +589,7 @@ async def throttle_upload_post_api():
         if wait_for > 0:
             await asyncio.sleep(wait_for)
         last_upload_post_call_at = time.monotonic()
+
 
 async def post_content(history_id: int, video_path: str, profile_username: str, platform: str, 
                        publish_time_iso: str):

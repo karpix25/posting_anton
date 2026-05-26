@@ -154,14 +154,16 @@ class ContentScheduler:
                 
                 # Fallback chain:
                 # 1. Platform-specific limit (if set)
-                # 2. Deprecated profile.limit (backwards compat)
-                # 3. Global config limit
+                # 2. Global config limit
+                #
+                # Deprecated profile.limit is intentionally ignored here. The UI no
+                # longer exposes it for active profiles, so old saved values like
+                # limit=1 can silently cap profiles even when the visible global
+                # platform limit is higher.
                 if force_limit is not None:
                     return force_limit
                 if platform_limit is not None:
                     return platform_limit
-                if profile.limit is not None:
-                    return profile.limit
                 return getattr(self.config.limits, platform, 1)
 
             # Determine max iterations.

@@ -2,6 +2,24 @@ import axios from 'axios';
 import * as https from 'https';
 import { VideoFile } from './types';
 
+const PROTECTED_DELETE_PATH_PREFIXES = [
+    'disk:/видео'
+];
+
+function normalizeDiskPath(path: string): string {
+    return path
+        .replace(/\\/g, '/')
+        .replace(/^disk;/i, 'disk:')
+        .trim()
+        .replace(/^\/+|\/+$/g, '')
+        .toLowerCase();
+}
+
+function isDeleteProtectedPath(path: string): boolean {
+    const normalized = normalizeDiskPath(path);
+    return PROTECTED_DELETE_PATH_PREFIXES.some(prefix => normalized === prefix || normalized.startsWith(`${prefix}/`));
+}
+
 export class YandexDiskClient {
     private token: string;
     private baseUrl = 'https://cloud-api.yandex.net/v1/disk/resources';
@@ -102,7 +120,14 @@ export class YandexDiskClient {
     }
 
     async deleteFile(path: string, permanently = true): Promise<void> {
+        if (isDeleteProtectedPath(path)) {
+            const message = `[YandexAudit] DELETE BLOCKED for protected path: ${path}`;
+            console.error(message);
+            throw new Error(message);
+        }
+
         try {
+            console.warn(`[YandexAudit] DELETE requested: path=${path}, permanently=${permanently}`);
             await axios.delete(this.baseUrl, {
                 headers: this.headers,
                 timeout: 30000,
@@ -113,9 +138,10 @@ export class YandexDiskClient {
                     force_async: true
                 }
             });
-            console.log(`[Yandex] Deleted file: ${path}`);
+            console.warn(`[YandexAudit] DELETE completed: path=${path}, permanently=${permanently}`);
         } catch (error: any) {
             console.error(`[Yandex] Error deleting file ${path}:`, error.message || error);
+            throw error;
         }
     }
 

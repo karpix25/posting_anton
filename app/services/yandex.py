@@ -11,6 +11,9 @@ ARCHIVE_PATH_PREFIXES = (
     "disk:/опубликовано",
     "disk:/опубликованно",
 )
+PROTECTED_DELETE_PATH_PREFIXES = (
+    "disk:/видео",
+)
 VIDEO_EXTENSIONS = {"mp4", "mov", "mkv", "avi", "webm", "m4v", "mpg", "mpeg"}
 
 class YandexDiskService:
@@ -388,9 +391,15 @@ class YandexDiskService:
 
     async def delete_file(self, path: str, permanently: bool = True):
         """Delete a file."""
+        if self._is_delete_protected_path(path):
+            message = f"[YandexAudit] DELETE BLOCKED for protected path: {path}"
+            logger.error(message)
+            raise RuntimeError(message)
+
+        logger.warning(f"[YandexAudit] DELETE requested: path={path}, permanently={permanently}")
         async with yadisk.AsyncClient(token=self.token) as client:
             await client.remove(path, permanently=permanently)
-            print(f"[Yandex] Deleted file: {path}")
+            logger.warning(f"[YandexAudit] DELETE completed: path={path}, permanently={permanently}")
 
     async def move_file(self, source_path: str, dest_folder: str = "disk:/опубликовано"):
         """Move a file to archive folder instead of deleting."""
@@ -417,9 +426,9 @@ class YandexDiskService:
             except Exception:
                 pass  # If check fails, just try to move
             
-            # Move file
+            logger.info(f"[YandexAudit] MOVE requested: source={source_path}, dest={dest_path}")
             await client.move(source_path, dest_path, overwrite=True)
-            logger.info(f"[Yandex] Moved file: {source_path} -> {dest_path}")
+            logger.info(f"[YandexAudit] MOVE completed: source={source_path}, dest={dest_path}")
             self.schedule_cached_files_refresh()
             return dest_path
 
@@ -433,8 +442,16 @@ class YandexDiskService:
         for part in parts:
             current = f"{current}/{part}"
             if not await client.exists(current):
+                logger.info(f"[YandexAudit] MKDIR requested: path={current}")
                 await client.mkdir(current)
-                logger.info(f"[Yandex] Created folder: {current}")
+                logger.info(f"[YandexAudit] MKDIR completed: path={current}")
+
+    def _is_delete_protected_path(self, path: str) -> bool:
+        normalized = self._normalize_disk_path(path)
+        return any(
+            normalized == prefix or normalized.startswith(f"{prefix}/")
+            for prefix in PROTECTED_DELETE_PATH_PREFIXES
+        )
 
     async def list_directories(self, path: str, limit: int = 10000) -> List[str]:
         """
