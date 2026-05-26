@@ -17,6 +17,11 @@ class YandexDiskService:
     def __init__(self, token: Optional[str] = None):
         self.token = token or settings.YANDEX_TOKEN
         self.base_url = "https://cloud-api.yandex.net/v1/disk/resources"
+        self._files_cache: Dict[tuple, List[Dict[str, Any]]] = {}
+        self._files_cache_lock = asyncio.Lock()
+        self._files_cache_refresh_task: Optional[asyncio.Task] = None
+        self._directories_cache: Dict[tuple, List[str]] = {}
+        self._directories_cache_lock = asyncio.Lock()
 
     async def check_token(self) -> bool:
         async with yadisk.AsyncClient(token=self.token) as client:
@@ -34,6 +39,64 @@ class YandexDiskService:
         1. High timeout (600s) per request
         2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
         """
+        cache_key = self._files_cache_key(limit, folders)
+        if not force_refresh and cache_key in self._files_cache:
+            logger.info("[Yandex] Returning cached files for folders=%s.", folders)
+            return list(self._files_cache[cache_key])
+
+        async with self._files_cache_lock:
+            if not force_refresh and cache_key in self._files_cache:
+                logger.info("[Yandex] Returning cached files for folders=%s.", folders)
+                return list(self._files_cache[cache_key])
+
+            files = await self._fetch_files(limit=limit, folders=folders)
+            self._files_cache[cache_key] = list(files)
+            if force_refresh:
+                self._directories_cache.clear()
+            return files
+
+    async def refresh_files_cache(
+        self,
+        limit: int = 100000,
+        folders: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        return await self.list_files(limit=limit, force_refresh=True, folders=folders)
+
+    def invalidate_files_cache(self):
+        self._files_cache.clear()
+        self._directories_cache.clear()
+
+    def schedule_cached_files_refresh(self, delay_seconds: float = 30.0):
+        cache_keys = list(self._files_cache.keys())
+        if not cache_keys:
+            return
+        self.invalidate_files_cache()
+        if self._files_cache_refresh_task and not self._files_cache_refresh_task.done():
+            self._files_cache_refresh_task.cancel()
+        self._files_cache_refresh_task = asyncio.create_task(
+            self._refresh_previous_file_cache_keys(cache_keys, delay_seconds)
+        )
+
+    async def _refresh_previous_file_cache_keys(self, cache_keys: List[tuple], delay_seconds: float):
+        try:
+            await asyncio.sleep(delay_seconds)
+            for limit, folders_key in cache_keys:
+                await self.list_files(limit=limit, force_refresh=True, folders=list(folders_key))
+            logger.info("[Yandex] Refreshed %s cached file views after disk changes.", len(cache_keys))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"[Yandex] Failed to refresh cached file views after disk changes: {e}")
+
+    def _files_cache_key(self, limit: int, folders: Optional[List[str]]) -> tuple:
+        folder_key = tuple(sorted(self._normalize_disk_api_path(str(folder)) for folder in (folders or []) if folder))
+        return (int(limit), folder_key)
+
+    async def _fetch_files(
+        self,
+        limit: int,
+        folders: Optional[List[str]],
+    ) -> List[Dict[str, Any]]:
         limits_to_try = [limit, min(5000, limit), min(2000, limit)]
         # Deduplicate limits
         limits_to_try = sorted(list(set(limits_to_try)), reverse=True)
@@ -343,6 +406,7 @@ class YandexDiskService:
             # Move file
             await client.move(source_path, dest_path, overwrite=True)
             logger.info(f"[Yandex] Moved file: {source_path} -> {dest_path}")
+            self.schedule_cached_files_refresh()
             return dest_path
 
     async def _ensure_folder(self, client: yadisk.AsyncClient, folder_path: str):
@@ -363,6 +427,19 @@ class YandexDiskService:
         Return direct child directory names for a given Yandex.Disk path.
         Example: path='disk:/ВИДЕО' -> ['Автор 1', 'Автор 2', ...]
         """
+        cache_key = (self._normalize_disk_api_path(path), int(limit))
+        if cache_key in self._directories_cache:
+            return list(self._directories_cache[cache_key])
+
+        async with self._directories_cache_lock:
+            if cache_key in self._directories_cache:
+                return list(self._directories_cache[cache_key])
+
+            dirs = await self._fetch_directories(path, limit)
+            self._directories_cache[cache_key] = list(dirs)
+            return dirs
+
+    async def _fetch_directories(self, path: str, limit: int = 10000) -> List[str]:
         url = self.base_url
         params = {
             "path": path,

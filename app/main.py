@@ -47,10 +47,6 @@ stats_cache: Optional[Dict[str, Any]] = None
 stats_cache_time: float = 0.0
 STATS_CACHE_TTL = 60  # seconds
 
-files_cache: List[Dict[str, Any]] = []
-files_cache_time: float = 0.0
-FILES_CACHE_TTL = 30 * 60  # 30 minutes
-
 profile_status_sync_task: Optional[asyncio.Task] = None
 telegram_bot_polling_task: Optional[asyncio.Task] = None
 telegram_bot_instance: Optional[Any] = None
@@ -711,7 +707,7 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
     # Yandex service currently fetches fresh.
     # In production, cache this result in memory or Redis.
     
-    global stats_cache, stats_cache_time, files_cache, files_cache_time
+    global stats_cache, stats_cache_time
     try:
         now_ts = time.time()
         if not refresh and stats_cache and (now_ts - stats_cache_time) < STATS_CACHE_TTL:
@@ -723,21 +719,11 @@ async def get_stats(refresh: bool = False, session: AsyncSession = Depends(get_s
         settings._legacy_config = config
         all_videos = []
         
-        # We fetch all flat files once (wrapper handles limit)
-        # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        # We fetch all flat files once (wrapper handles limit)
-        # If we want to filter by folder, we do it in memory for now (simpler than multiple requests)
-        use_cached_files = (not refresh) and files_cache and ((now_ts - files_cache_time) < FILES_CACHE_TTL)
-        if use_cached_files:
-            files = files_cache
-        else:
-            files = await yandex_service.list_files(
-                limit=100000,
-                force_refresh=refresh,
-                folders=config.yandexFolders,
-            )
-            files_cache = files
-            files_cache_time = now_ts
+        files = await yandex_service.list_files(
+            limit=100000,
+            force_refresh=refresh,
+            folders=config.yandexFolders,
+        )
         
         stats = {
             "totalVideos": 0,
