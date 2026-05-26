@@ -32,6 +32,7 @@ class YandexDiskService:
         limit: int = 100000,
         force_refresh: bool = False,
         folders: Optional[List[str]] = None,
+        cache_scope: str = "default",
     ) -> List[Dict[str, Any]]:
         """
         List video files with robust retry logic matching TypeScript implementation.
@@ -39,7 +40,7 @@ class YandexDiskService:
         1. High timeout (600s) per request
         2. Retry with decreasing limits [limit, 5000, 2000] if timeout occurs.
         """
-        cache_key = self._files_cache_key(limit, folders)
+        cache_key = self._files_cache_key(limit, folders, cache_scope)
         if not force_refresh and cache_key in self._files_cache:
             logger.info("[Yandex] Returning cached files for folders=%s.", folders)
             return list(self._files_cache[cache_key])
@@ -59,18 +60,26 @@ class YandexDiskService:
         self,
         limit: int = 100000,
         folders: Optional[List[str]] = None,
+        cache_scope: str = "default",
     ) -> List[Dict[str, Any]]:
-        return await self.list_files(limit=limit, force_refresh=True, folders=folders)
+        return await self.list_files(limit=limit, force_refresh=True, folders=folders, cache_scope=cache_scope)
 
-    def invalidate_files_cache(self):
-        self._files_cache.clear()
+    def invalidate_files_cache(self, cache_scope: Optional[str] = None):
+        if cache_scope is None:
+            self._files_cache.clear()
+        else:
+            self._files_cache = {
+                key: value
+                for key, value in self._files_cache.items()
+                if key[0] != cache_scope
+            }
         self._directories_cache.clear()
 
-    def schedule_cached_files_refresh(self, delay_seconds: float = 30.0):
-        cache_keys = list(self._files_cache.keys())
+    def schedule_cached_files_refresh(self, delay_seconds: float = 30.0, cache_scope: str = "default"):
+        cache_keys = [key for key in self._files_cache.keys() if key[0] == cache_scope]
         if not cache_keys:
             return
-        self.invalidate_files_cache()
+        self.invalidate_files_cache(cache_scope=cache_scope)
         if self._files_cache_refresh_task and not self._files_cache_refresh_task.done():
             self._files_cache_refresh_task.cancel()
         self._files_cache_refresh_task = asyncio.create_task(
@@ -80,17 +89,22 @@ class YandexDiskService:
     async def _refresh_previous_file_cache_keys(self, cache_keys: List[tuple], delay_seconds: float):
         try:
             await asyncio.sleep(delay_seconds)
-            for limit, folders_key in cache_keys:
-                await self.list_files(limit=limit, force_refresh=True, folders=list(folders_key))
+            for cache_scope, limit, folders_key in cache_keys:
+                await self.list_files(
+                    limit=limit,
+                    force_refresh=True,
+                    folders=list(folders_key),
+                    cache_scope=cache_scope,
+                )
             logger.info("[Yandex] Refreshed %s cached file views after disk changes.", len(cache_keys))
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.warning(f"[Yandex] Failed to refresh cached file views after disk changes: {e}")
 
-    def _files_cache_key(self, limit: int, folders: Optional[List[str]]) -> tuple:
+    def _files_cache_key(self, limit: int, folders: Optional[List[str]], cache_scope: str) -> tuple:
         folder_key = tuple(sorted(self._normalize_disk_api_path(str(folder)) for folder in (folders or []) if folder))
-        return (int(limit), folder_key)
+        return (str(cache_scope or "default"), int(limit), folder_key)
 
     async def _fetch_files(
         self,

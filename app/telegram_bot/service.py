@@ -185,6 +185,7 @@ async def build_video_inventory_text() -> str:
         limit=100000,
         force_refresh=True,
         folders=config.yandexFolders,
+        cache_scope="telegram",
     )
     scheduler = ContentScheduler(config)
     tree = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
@@ -275,6 +276,7 @@ async def _get_cached_folder_inventory(folders: list[str] | None) -> list[dict]:
             limit=100000,
             force_refresh=False,
             folders=list(key),
+            cache_scope="telegram",
         )
         _folder_inventory_cache[key] = (time.monotonic(), videos)
         return videos
@@ -418,6 +420,7 @@ async def _prepare_random_video(
             limit=100000,
             force_refresh=True,
             folders=config.yandexFolders,
+            cache_scope="telegram",
         )
         logger.info(
             "[TelegramBot] Yandex scan returned %s videos for folders=%s before brand filter.",
