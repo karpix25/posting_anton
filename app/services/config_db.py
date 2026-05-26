@@ -20,6 +20,14 @@ AI_CLIENT_TABLE_NAMES = ("ai_clients_db", "Ai Clients Db", "ai clients db")
 AI_CLIENT_FALLBACK_TABLE_NAMES = ("ai_clients",)
 
 
+def _enforce_single_day_generation(config_data: dict) -> dict:
+    """Hard policy: scheduler plans only one day ahead."""
+    if not isinstance(config_data, dict):
+        return {"daysToGenerate": 1}
+    config_data["daysToGenerate"] = 1
+    return config_data
+
+
 def _sanitize_clients(clients: list) -> list:
     if not isinstance(clients, list):
         return []
@@ -254,6 +262,8 @@ async def migrate_file_to_db():
                 logger.info("Auto-Healing: Injecting Seed Clients into existing DB config.")
                 db_val["clients"] = CLIENTS_SEED
 
+            db_val = _enforce_single_day_generation(db_val)
+
             if is_corrupt or needs_clients or table_clients is not None:
                 existing.value = db_val
                 existing.updated_at = datetime.utcnow()
@@ -288,6 +298,7 @@ async def migrate_file_to_db():
         table_clients = await get_ai_clients_from_table(session)
         if table_clients is not None:
             file_data["clients"] = table_clients
+        file_data = _enforce_single_day_generation(file_data)
 
         logger.info("Creating new config record in posting_system_config.")
         new_config = PostingSystemConfig(key=CONFIG_KEY, value=file_data)
@@ -303,6 +314,7 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     if record:
         try:
             config_value = dict(record.value or {})
+            config_value = _enforce_single_day_generation(config_value)
             table_clients = await get_ai_clients_from_table(session)
             if table_clients is not None:
                 config_value["clients"] = table_clients
@@ -314,6 +326,7 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
 
 
 async def save_db_config(session: AsyncSession, config_data: dict, preserve_schedule: bool = True):
+    config_data = _enforce_single_day_generation(config_data)
     incoming_cron = config_data.get("cronSchedule")
     logger.info(f"Saving Config to DB. Incoming Cron: {incoming_cron}")
     stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
