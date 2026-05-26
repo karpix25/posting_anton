@@ -50,7 +50,14 @@ def _admin_ids() -> set[int]:
 
 @router.message(Command("start"))
 async def start(message: Message):
-    await message.answer("Системные кнопки снизу обновлены.", reply_markup=main_menu_keyboard())
+    await message.answer(
+        "Готово, бот запущен.\n"
+        "Что дальше:\n"
+        "1) Нажмите «Структура» и выберите нужную папку.\n"
+        "2) Внутри папки нажмите «🎬 Выдать видео из этой папки».\n"
+        "3) После публикации пришлите сюда ссылку на YouTube.",
+        reply_markup=main_menu_keyboard(),
+    )
     await send_folder_navigation(message, ())
 
 
@@ -353,9 +360,17 @@ async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page
         return
 
     if view.prefix:
-        text = f"Папка:\n{view.title}\n\nВидео внутри: {view.total_videos}"
+        text = (
+            f"Папка:\n{view.title}\n\n"
+            f"Видео внутри: {view.total_videos}\n"
+            "Можно открыть подпапку ниже или нажать «🎬 Выдать видео из этой папки»."
+        )
     else:
-        text = "Выберите папку:"
+        text = (
+            "Структура папок:\n"
+            "Выберите папку из списка ниже.\n"
+            "После входа в папку появится кнопка «🎬 Выдать видео из этой папки»."
+        )
     reply_markup = folder_navigation_keyboard(view, page=page)
     if edit:
         try:
