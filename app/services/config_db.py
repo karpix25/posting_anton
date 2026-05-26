@@ -244,7 +244,7 @@ async def migrate_file_to_db():
                     "clients": table_clients or CLIENTS_SEED,
                     "profiles": [],
                     "yandexFolders": [],
-                    "daysToGenerate": 7,
+                    "daysToGenerate": 1,
                     "themeAliases": {},
                     "brandQuotas": {},
                 }

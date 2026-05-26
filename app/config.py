@@ -46,7 +46,7 @@ class ScheduleConfig(BaseModel):
 class LegacyConfig(BaseModel):
     cronSchedule: Optional[str] = None
     yandexFolders: List[str] = []
-    daysToGenerate: int = 7
+    daysToGenerate: int = 1
     themeAliases: Dict[str, List[str]] = {}
     brandQuotas: Dict[str, Dict[str, Optional[int]]] = {}
     limits: GlobalLimits

@@ -111,7 +111,7 @@ class ContentScheduler:
             
         now_msk = datetime.now(MSK)
         start_date = now_msk.replace(hour=start_hour, minute=0, second=0, microsecond=0, tzinfo=None)  # Make naive for compatibility
-        days_to_generate = self.config.daysToGenerate or 7
+        days_to_generate = self.config.daysToGenerate or 1
         logger.info(f"[Scheduler] Generating posts for {days_to_generate} days starting from {start_date.date()} (Window: {start_hour}:00 - {end_hour}:00)")
 
         for day_index in range(days_to_generate):
