@@ -249,7 +249,7 @@ async def get_video_folder_view(prefix: tuple[str, ...] = ()) -> FolderView:
         )
         for key, stats in child_stats.items()
     ]
-    children.sort(key=lambda item: (-item.video_count, item.name.casefold()))
+    children.sort(key=lambda item: item.name.casefold())
 
     title = "Выберите папку после автора" if not prefix else " / ".join(prefix)
     return FolderView(prefix=prefix, title=title, total_videos=total_videos, children=children)

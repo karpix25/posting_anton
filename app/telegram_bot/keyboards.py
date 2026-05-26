@@ -41,9 +41,10 @@ def parse_folder_callback_data(data: str) -> tuple[tuple[str, ...] | None, int]:
 
 
 def brands_keyboard(brands: list[str]) -> InlineKeyboardMarkup:
+    sorted_brands = sorted(brands, key=lambda value: value.casefold())
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
-    for index, brand in enumerate(brands):
+    for index, brand in enumerate(sorted_brands):
         row.append(
             InlineKeyboardButton(
                 text=brand,
