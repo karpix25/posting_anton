@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List
 from app.config import settings
 from app.services.yandex import yandex_service
@@ -18,8 +18,9 @@ from sqlalchemy import select, update
 logger = logging.getLogger(__name__)
 
 CANONICAL_PLATFORMS = {"instagram", "tiktok", "youtube"}
-UPLOAD_POST_CONCURRENCY = 2
-UPLOAD_POST_MIN_INTERVAL_SECONDS = 1.0
+UPLOAD_POST_CONCURRENCY = 1
+UPLOAD_POST_MIN_INTERVAL_SECONDS = 3.0
+MSK = timezone(timedelta(hours=3))
 
 
 def _normalize_platform_name(value: str) -> str:

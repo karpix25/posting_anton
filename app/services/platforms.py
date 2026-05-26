@@ -26,6 +26,36 @@ def _normalize_text(value: str, max_chars: int) -> str:
         return text[:max_chars].rstrip()
     return text
 
+
+def _extract_upload_post_error(data: Any) -> str:
+    """Return a readable error from UploadPost responses of different shapes."""
+    if isinstance(data, dict):
+        for key in ("message", "error", "detail", "errors"):
+            value = data.get(key)
+            if value:
+                return _extract_upload_post_error(value)
+        return str(data)
+
+    if isinstance(data, list):
+        parts = [_extract_upload_post_error(item) for item in data if item]
+        return "; ".join(part for part in parts if part) or str(data)
+
+    return str(data)
+
+
+def _upload_post_success(data: Any) -> bool:
+    if isinstance(data, dict):
+        return bool(data.get("success"))
+    return False
+
+
+def _is_upload_post_rate_limit(response: httpx.Response, data: Any, error: str) -> bool:
+    if response.status_code == 429:
+        return True
+    if isinstance(data, dict) and data.get("error_type") == "rate_limit":
+        return True
+    return "too many requests" in (error or "").lower()
+
 class UploadPostClient:
     def __init__(self, api_key: str):
         self.api_key = api_key
@@ -203,59 +233,68 @@ class UploadPostClient:
         
         # Increased timeout to 600s (10 mins) as API might be extremely busy
         async with httpx.AsyncClient(timeout=600.0) as client:
-            try:
-                response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
-                res_data = response.json()
-                
-                if res_data.get('success'):
-                    # Extract request_id (async) or job_id (scheduled) for status tracking
-                    request_id = res_data.get('request_id')
-                    job_id = res_data.get('job_id')
-                    tracking_id = request_id or job_id or 'unknown'
-                    
-                    # Check if it's scheduled (202) or async (200)
-                    is_scheduled = response.status_code == 202 or job_id is not None
-                    
-                    if is_scheduled:
-                        logger.info(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
-                        print(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
+            for attempt in range(1, 6):
+                try:
+                    response = await client.post(UPLOAD_POST_API_URL, data=data, headers=self.headers)
+                    res_data = response.json()
+
+                    if _upload_post_success(res_data):
+                        # Extract request_id (async) or job_id (scheduled) for status tracking
+                        request_id = res_data.get('request_id')
+                        job_id = res_data.get('job_id')
+                        
+                        # Check if it's scheduled (202) or async (200)
+                        is_scheduled = response.status_code == 202 or job_id is not None
+                        
+                        if is_scheduled:
+                            logger.info(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
+                            print(f"[UploadPost] ✅ Post scheduled! Job ID: {job_id}")
+                        else:
+                            logger.info(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
+                            print(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
+                        
+                        # Return with tracking info
+                        return {
+                            'success': True,
+                            'request_id': request_id,
+                            'job_id': job_id,
+                            'async': True,
+                            'scheduled': is_scheduled
+                        }
                     else:
-                        logger.info(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
-                        print(f"[UploadPost] ✅ Async upload started! Request ID: {request_id}")
-                    
-                    # Return with tracking info
-                    return {
-                        'success': True,
-                        'request_id': request_id,
-                        'job_id': job_id,
-                        'async': True,
-                        'scheduled': is_scheduled
-                    }
-                else:
-                    # Improved error extraction - try multiple fields
-                    error = (res_data.get('message') or 
-                            res_data.get('error') or 
-                            res_data.get('errors') or
-                            str(res_data))
-                    
-                    logger.error(f"[UploadPost] ❌ API Error: {error}")
-                    logger.error(f"[UploadPost] Full response: {res_data}")
-                    print(f"[UploadPost] ❌ Failed: {error}")
-                    raise Exception(error)
-            except httpx.ReadTimeout as e:
-                error_msg = f"ReadTimeout after 200s - API not responding"
-                logger.error(f"[UploadPost] ❌ {error_msg}")
-                print(f"[UploadPost] ❌ {error_msg}")
-                raise Exception(error_msg)
-            except httpx.HTTPStatusError as e:
-                error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
-                logger.error(f"[UploadPost] ❌ {error_msg}")
-                print(f"[UploadPost] ❌ HTTP Error: {e.response.status_code}")
-                raise Exception(error_msg)
-            except Exception as e:
-                logger.error(f"[UploadPost] ❌ Exception: {type(e).__name__}: {e}")
-                print(f"[UploadPost] ❌ Error: {e}")
-                raise e
+                        error = _extract_upload_post_error(res_data)
+
+                        if _is_upload_post_rate_limit(response, res_data, error) and attempt < 5:
+                            retry_after = response.headers.get("retry-after")
+                            try:
+                                wait_seconds = float(retry_after) if retry_after else 15.0 * attempt
+                            except ValueError:
+                                wait_seconds = 15.0 * attempt
+                            logger.warning(
+                                f"[UploadPost] Rate limited while publishing; retrying in "
+                                f"{wait_seconds:.1f}s (attempt {attempt}/5)"
+                            )
+                            await asyncio.sleep(wait_seconds)
+                            continue
+                        
+                        logger.error(f"[UploadPost] ❌ API Error: {error}")
+                        logger.error(f"[UploadPost] Full response: {res_data}")
+                        print(f"[UploadPost] ❌ Failed: {error}")
+                        raise Exception(error)
+                except httpx.ReadTimeout as e:
+                    error_msg = f"ReadTimeout after 600s - API not responding"
+                    logger.error(f"[UploadPost] ❌ {error_msg}")
+                    print(f"[UploadPost] ❌ {error_msg}")
+                    raise Exception(error_msg)
+                except httpx.HTTPStatusError as e:
+                    error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+                    logger.error(f"[UploadPost] ❌ {error_msg}")
+                    print(f"[UploadPost] ❌ HTTP Error: {e.response.status_code}")
+                    raise Exception(error_msg)
+                except Exception as e:
+                    logger.error(f"[UploadPost] ❌ Exception: {type(e).__name__}: {e}")
+                    print(f"[UploadPost] ❌ Error: {e}")
+                    raise e
 
 
 
