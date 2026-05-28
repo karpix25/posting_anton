@@ -58,6 +58,7 @@ async def start(message: Message):
         "3) После публикации пришлите сюда ссылку на YouTube.",
         reply_markup=main_menu_keyboard(),
     )
+    await message.answer("⏳ Загружаю структуру с Яндекс.Диска. Это может занять немного времени.")
     await send_folder_navigation(message, ())
 
 
@@ -148,7 +149,7 @@ async def select_folder(callback: CallbackQuery):
         await send_folder_navigation(callback.message, (), edit=True)
         return
 
-    await callback.answer()
+    await callback.answer("⏳ Загружаю папку...")
     await send_folder_navigation(callback.message, prefix, page=page, edit=True)
 
 
@@ -314,6 +315,7 @@ async def handle_text(message: Message):
         await cancel(message)
         return
     if message.text == "Структура":
+        await message.answer("⏳ Загружаю структуру с Яндекс.Диска. Это может занять немного времени.")
         await send_folder_navigation(message, ())
         return
     if message.text in brands:
