@@ -145,11 +145,11 @@ async def select_folder(callback: CallbackQuery):
 
     prefix, page = parse_folder_callback_data(callback.data)
     if prefix is None:
-        await callback.answer("Кнопка устарела, обновляю список.", show_alert=True)
+        await callback.answer("Обновляю список папок…", show_alert=True)
         await send_folder_navigation(callback.message, (), edit=True)
         return
 
-    await callback.answer("⏳ Загружаю папку...")
+    await callback.answer("Открываю папку…")
     await send_folder_navigation(callback.message, prefix, page=page, edit=True)
 
 
@@ -171,7 +171,7 @@ async def select_folder_video(callback: CallbackQuery):
 
 async def send_brand_video(message: Message, user, brand: str):
     brands = await list_brands()
-    await message.answer(f"Ищу случайное видео для {brand}...", reply_markup=main_menu_keyboard())
+    await message.answer(f"⏳ Подбираю видео для {brand}…", reply_markup=main_menu_keyboard())
 
     try:
         prepared = await prepare_random_video(
@@ -187,17 +187,17 @@ async def send_brand_video(message: Message, user, brand: str):
             pending = await get_pending_request(user.id)
             name = pending.video_name if pending else "предыдущее видео"
             await message.answer(
-                f"Сначала пришлите ссылку на опубликованное видео для: {name}\n"
-                "Или используйте /cancel, если нужно отменить ожидание."
+                f"Сначала пришлите ссылку на уже выданное видео: {name}\n"
+                "Если это видео больше не нужно, нажмите «Отменить»."
             )
             return
         raise
     except LookupError:
-        await message.answer("Свободных видео для этого бренда сейчас не нашлось.")
+        await message.answer("Сейчас нет свободного видео в этой категории. Выберите другую папку.")
         return
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to prepare Telegram video")
-        await message.answer(f"Не удалось подготовить видео: {exc}")
+        await message.answer("Не удалось выдать видео. Уже проверяю проблему в логах.")
         return
 
     request = prepared.request
@@ -210,7 +210,7 @@ async def send_brand_video(message: Message, user, brand: str):
         )
     else:
         try:
-            await message.answer("Скачиваю файл, чтобы отправить его без сжатия...")
+            await message.answer("⏳ Загружаю видео для отправки…")
             temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
             await message.answer_document(
                 FSInputFile(temp_path, filename=request.video_name),
@@ -223,20 +223,20 @@ async def send_brand_video(message: Message, user, brand: str):
                 except OSError:
                     logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
 
-    await message.answer("Title:")
+    await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
-    await message.answer("Description:")
+    await message.answer("Описание для YouTube:")
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
-        "После публикации пришлите ссылку на YouTube-видео ответным сообщением.",
+        "Опубликуйте видео и отправьте сюда ссылку на YouTube.",
         reply_markup=main_menu_keyboard(),
     )
-    await message.answer("Можно выбрать следующий бренд:", reply_markup=brands_keyboard(brands))
+    await message.answer("Можете сразу выбрать следующее видео:", reply_markup=brands_keyboard(brands))
 
 
 async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ...]):
     label = " / ".join(folder_prefix)
-    await message.answer(f"Ищу случайное видео в папке: {label}", reply_markup=main_menu_keyboard())
+    await message.answer(f"⏳ Подбираю видео из папки: {label}", reply_markup=main_menu_keyboard())
 
     try:
         prepared = await prepare_random_video_from_folder(
@@ -252,17 +252,17 @@ async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ..
             pending = await get_pending_request(user.id)
             name = pending.video_name if pending else "предыдущее видео"
             await message.answer(
-                f"Сначала пришлите ссылку на опубликованное видео для: {name}\n"
-                "Или используйте /cancel, если нужно отменить ожидание."
+                f"Сначала пришлите ссылку на уже выданное видео: {name}\n"
+                "Если это видео больше не нужно, нажмите «Отменить»."
             )
             return
         raise
     except LookupError:
-        await message.answer("Свободных видео в этой папке сейчас не нашлось.")
+        await message.answer("В этой папке пока нет свободных видео.")
         return
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to prepare Telegram folder video")
-        await message.answer(f"Не удалось подготовить видео: {exc}")
+        await message.answer("Не удалось выдать видео из этой папки. Уже проверяю проблему в логах.")
         return
 
     await send_prepared_video(message, prepared)
@@ -280,7 +280,7 @@ async def send_prepared_video(message: Message, prepared):
         )
     else:
         try:
-            await message.answer("Скачиваю файл, чтобы отправить его без сжатия...")
+            await message.answer("⏳ Загружаю видео для отправки…")
             temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
             await message.answer_document(
                 FSInputFile(temp_path, filename=request.video_name),
@@ -293,12 +293,12 @@ async def send_prepared_video(message: Message, prepared):
                 except OSError:
                     logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
 
-    await message.answer("Title:")
+    await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
-    await message.answer("Description:")
+    await message.answer("Описание для YouTube:")
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
-        "После публикации пришлите ссылку на YouTube-видео ответным сообщением.",
+        "Опубликуйте видео и отправьте сюда ссылку на YouTube.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -325,7 +325,7 @@ async def handle_text(message: Message):
 
     pending = await get_pending_request(message.from_user.id)
     if not pending:
-        await message.answer("Выберите папку кнопками выше или нажмите /start.", reply_markup=main_menu_keyboard())
+        await message.answer("Нажмите «Структура», выберите папку и получите видео.", reply_markup=main_menu_keyboard())
         return
 
     url = message.text.strip()
@@ -353,13 +353,16 @@ async def handle_text(message: Message):
 async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page: int = 0, edit: bool = False):
     try:
         view = await get_video_folder_view(prefix)
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to build Telegram folder navigation")
-        await message.answer(f"Не удалось собрать папки: {exc}", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "Сейчас не удалось загрузить список папок с Яндекс.Диска. Уже проверяю проблему в логах.",
+            reply_markup=main_menu_keyboard(),
+        )
         return
 
     if not view.children and not view.total_videos:
-        await message.answer("В этой папке видео не нашлись.", reply_markup=main_menu_keyboard())
+        await message.answer("В этой папке пока нет видео.", reply_markup=main_menu_keyboard())
         return
 
     if view.prefix:
@@ -390,9 +393,9 @@ async def send_inventory(message: Message):
     await message.answer("Сканирую структуру видео на диске...", reply_markup=main_menu_keyboard())
     try:
         text = await build_video_inventory_text()
-    except Exception as exc:
+    except Exception:
         logger.exception("Failed to build Telegram video inventory")
-        await message.answer(f"Не удалось собрать структуру: {exc}", reply_markup=main_menu_keyboard())
+        await message.answer("Не удалось собрать структуру видео. Уже проверяю проблему в логах.", reply_markup=main_menu_keyboard())
         return
 
     for chunk in split_telegram_text(text):
