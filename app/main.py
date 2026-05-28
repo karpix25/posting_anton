@@ -951,12 +951,12 @@ async def api_telegram_approve_request(request_id: int, payload: Dict[str, Any] 
         raise HTTPException(status_code=400, detail=code)
     except ValueError as exc:
         code = str(exc)
-        if code == "weekly_limit_exceeded":
-            raise HTTPException(status_code=409, detail="Weekly limit reached for this user")
+        if code in {"weekly_limit_exceeded", "daily_limit_exceeded"}:
+            raise HTTPException(status_code=409, detail="Daily limit reached for this user")
         if code == "rule_folder_empty":
             raise HTTPException(status_code=400, detail="Rule folder is empty")
-        if code == "rule_weekly_limit_zero":
-            raise HTTPException(status_code=400, detail="Weekly limit is zero")
+        if code in {"rule_weekly_limit_zero", "rule_daily_limit_zero"}:
+            raise HTTPException(status_code=400, detail="Daily limit is zero")
         raise HTTPException(status_code=400, detail=code)
 
     row = result.request
@@ -995,14 +995,17 @@ async def api_telegram_rules(limit: int = 500):
 async def api_telegram_upsert_rule(payload: Dict[str, Any]):
     telegram_user_id = int(payload.get("telegram_user_id") or 0)
     folder_prefix = str(payload.get("folder_prefix") or "").strip()
-    weekly_limit = int(payload.get("weekly_limit") or 0)
+    raw_limit = payload.get("daily_limit", payload.get("weekly_limit", 0))
+    weekly_limit = int(raw_limit or 0)
     is_active = bool(payload.get("is_active", True))
     telegram_username = payload.get("telegram_username")
     telegram_full_name = payload.get("telegram_full_name")
     if telegram_user_id <= 0:
         raise HTTPException(status_code=400, detail="telegram_user_id is required")
+    if is_active and not folder_prefix:
+        raise HTTPException(status_code=400, detail="folder_prefix is required for active rule")
     if not folder_prefix:
-        raise HTTPException(status_code=400, detail="folder_prefix is required")
+        folder_prefix = "__disabled__"
     rule = await upsert_distribution_rule(
         telegram_user_id=telegram_user_id,
         folder_prefix=folder_prefix,

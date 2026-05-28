@@ -460,10 +460,9 @@ def _build_pending_placeholder_path(telegram_user_id: int) -> str:
     return f"pending://{telegram_user_id}/{nonce}"
 
 
-def _current_week_key(dt: Optional[datetime] = None) -> str:
+def _current_day_key(dt: Optional[datetime] = None) -> str:
     value = dt or datetime.utcnow()
-    monday = value.date().toordinal() - value.weekday()
-    return datetime.fromordinal(monday).strftime("%Y-%m-%d")
+    return value.strftime("%Y-%m-%d")
 
 
 def _parse_folder_prefix_text(value: Optional[str]) -> tuple[str, ...]:
@@ -740,20 +739,20 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
         if not folder_prefix:
             raise ValueError("rule_folder_empty")
         if rule.weekly_limit <= 0:
-            raise ValueError("rule_weekly_limit_zero")
+            raise ValueError("rule_daily_limit_zero")
 
-        week_key = _current_week_key()
-        weekly_count_stmt = select(func.count(TelegramVideoRequest.id)).where(
+        day_key = _current_day_key()
+        daily_count_stmt = select(func.count(TelegramVideoRequest.id)).where(
             TelegramVideoRequest.telegram_user_id == request.telegram_user_id,
-            TelegramVideoRequest.week_key == week_key,
+            TelegramVideoRequest.week_key == day_key,
             TelegramVideoRequest.status.in_(RESERVED_STATUSES),
         )
-        weekly_count_result = await session.execute(weekly_count_stmt)
-        weekly_count = int(weekly_count_result.scalar() or 0)
-        if weekly_count >= int(rule.weekly_limit):
-            raise ValueError("weekly_limit_exceeded")
+        daily_count_result = await session.execute(daily_count_stmt)
+        daily_count = int(daily_count_result.scalar() or 0)
+        if daily_count >= int(rule.weekly_limit):
+            raise ValueError("daily_limit_exceeded")
 
-        assigned = await _assign_video_to_request(session, request, folder_prefix, week_key, admin_user_id)
+        assigned = await _assign_video_to_request(session, request, folder_prefix, day_key, admin_user_id)
         if not assigned:
             raise LookupError("no_videos_for_rule")
 
@@ -891,7 +890,7 @@ async def _assign_video_to_request(
     session: AsyncSession,
     request: TelegramVideoRequest,
     folder_prefix: tuple[str, ...],
-    week_key: str,
+    day_key: str,
     admin_user_id: int,
 ) -> bool:
     config = await get_db_config(session)
@@ -924,7 +923,7 @@ async def _assign_video_to_request(
         request.video_path = str(video["path"])
         request.video_name = str(video.get("name") or request.video_path.rsplit("/", 1)[-1])
         request.assigned_folder_prefix = _format_folder_prefix(folder_prefix)
-        request.week_key = week_key
+        request.week_key = day_key
         request.approved_by = admin_user_id
         request.approved_at = datetime.utcnow()
         request.status = STATUS_APPROVED

@@ -142,6 +142,64 @@
             </button>
           </div>
 
+          <div class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
+            <h3 class="text-3xl font-bold mb-4">Актуальная заявка</h3>
+            <div v-if="currentPendingRequest">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-lg">
+                <div class="bg-gray-50 rounded-lg p-4 border">
+                  <div class="text-gray-500 text-sm mb-1">Пользователь</div>
+                  <div class="font-semibold">{{ currentPendingRequest.telegram_full_name || ('@' + (currentPendingRequest.telegram_username || '')) }}</div>
+                  <div class="text-sm text-gray-500">ID: {{ currentPendingRequest.telegram_user_id }}</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-4 border">
+                  <div class="text-gray-500 text-sm mb-1">Заявка</div>
+                  <div class="font-semibold">#{{ currentPendingRequest.id }}</div>
+                  <div class="text-sm text-gray-500">{{ currentPendingRequest.requested_at ? currentPendingRequest.requested_at.replace('T', ' ').slice(0, 19) : '--' }}</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div class="md:col-span-2">
+                  <label class="block text-base font-semibold mb-2">Папка для выдачи</label>
+                  <select v-model="tgCurrentRequestForm.folder_prefix" class="border rounded-lg p-4 text-lg w-full bg-white">
+                    <option value="">Выберите папку</option>
+                    <option v-for="folder in tgFolderOptions" :key="folder" :value="folder">{{ folder }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-base font-semibold mb-2">Лимит в день</label>
+                  <input v-model.number="tgCurrentRequestForm.weekly_limit" type="number" min="0"
+                    class="border rounded-lg p-4 text-lg w-full" />
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label class="inline-flex items-center gap-2 text-base font-semibold">
+                  <input type="checkbox" v-model="tgCurrentRequestForm.is_active" class="h-5 w-5">
+                  <span>Пользователь активен</span>
+                </label>
+              </div>
+
+              <div class="mt-5 flex flex-wrap gap-3">
+                <button @click="approveCurrentRequest"
+                  class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 text-lg font-semibold">
+                  ✅ Одобрить
+                </button>
+                <button @click="rejectCurrentRequest"
+                  class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 text-lg font-semibold">
+                  ⛔ Отклонить
+                </button>
+                <button @click="saveCurrentRequestRule"
+                  class="bg-slate-700 text-white px-6 py-3 rounded-lg hover:bg-slate-800 text-lg font-semibold">
+                  💾 Сохранить настройки
+                </button>
+              </div>
+            </div>
+            <div v-else class="text-lg text-gray-500 bg-gray-50 border rounded-lg p-6">
+              Нет заявок на одобрение.
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div class="border rounded-lg p-4 bg-slate-50">
               <h3 class="font-bold mb-3">Новая / Изменить правило</h3>
@@ -155,7 +213,7 @@
                 <input v-model="tgRuleForm.folder_prefix" placeholder="Папка, напр: Bite/NSIS"
                   class="border p-2 rounded col-span-2">
                 <input v-model.number="tgRuleForm.weekly_limit" type="number" min="0"
-                  placeholder="Роликов в неделю" class="border p-2 rounded">
+                  placeholder="Роликов в день" class="border p-2 rounded">
                 <label class="flex items-center gap-2 text-sm">
                   <input type="checkbox" v-model="tgRuleForm.is_active">
                   <span>Активно</span>
@@ -219,7 +277,7 @@
                   <tr>
                     <th class="p-2 text-left">User</th>
                     <th class="p-2 text-left">Папка</th>
-                    <th class="p-2 text-right">Лимит/нед</th>
+                    <th class="p-2 text-right">Лимит/день</th>
                     <th class="p-2 text-center">Активно</th>
                     <th class="p-2 text-right">Действие</th>
                   </tr>
@@ -230,7 +288,7 @@
                       <div class="font-medium">{{ rule.telegram_full_name || ('@' + (rule.telegram_username || '')) }}</div>
                       <div class="text-xs text-gray-500">{{ rule.telegram_user_id }}</div>
                     </td>
-                    <td class="p-2">{{ rule.folder_prefix }}</td>
+                    <td class="p-2">{{ rule.folder_prefix === '__disabled__' ? '—' : rule.folder_prefix }}</td>
                     <td class="p-2 text-right">{{ rule.weekly_limit }}</td>
                     <td class="p-2 text-center">{{ rule.is_active ? '✅' : '⛔' }}</td>
                     <td class="p-2 text-right">
@@ -270,7 +328,7 @@
                     <td class="p-2">{{ item.requested_at ? item.requested_at.replace('T', ' ').slice(0, 19) : '--' }}</td>
                     <td class="p-2">{{ item.assigned_folder_prefix || '-' }}</td>
                     <td class="p-2 text-right space-x-2">
-                      <button v-if="item.status === 'pending_approval'" @click="approveTelegramRequest(item)"
+                      <button v-if="item.status === 'pending_approval'" @click="approveTelegramRequest(item, item.id === tgCurrentRequestForm.request_id)"
                         class="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700">
                         Approve
                       </button>
@@ -1005,6 +1063,15 @@
                 tgRules: [],
                 tgUsers: [],
                 tgRootFolders: [],
+                tgCurrentRequestForm: {
+                  request_id: null,
+                  telegram_user_id: null,
+                  telegram_username: '',
+                  telegram_full_name: '',
+                  folder_prefix: '',
+                  weekly_limit: 1,
+                  is_active: true,
+                },
                 tgRuleForm: {
                   telegram_user_id: null,
                   telegram_username: '',
@@ -1044,6 +1111,25 @@
                 if (this.statsViewMode === 'category') return 'Категория';
                 if (this.statsViewMode === 'brand') return 'Бренд';
                 return 'Автор';
+              },
+              currentPendingRequest() {
+                return this.tgRequests.find(item => item.status === 'pending_approval') || null;
+              },
+              tgFolderOptions() {
+                const set = new Set();
+                (this.tgRootFolders || []).forEach(folder => {
+                  const path = (folder.prefix || []).join('/').trim();
+                  if (path) set.add(path);
+                });
+                (this.tgRules || []).forEach(rule => {
+                  const path = (rule.folder_prefix || '').trim();
+                  if (path && path !== '__disabled__') set.add(path);
+                });
+                (this.tgRequests || []).forEach(item => {
+                  const path = (item.assigned_folder_prefix || '').trim();
+                  if (path) set.add(path);
+                });
+                return Array.from(set).sort((a, b) => a.localeCompare(b));
               },
               activeProfiles() {
                 if (!this.config.profiles) return [];
@@ -1319,21 +1405,70 @@
                   this.tgRules = rulesData.items || [];
                   this.tgUsers = usersData.items || [];
                   this.tgRootFolders = foldersData.children || [];
+                  this.syncCurrentPendingForm();
                 } catch (e) {
                   console.error('[UI] Failed to load telegram admin data:', e);
                   alert(`Не удалось загрузить TG-заявки/правила: ${e.message || e}`);
                 }
               },
+              normalizeFolderPrefix(value) {
+                return (value || '')
+                  .toString()
+                  .replace(/\\/g, '/')
+                  .split('/')
+                  .map(part => part.trim())
+                  .filter(Boolean)
+                  .join('/');
+              },
+              syncCurrentPendingForm() {
+                const pending = this.currentPendingRequest;
+                if (!pending) {
+                  this.tgCurrentRequestForm = {
+                    request_id: null,
+                    telegram_user_id: null,
+                    telegram_username: '',
+                    telegram_full_name: '',
+                    folder_prefix: '',
+                    weekly_limit: 1,
+                    is_active: true,
+                  };
+                  return;
+                }
+                if (this.tgCurrentRequestForm.request_id === pending.id) {
+                  return;
+                }
+                const userRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(pending.telegram_user_id));
+                this.tgCurrentRequestForm = {
+                  request_id: pending.id,
+                  telegram_user_id: pending.telegram_user_id,
+                  telegram_username: pending.telegram_username || '',
+                  telegram_full_name: pending.telegram_full_name || '',
+                  folder_prefix: this.normalizeFolderPrefix(
+                    (userRule && userRule.folder_prefix === '__disabled__' ? '' : (userRule && userRule.folder_prefix)) || pending.assigned_folder_prefix || ''
+                  ),
+                  weekly_limit: Number((userRule && userRule.weekly_limit) || 1),
+                  is_active: userRule ? !!userRule.is_active : true,
+                };
+              },
               async saveTelegramRule() {
-                if (!this.tgRuleForm.telegram_user_id || !this.tgRuleForm.folder_prefix) {
-                  alert('Нужны telegram_user_id и folder_prefix');
+                if (!this.tgRuleForm.telegram_user_id) {
+                  alert('Нужен telegram_user_id');
+                  return;
+                }
+                if (this.tgRuleForm.is_active && !this.tgRuleForm.folder_prefix) {
+                  alert('Для активного пользователя нужна папка');
                   return;
                 }
                 try {
+                  const payload = {
+                    ...this.tgRuleForm,
+                    folder_prefix: this.normalizeFolderPrefix(this.tgRuleForm.folder_prefix),
+                    daily_limit: Math.max(0, Number(this.tgRuleForm.weekly_limit) || 0),
+                  };
                   const res = await fetch('/api/telegram/rules', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(this.tgRuleForm),
+                    body: JSON.stringify(payload),
                   });
                   if (!res.ok) {
                     const err = await res.json();
@@ -1358,8 +1493,94 @@
                   alert(`Ошибка удаления правила: ${e.message || e}`);
                 }
               },
-              async approveTelegramRequest(item) {
+              async approveCurrentRequest() {
+                if (!this.currentPendingRequest) {
+                  alert('Нет заявок на одобрение');
+                  return;
+                }
+                if (!this.tgCurrentRequestForm.is_active) {
+                  alert('Пользователь отключен. Включите его или отклоните заявку.');
+                  return;
+                }
+                await this.approveTelegramRequest(this.currentPendingRequest, true);
+              },
+              async rejectCurrentRequest() {
+                if (!this.currentPendingRequest) {
+                  alert('Нет заявок на отклонение');
+                  return;
+                }
+                await this.rejectTelegramRequest(this.currentPendingRequest);
+              },
+              async saveCurrentRequestRule() {
+                if (!this.currentPendingRequest) {
+                  alert('Нет активной заявки');
+                  return;
+                }
                 try {
+                  const folderPrefix = this.normalizeFolderPrefix(this.tgCurrentRequestForm.folder_prefix);
+                  const dailyLimit = Math.max(0, Number(this.tgCurrentRequestForm.weekly_limit) || 0);
+                  const payload = {
+                    telegram_user_id: Number(this.currentPendingRequest.telegram_user_id),
+                    telegram_username: this.tgCurrentRequestForm.telegram_username || this.currentPendingRequest.telegram_username || '',
+                    telegram_full_name: this.tgCurrentRequestForm.telegram_full_name || this.currentPendingRequest.telegram_full_name || '',
+                    folder_prefix: folderPrefix,
+                    weekly_limit: dailyLimit,
+                    daily_limit: dailyLimit,
+                    is_active: !!this.tgCurrentRequestForm.is_active,
+                  };
+                  if (payload.is_active && !payload.folder_prefix) {
+                    alert('Выберите папку');
+                    return;
+                  }
+                  const res = await fetch('/api/telegram/rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'save failed');
+                  }
+                  await this.loadTelegramAdminData();
+                  alert('Настройки пользователя сохранены');
+                } catch (e) {
+                  alert(`Ошибка сохранения настроек: ${e.message || e}`);
+                }
+              },
+              async approveTelegramRequest(item, useCurrentForm = false) {
+                try {
+                  if (useCurrentForm) {
+                    const folderPrefix = this.normalizeFolderPrefix(this.tgCurrentRequestForm.folder_prefix);
+                    const isActive = !!this.tgCurrentRequestForm.is_active;
+                    if (!isActive) {
+                      alert('Пользователь отключен. Одобрение недоступно.');
+                      return;
+                    }
+                    if (isActive && !folderPrefix) {
+                      alert('Выберите папку для этой заявки');
+                      return;
+                    }
+                    const weeklyLimit = Math.max(0, Number(this.tgCurrentRequestForm.weekly_limit) || 0);
+                    const rulePayload = {
+                      telegram_user_id: Number(item.telegram_user_id),
+                      telegram_username: this.tgCurrentRequestForm.telegram_username || item.telegram_username || '',
+                      telegram_full_name: this.tgCurrentRequestForm.telegram_full_name || item.telegram_full_name || '',
+                      folder_prefix: folderPrefix,
+                      weekly_limit: weeklyLimit,
+                      daily_limit: weeklyLimit,
+                      is_active: !!this.tgCurrentRequestForm.is_active,
+                    };
+                    const ruleRes = await fetch('/api/telegram/rules', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(rulePayload),
+                    });
+                    if (!ruleRes.ok) {
+                      const ruleErr = await ruleRes.json().catch(() => ({}));
+                      throw new Error(ruleErr.detail || 'rule save failed');
+                    }
+                  }
+
                   const res = await fetch(`/api/telegram/requests/${item.id}/approve`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
