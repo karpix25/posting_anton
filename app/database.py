@@ -1,3 +1,4 @@
+import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel
@@ -21,7 +22,21 @@ if "?" in db_url:
 
     db_url = db_url.replace("?sslmode=prefer", "").replace("&sslmode=prefer", "")
 
-engine = create_async_engine(db_url, echo=False, future=True)
+pool_size = int(os.getenv("DB_POOL_SIZE", "10"))
+max_overflow = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+pool_timeout = int(os.getenv("DB_POOL_TIMEOUT", "60"))
+pool_recycle = int(os.getenv("DB_POOL_RECYCLE", "1800"))
+
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    future=True,
+    pool_pre_ping=True,
+    pool_size=pool_size,
+    max_overflow=max_overflow,
+    pool_timeout=pool_timeout,
+    pool_recycle=pool_recycle,
+)
 
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False

@@ -10,7 +10,7 @@ from app.services.yandex import yandex_service
 from app.services.scheduler import ContentScheduler
 from app.services.platforms import platform_manager
 from app.services.content_generator import content_generator
-from app.database import get_session
+from app.database import async_session_maker
 from app.models import PostingHistory, BrandStats
 from app.utils import extract_brand, extract_author, extract_theme
 from sqlalchemy import select, update
@@ -306,10 +306,9 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
     
     # Load config from DATABASE, not file!
     try:
-        async for session in get_session():
+        async with async_session_maker() as session:
             from app.services.config_db import get_db_config
             config = await get_db_config(session)
-            break
         logger.info("   ✅ Config loaded from DB")
         logger.info(
             f"[Worker] AI clients configured for matching after Yandex scan "
@@ -481,7 +480,7 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
 
     logger.info("[Worker] 🏁 Starting scheduler generation...")
 
-    async for session in get_session():
+    async with async_session_maker() as session:
         local_slots, local_counts, reserved_video_paths = await _load_local_schedule_reservations(
             session,
             config.daysToGenerate or 1,
@@ -612,10 +611,9 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
     logger.info(f"   Video: {video_path}")
     
     # Load config from DATABASE
-    async for session in get_session():
+    async with async_session_maker() as session:
         from app.services.config_db import get_db_config
         config = await get_db_config(session)
-        break
     
     client_config = find_ai_client(config.clients, brand_name, video_path)
     
@@ -753,7 +751,7 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
     # Update status based on async response
     if success:
         # Save tracking IDs to meta for status polling
-        async for session in get_session():
+        async with async_session_maker() as session:
             # Fetch existing post to preserve meta fields
             stmt_get = select(PostingHistory).where(PostingHistory.id == history_id)
             result = await session.execute(stmt_get)
@@ -787,7 +785,6 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
                 )
                 await session.execute(stmt)
                 await session.commit()
-            break
         
         logger.info(f"🔄 [Post #{history_id}] Async upload initiated - will be checked by background worker")
     else:
@@ -796,7 +793,7 @@ async def _post_content_impl(history_id: int, video_path: str, profile_username:
 
 async def update_post_status(history_id: int, status: str, error_msg: str = None):
     """Update posting history status in DB."""
-    async for session in get_session():
+    async with async_session_maker() as session:
         # Fetch first to preserve existing meta values
         stmt_get = select(PostingHistory).where(PostingHistory.id == history_id)
         result = await session.execute(stmt_get)
@@ -811,13 +808,12 @@ async def update_post_status(history_id: int, status: str, error_msg: str = None
             post.meta = new_meta
             session.add(post)
             await session.commit()
-        break
 
 async def increment_brand_stats(video_path: str):
     """Increment published count for brand in current month."""
     month = datetime.now().strftime("%Y-%m")
     
-    async for session in get_session():
+    async with async_session_maker() as session:
         # Load aliases from DB to avoid config.json fallback
         from app.services.config_db import get_db_config
         config = await get_db_config(session)
@@ -856,11 +852,10 @@ async def increment_brand_stats(video_path: str):
             session.add(stat)
         
         await session.commit()
-        break
 
 async def check_cleanup(video_path: str):
     """Check if all posts for video are done, then archive if at least 1 succeeded."""
-    async for session in get_session():
+    async with async_session_maker() as session:
         stmt = select(PostingHistory).where(PostingHistory.video_path == video_path)
         result = await session.execute(stmt)
         rows = result.scalars().all()
@@ -944,8 +939,6 @@ async def check_cleanup(video_path: str):
             logger.warning(f"⚠️ Cleanup: {video_path} has 0 successes (all {total_posts} failed) - NOT archiving")
         else:
             logger.info(f"⏳ Cleanup: {video_path} still has pending posts (queued={queued_count}, processing={processing_count})")
-        
-        break
 
 def normalize_client(name: str) -> str:
     """Normalize client name for comparison (lowercase, no spaces)"""

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from app.database import get_session
+from app.database import async_session_maker
 from app.models import PostingHistory
 from sqlalchemy import select
 from app.worker import post_content
@@ -20,7 +20,7 @@ async def background_publisher():
             await asyncio.sleep(60)  # Check every minute
             
             now = datetime.now()
-            async for session in get_session():
+            async with async_session_maker() as session:
                 # Find queued posts that should be published now
                 stmt = select(PostingHistory).where(
                     PostingHistory.status == "queued",
@@ -44,8 +44,6 @@ async def background_publisher():
                             )
                         )
                         logger.info(f"[BackgroundPublisher] Triggered post #{post.id}")
-                
-                break
         except Exception as e:
             logger.error(f"[BackgroundPublisher] Error: {e}")
             await asyncio.sleep(60)
