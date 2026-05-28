@@ -264,14 +264,59 @@ async def _get_cached_folder_inventory(folders: list[str] | None) -> list[dict]:
     now = time.monotonic()
     cached = _folder_inventory_cache.get(key)
     if cached and now - cached[0] < FOLDER_INVENTORY_TTL_SECONDS:
+        logger.info("[TelegramFolders] Cache hit (fresh): key=%s, age=%.1fs", key, now - cached[0])
         return cached[1]
 
-    async with _folder_inventory_lock:
+    lock_wait_started = time.monotonic()
+    try:
+        await asyncio.wait_for(_folder_inventory_lock.acquire(), timeout=7.0)
+    except asyncio.TimeoutError:
+        stale = _folder_inventory_cache.get(key)
+        if stale:
+            stale_age = time.monotonic() - stale[0]
+            logger.warning(
+                "[TelegramFolders] Cache lock busy >7s; returning stale cache (age=%.1fs) for key=%s",
+                stale_age,
+                key,
+            )
+            return stale[1]
+
+        logger.warning(
+            "[TelegramFolders] Cache lock busy >7s and no stale cache; waiting for active refresh key=%s",
+            key,
+        )
+        async with _folder_inventory_lock:
+            pass
+        async with _folder_inventory_lock:
+            # The first waiter has finished refresh by now; try cached value first.
+            now = time.monotonic()
+            cached = _folder_inventory_cache.get(key)
+            if cached and now - cached[0] < FOLDER_INVENTORY_TTL_SECONDS:
+                logger.info("[TelegramFolders] Cache became available after waiting: key=%s", key)
+                return cached[1]
+
+            videos = await yandex_service.list_files(
+                limit=100000,
+                force_refresh=False,
+                folders=list(key),
+                cache_scope="telegram",
+            )
+            _folder_inventory_cache[key] = (time.monotonic(), videos)
+            logger.info("[TelegramFolders] Cache rebuilt after long wait: key=%s, videos=%s", key, len(videos))
+            return videos
+
+    try:
+        waited = time.monotonic() - lock_wait_started
+        if waited > 0.2:
+            logger.info("[TelegramFolders] Waited %.2fs for cache lock (key=%s)", waited, key)
+
         now = time.monotonic()
         cached = _folder_inventory_cache.get(key)
         if cached and now - cached[0] < FOLDER_INVENTORY_TTL_SECONDS:
+            logger.info("[TelegramFolders] Cache hit after lock: key=%s, age=%.1fs", key, now - cached[0])
             return cached[1]
 
+        logger.info("[TelegramFolders] Cache miss; requesting Yandex list_files (key=%s)", key)
         videos = await yandex_service.list_files(
             limit=100000,
             force_refresh=False,
@@ -279,7 +324,11 @@ async def _get_cached_folder_inventory(folders: list[str] | None) -> list[dict]:
             cache_scope="telegram",
         )
         _folder_inventory_cache[key] = (time.monotonic(), videos)
+        logger.info("[TelegramFolders] Cache updated from Yandex (key=%s, videos=%s)", key, len(videos))
         return videos
+    finally:
+        if _folder_inventory_lock.locked():
+            _folder_inventory_lock.release()
 
 
 ROOT_PRODUCT_GROUP_LABEL = "_root"
