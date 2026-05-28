@@ -14,7 +14,6 @@ from typing import Optional
 import httpx
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import FSInputFile
 from sqlalchemy import case, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -93,6 +92,15 @@ YOUTUBE_URL_RE = re.compile(
     r"^https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+$",
     re.IGNORECASE,
 )
+INSTAGRAM_URL_RE = re.compile(
+    r"^https?://(?:www\.)?instagram\.com/[^\s]+$",
+    re.IGNORECASE,
+)
+TIKTOK_URL_RE = re.compile(
+    r"^https?://(?:www\.)?tiktok\.com/[^\s]+$",
+    re.IGNORECASE,
+)
+URL_TOKEN_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 FOLDER_INVENTORY_TTL_SECONDS = 30 * 60
 _folder_inventory_cache: dict[tuple[str, ...], tuple[float, list[dict]]] = {}
 _folder_inventory_lock = None
@@ -199,6 +207,30 @@ def parse_youtube_text(generated: str) -> tuple[str, str]:
 
 def is_youtube_url(text: str) -> bool:
     return bool(YOUTUBE_URL_RE.match((text or "").strip()))
+
+
+def is_instagram_url(text: str) -> bool:
+    return bool(INSTAGRAM_URL_RE.match((text or "").strip()))
+
+
+def is_tiktok_url(text: str) -> bool:
+    return bool(TIKTOK_URL_RE.match((text or "").strip()))
+
+
+def extract_supported_publication_links(text: str) -> dict[str, str]:
+    links: dict[str, str] = {}
+    for raw in URL_TOKEN_RE.findall(text or ""):
+        candidate = raw.strip().rstrip(".,);]")
+        if "youtube" not in links and is_youtube_url(candidate):
+            links["youtube"] = candidate
+            continue
+        if "instagram" not in links and is_instagram_url(candidate):
+            links["instagram"] = candidate
+            continue
+        if "tiktok" not in links and is_tiktok_url(candidate):
+            links["tiktok"] = candidate
+            continue
+    return links
 
 
 def _client_matches_extracted_brand(client: ClientConfig, brand_name: str) -> bool:
@@ -804,25 +836,15 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
         download_link = await yandex_service.get_download_link(request.video_path)
 
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
-    temp_path: Optional[str] = None
     try:
         await bot.send_message(
             request.telegram_user_id,
             "✅ Заявка одобрена. Отправляю ролик и описание.",
         )
-        try:
-            temp_path = await download_video_to_temp(download_link, request.video_name or "video.mp4")
-            await bot.send_document(
-                request.telegram_user_id,
-                FSInputFile(temp_path, filename=(request.video_name or "video.mp4")),
-                caption=(request.video_name or "video")[:1024],
-            )
-        except Exception as exc:
-            logger.warning("[TelegramApproval] send_document failed, fallback to link for request=%s: %s", request_id, exc)
-            await bot.send_message(
-                request.telegram_user_id,
-                f"Не удалось отправить файл как документ, даю прямую ссылку:\n{download_link}",
-            )
+        await bot.send_message(
+            request.telegram_user_id,
+            "Ссылка на ролик:\n" + download_link,
+        )
 
         await bot.send_message(
             request.telegram_user_id,
@@ -836,7 +858,7 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
         )
         await bot.send_message(
             request.telegram_user_id,
-            "После публикации отправьте сюда ссылку на YouTube.",
+            "После публикации нажмите кнопку «Отправить ссылку» и пришлите сюда ссылку(и): YouTube / Instagram / TikTok.",
         )
     except TelegramBadRequest as exc:
         logger.exception("[TelegramApproval] Telegram send failed for request=%s", request_id)
@@ -850,11 +872,6 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
                 await session.commit()
         return False
     finally:
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
         await bot.session.close()
 
     async with async_session_maker() as session:

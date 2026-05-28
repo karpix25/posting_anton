@@ -1,11 +1,10 @@
 import logging
-import os
 from html import escape
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import CallbackQuery, Message
 
 from app.config import settings
 from app.telegram_bot.keyboards import BRAND_CALLBACK_PREFIX, brands_keyboard, main_menu_keyboard
@@ -23,11 +22,10 @@ from app.telegram_bot.service import (
     admin_report,
     build_video_inventory_text,
     cancel_pending_request,
-    download_video_to_temp,
+    extract_supported_publication_links,
     get_open_request,
     get_video_folder_view,
     get_pending_request,
-    is_youtube_url,
     list_brands,
     prepare_random_video,
     prepare_random_video_from_folder,
@@ -37,6 +35,7 @@ from app.telegram_bot.service import (
 
 logger = logging.getLogger(__name__)
 router = Router()
+_awaiting_report_link_users: set[int] = set()
 
 
 def _admin_ids() -> set[int]:
@@ -63,7 +62,7 @@ async def start(message: Message):
         "Что дальше:\n"
         "1) Нажмите «Подать заявку».\n"
         "2) Дождитесь подтверждения администратора и выдачи ролика.\n"
-        "3) После публикации пришлите сюда ссылку на YouTube.",
+        "3) После публикации нажмите «Отправить ссылку» и пришлите ссылку(и).",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -125,6 +124,7 @@ async def cancel(message: Message):
     if not message.from_user:
         return
     cancelled = await cancel_pending_request(message.from_user.id)
+    _awaiting_report_link_users.discard(message.from_user.id)
     if cancelled:
         await message.answer(
             "Текущая заявка/выдача отменена. Можно подать новую заявку.",
@@ -221,34 +221,17 @@ async def send_brand_video(message: Message, user, brand: str):
         return
 
     request = prepared.request
-    temp_path = None
-    if prepared.should_send_as_link:
-        size_mb = prepared.size / 1024 / 1024 if prepared.size else 0
-        await message.answer(
-            f"Файл больше 50 МБ ({size_mb:.1f} МБ), поэтому отправляю прямую ссылку:\n"
-            f"{prepared.download_link}"
-        )
-    else:
-        try:
-            await message.answer("⏳ Загружаю видео для отправки…")
-            temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
-            await message.answer_document(
-                FSInputFile(temp_path, filename=request.video_name),
-                caption=request.video_name[:1024],
-            )
-        finally:
-            if temp_path:
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
+    await message.answer(
+        "Ссылка на ролик:\n"
+        f"{prepared.download_link}"
+    )
 
     await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
     await message.answer("Описание для YouTube:")
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
-        "Опубликуйте видео и отправьте сюда ссылку на YouTube.",
+        "Опубликуйте видео, нажмите «Отправить ссылку» и пришлите ссылку(и): YouTube / Instagram / TikTok.",
         reply_markup=main_menu_keyboard(),
     )
     await message.answer("Можете сразу выбрать следующее видео:", reply_markup=brands_keyboard(brands))
@@ -291,34 +274,17 @@ async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ..
 
 async def send_prepared_video(message: Message, prepared):
     request = prepared.request
-    temp_path = None
-    if prepared.should_send_as_link:
-        size_mb = prepared.size / 1024 / 1024 if prepared.size else 0
-        await message.answer(
-            f"Файл больше 50 МБ ({size_mb:.1f} МБ), поэтому отправляю прямую ссылку:\n"
-            f"{prepared.download_link}"
-        )
-    else:
-        try:
-            await message.answer("⏳ Загружаю видео для отправки…")
-            temp_path = await download_video_to_temp(prepared.download_link, request.video_name)
-            await message.answer_document(
-                FSInputFile(temp_path, filename=request.video_name),
-                caption=request.video_name[:1024],
-            )
-        finally:
-            if temp_path:
-                try:
-                    os.remove(temp_path)
-                except OSError:
-                    logger.warning("Failed to remove temporary Telegram video file: %s", temp_path)
+    await message.answer(
+        "Ссылка на ролик:\n"
+        f"{prepared.download_link}"
+    )
 
     await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
     await message.answer("Описание для YouTube:")
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
-        "Опубликуйте видео и отправьте сюда ссылку на YouTube.",
+        "Опубликуйте видео, нажмите «Отправить ссылку» и пришлите ссылку(и): YouTube / Instagram / TikTok.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -337,6 +303,18 @@ async def handle_text(message: Message):
         return
     if message.text == "Отменить":
         await cancel(message)
+        return
+    if message.text == "Отправить ссылку":
+        pending = await get_pending_request(message.from_user.id)
+        if not pending:
+            await message.answer("Сейчас нет выданного ролика, для которого нужен отчет.", reply_markup=main_menu_keyboard())
+            return
+        _awaiting_report_link_users.add(message.from_user.id)
+        await message.answer(
+            "Пришлите одну или несколько ссылок на публикации.\n"
+            "Можно сразу в одном сообщении: YouTube, Instagram, TikTok.",
+            reply_markup=main_menu_keyboard(),
+        )
         return
     if message.text == "Структура":
         await message.answer("Сейчас выдача через заявки. Нажмите «Подать заявку».")
@@ -357,23 +335,39 @@ async def handle_text(message: Message):
         await message.answer("Нажмите «Подать заявку», чтобы получить следующий ролик.", reply_markup=main_menu_keyboard())
         return
 
-    url = message.text.strip()
-    if not is_youtube_url(url):
+    user_id = message.from_user.id
+    if user_id not in _awaiting_report_link_users:
         await message.answer(
-            "Жду ссылку на YouTube, например https://youtube.com/shorts/...",
+            "Чтобы отправить отчет, сначала нажмите кнопку «Отправить ссылку».",
             reply_markup=main_menu_keyboard(),
         )
         return
 
-    request = await accept_publication_report(message.from_user.id, url)
+    links = extract_supported_publication_links(message.text.strip())
+    if not links:
+        await message.answer(
+            "Не нашел корректных ссылок YouTube / Instagram / TikTok. "
+            "Пришлите ссылку(и) в формате https://...",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    serialized_links = "\n".join(
+        f"{platform}: {links[platform]}"
+        for platform in ("youtube", "instagram", "tiktok")
+        if platform in links
+    )
+    request = await accept_publication_report(message.from_user.id, serialized_links)
+    _awaiting_report_link_users.discard(user_id)
+    accepted = ", ".join(platform for platform in ("youtube", "instagram", "tiktok") if platform in links)
     if request.status == "archived":
         await message.answer(
-            "Спасибо, отчет принят. Видео перенесено в папку опубликовано.",
+            f"Спасибо, отчет принят ({accepted}). Видео перенесено в папку опубликовано.",
             reply_markup=main_menu_keyboard(),
         )
     else:
         await message.answer(
-            "Спасибо, отчет принят. Видео помечено как опубликованное, но перенос на Яндекс.Диске не удался. "
+            f"Спасибо, отчет принят ({accepted}). Видео помечено как опубликованное, но перенос на Яндекс.Диске не удался. "
             "Администратор сможет проверить ошибку в логах.",
             reply_markup=main_menu_keyboard(),
         )

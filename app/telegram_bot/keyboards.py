@@ -140,6 +140,8 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text="Подать заявку", style="success"),
         KeyboardButton(text="Мой отчет", style="primary"),
     ], [
+        KeyboardButton(text="Отправить ссылку", style="primary"),
+    ], [
         KeyboardButton(text="Отменить", style="danger"),
     ]]
 
