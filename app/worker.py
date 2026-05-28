@@ -11,7 +11,7 @@ from app.services.scheduler import ContentScheduler
 from app.services.platforms import platform_manager
 from app.services.content_generator import content_generator
 from app.database import async_session_maker
-from app.models import PostingHistory, BrandStats
+from app.models import PostingHistory, BrandStats, TelegramVideoRequest
 from app.utils import extract_brand, extract_author, extract_theme
 from sqlalchemy import select, update
 
@@ -141,6 +141,17 @@ async def _load_local_schedule_reservations(session, days_to_generate: int):
     )
     video_result = await session.execute(video_stmt)
     reserved_video_paths = {path for path in video_result.scalars().all() if path}
+
+    # Reserve videos that are already handed out via Telegram bot, so
+    # automation planning cannot schedule the same asset in parallel.
+    tg_reserved_statuses = ["sent", "reported", "archived"]
+    tg_stmt = select(TelegramVideoRequest.video_path).where(
+        TelegramVideoRequest.status.in_(tg_reserved_statuses),
+        TelegramVideoRequest.video_path.is_not(None),
+    )
+    tg_result = await session.execute(tg_stmt)
+    tg_reserved_video_paths = {path for path in tg_result.scalars().all() if path}
+    reserved_video_paths.update(tg_reserved_video_paths)
 
     return occupied_slots, existing_counts, reserved_video_paths
 
