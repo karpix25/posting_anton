@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import os
 import random
@@ -11,14 +12,18 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
+from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import FSInputFile
 from sqlalchemy import case, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ClientConfig
+from app.config import settings
 from app.database import async_session_maker
-from app.models import TelegramVideoRequest
-from app.services.config_db import get_db_config
+from app.models import TelegramDistributionRule, TelegramVideoRequest
+from app.services.config_db import get_db_config, get_yandex_folders
 from app.services.content_generator import content_generator
 from app.services.scheduler import ContentScheduler
 from app.services.yandex import yandex_service
@@ -27,13 +32,63 @@ from app.utils import extract_author
 logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_FILE_LIMIT_BYTES = 50 * 1024 * 1024
-REPORTABLE_STATUSES = ("sent", "reported")
-RESERVED_STATUSES = ("sent", "reported", "archived")
+STATUS_PENDING_APPROVAL = "pending_approval"
+STATUS_APPROVED = "approved"
+STATUS_REJECTED = "rejected"
+STATUS_SENT = "sent"
+STATUS_REPORTED = "reported"
+STATUS_ARCHIVED = "archived"
+STATUS_CANCELLED = "cancelled"
+STATUS_FAILED = "failed"
+
+REPORTABLE_STATUSES = (STATUS_SENT, STATUS_REPORTED)
+RESERVED_STATUSES = (STATUS_APPROVED, STATUS_SENT, STATUS_REPORTED, STATUS_ARCHIVED)
+OPEN_REQUEST_STATUSES = (STATUS_PENDING_APPROVAL, STATUS_APPROVED, STATUS_SENT)
 ACTIVE_VIDEO_UNIQUE_INDEX_SQL = """
 CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_video_requests_active_video_path
 ON telegram_video_requests(video_path)
-WHERE status IN ('sent', 'reported', 'archived')
+WHERE status IN ('approved', 'sent', 'reported', 'archived')
+  AND video_path NOT LIKE 'pending://%'
 """
+TELEGRAM_SCHEMA_MIGRATION_SQL = [
+    """
+    ALTER TABLE telegram_video_requests
+      ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP NULL
+    """,
+    """
+    ALTER TABLE telegram_video_requests
+      ADD COLUMN IF NOT EXISTS approved_by BIGINT NULL
+    """,
+    """
+    ALTER TABLE telegram_video_requests
+      ADD COLUMN IF NOT EXISTS week_key VARCHAR(16) NULL
+    """,
+    """
+    ALTER TABLE telegram_video_requests
+      ADD COLUMN IF NOT EXISTS assigned_folder_prefix TEXT NULL
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_week_key
+    ON telegram_video_requests(week_key)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS telegram_distribution_rules (
+      id SERIAL PRIMARY KEY,
+      telegram_user_id BIGINT NOT NULL,
+      telegram_username VARCHAR(255),
+      telegram_full_name VARCHAR(255),
+      folder_prefix TEXT NOT NULL,
+      weekly_limit INTEGER NOT NULL DEFAULT 1,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_telegram_distribution_rules_user
+    ON telegram_distribution_rules(telegram_user_id)
+    """,
+]
 YOUTUBE_URL_RE = re.compile(
     r"^https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[^\s]+$",
     re.IGNORECASE,
@@ -41,6 +96,8 @@ YOUTUBE_URL_RE = re.compile(
 FOLDER_INVENTORY_TTL_SECONDS = 30 * 60
 _folder_inventory_cache: dict[tuple[str, ...], tuple[float, list[dict]]] = {}
 _folder_inventory_lock = None
+_schema_ready = False
+_schema_lock = None
 
 
 @dataclass
@@ -70,16 +127,34 @@ class FolderView:
     children: list[FolderOption]
 
 
+@dataclass(frozen=True)
+class ApprovalResult:
+    request: TelegramVideoRequest
+    delivered: bool
+
+
 def _normalize(text: str) -> str:
     return (text or "").lower().replace("ё", "е").replace(" ", "").replace("-", "").strip()
 
 
 def _strip_youtube_template_tokens(text: str) -> str:
-    text = text or ""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"(?is)\[/?YT_(?:TITLE|DESCRIPTION)\]", " ", text)
     text = re.sub(r"(?i)/?YT_(?:TITLE|DESCRIPTION)\b", " ", text)
-    text = re.sub(r"(?im)^\s*(?:YT_TITLE|YT_DESCRIPTION)\s*$", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"(?im)^\s*(?:YT_TITLE|YT_DESCRIPTION)\s*$", "", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    hashtag_match = re.search(r"(?m)(^|\s)(#\S+)", text)
+    if hashtag_match:
+        hashtag_start = hashtag_match.start(2)
+        body = text[:hashtag_start].strip()
+        hashtags = text[hashtag_start:].strip()
+        if body and hashtags:
+            text = f"{body}\n\n{hashtags}"
+
     return text
 
 
@@ -218,9 +293,9 @@ async def build_video_inventory_text() -> str:
 
 async def get_video_folder_view(prefix: tuple[str, ...] = ()) -> FolderView:
     async with async_session_maker() as session:
-        config = await get_db_config(session)
+        folders = await get_yandex_folders(session)
 
-    videos = await _get_cached_folder_inventory(config.yandexFolders)
+    videos = await _get_cached_folder_inventory(folders)
     prefix = tuple(prefix)
     child_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"videos": 0, "children": 0})
     child_names: dict[str, str] = {}
@@ -380,8 +455,478 @@ def _extract_inventory_parts(path: str, scheduler: ContentScheduler) -> tuple[st
     return category or "unknown", brand or "unknown", product
 
 
+def _build_pending_placeholder_path(telegram_user_id: int) -> str:
+    nonce = f"{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    return f"pending://{telegram_user_id}/{nonce}"
+
+
+def _current_week_key(dt: Optional[datetime] = None) -> str:
+    value = dt or datetime.utcnow()
+    monday = value.date().toordinal() - value.weekday()
+    return datetime.fromordinal(monday).strftime("%Y-%m-%d")
+
+
+def _parse_folder_prefix_text(value: Optional[str]) -> tuple[str, ...]:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return ()
+    return tuple(part.strip() for part in text_value.replace("\\", "/").split("/") if part.strip())
+
+
+def _format_folder_prefix(prefix: tuple[str, ...]) -> str:
+    return " / ".join(prefix)
+
+
+async def ensure_telegram_schema(session: AsyncSession):
+    global _schema_ready, _schema_lock
+    if _schema_ready:
+        return
+    if _schema_lock is None:
+        _schema_lock = asyncio.Lock()
+
+    async with _schema_lock:
+        if _schema_ready:
+            return
+        for sql in TELEGRAM_SCHEMA_MIGRATION_SQL:
+            await session.execute(text(sql))
+        await session.execute(text("DROP INDEX IF EXISTS uq_telegram_video_requests_active_video_path"))
+        await session.execute(text(ACTIVE_VIDEO_UNIQUE_INDEX_SQL))
+        await session.commit()
+        _schema_ready = True
+
+
+async def submit_video_request(
+    telegram_user_id: int,
+    telegram_username: Optional[str],
+    telegram_full_name: Optional[str],
+) -> TelegramVideoRequest:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        existing = await _get_open_request_for_update(session, telegram_user_id)
+        if existing:
+            raise RuntimeError("already_open_request")
+
+        request = TelegramVideoRequest(
+            telegram_user_id=telegram_user_id,
+            telegram_username=telegram_username,
+            telegram_full_name=telegram_full_name,
+            brand="pending",
+            video_path=_build_pending_placeholder_path(telegram_user_id),
+            video_name="pending.mp4",
+            status=STATUS_PENDING_APPROVAL,
+        )
+        session.add(request)
+        await session.commit()
+        await session.refresh(request)
+        return request
+
+
+async def list_pending_approval_requests(limit: int = 200) -> list[dict]:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = (
+            select(TelegramVideoRequest)
+            .where(TelegramVideoRequest.status == STATUS_PENDING_APPROVAL)
+            .order_by(TelegramVideoRequest.requested_at.asc())
+            .limit(max(1, min(limit, 1000)))
+        )
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+        return [
+            {
+                "id": row.id,
+                "telegram_user_id": row.telegram_user_id,
+                "telegram_username": row.telegram_username,
+                "telegram_full_name": row.telegram_full_name,
+                "status": row.status,
+                "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+            }
+            for row in rows
+        ]
+
+
+async def list_video_requests(limit: int = 200, status: Optional[str] = None) -> list[dict]:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest)
+        if status:
+            stmt = stmt.where(TelegramVideoRequest.status == status)
+        stmt = stmt.order_by(TelegramVideoRequest.requested_at.desc()).limit(max(1, min(limit, 2000)))
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+        return [
+            {
+                "id": row.id,
+                "telegram_user_id": row.telegram_user_id,
+                "telegram_username": row.telegram_username,
+                "telegram_full_name": row.telegram_full_name,
+                "status": row.status,
+                "brand": row.brand,
+                "video_name": row.video_name,
+                "assigned_folder_prefix": row.assigned_folder_prefix,
+                "error_message": row.error_message,
+                "requested_at": row.requested_at.isoformat() if row.requested_at else None,
+                "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+                "reported_at": row.reported_at.isoformat() if row.reported_at else None,
+            }
+            for row in rows
+        ]
+
+
+async def list_distribution_rules(limit: int = 500) -> list[dict]:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = (
+            select(TelegramDistributionRule)
+            .order_by(TelegramDistributionRule.is_active.desc(), TelegramDistributionRule.telegram_user_id.asc())
+            .limit(max(1, min(limit, 2000)))
+        )
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+        return [
+            {
+                "id": row.id,
+                "telegram_user_id": row.telegram_user_id,
+                "telegram_username": row.telegram_username,
+                "telegram_full_name": row.telegram_full_name,
+                "folder_prefix": row.folder_prefix,
+                "weekly_limit": row.weekly_limit,
+                "is_active": row.is_active,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+            for row in rows
+        ]
+
+
+async def list_request_users(limit: int = 500) -> list[dict]:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = (
+            select(
+                TelegramVideoRequest.telegram_user_id,
+                func.max(TelegramVideoRequest.telegram_username).label("telegram_username"),
+                func.max(TelegramVideoRequest.telegram_full_name).label("telegram_full_name"),
+                func.count(TelegramVideoRequest.id).label("requests_total"),
+            )
+            .group_by(TelegramVideoRequest.telegram_user_id)
+            .order_by(func.count(TelegramVideoRequest.id).desc(), TelegramVideoRequest.telegram_user_id.asc())
+            .limit(max(1, min(limit, 5000)))
+        )
+        result = await session.execute(stmt)
+        return [dict(row) for row in result.mappings().all()]
+
+
+async def upsert_distribution_rule(
+    telegram_user_id: int,
+    folder_prefix: str,
+    weekly_limit: int,
+    is_active: bool = True,
+    telegram_username: Optional[str] = None,
+    telegram_full_name: Optional[str] = None,
+) -> dict:
+    weekly_limit = max(int(weekly_limit or 0), 0)
+    folder_prefix = str(folder_prefix or "").strip()
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = (
+            select(TelegramDistributionRule)
+            .where(TelegramDistributionRule.telegram_user_id == telegram_user_id)
+            .order_by(TelegramDistributionRule.id.desc())
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        rule = result.scalar_one_or_none()
+        now = datetime.utcnow()
+        if not rule:
+            rule = TelegramDistributionRule(
+                telegram_user_id=telegram_user_id,
+                telegram_username=telegram_username,
+                telegram_full_name=telegram_full_name,
+                folder_prefix=folder_prefix,
+                weekly_limit=weekly_limit,
+                is_active=bool(is_active),
+                created_at=now,
+                updated_at=now,
+            )
+        else:
+            rule.folder_prefix = folder_prefix
+            rule.weekly_limit = weekly_limit
+            rule.is_active = bool(is_active)
+            if telegram_username:
+                rule.telegram_username = telegram_username
+            if telegram_full_name:
+                rule.telegram_full_name = telegram_full_name
+            rule.updated_at = now
+        session.add(rule)
+        await session.commit()
+        await session.refresh(rule)
+        return {
+            "id": rule.id,
+            "telegram_user_id": rule.telegram_user_id,
+            "telegram_username": rule.telegram_username,
+            "telegram_full_name": rule.telegram_full_name,
+            "folder_prefix": rule.folder_prefix,
+            "weekly_limit": rule.weekly_limit,
+            "is_active": rule.is_active,
+        }
+
+
+async def delete_distribution_rule(rule_id: int) -> bool:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramDistributionRule).where(TelegramDistributionRule.id == rule_id).limit(1)
+        result = await session.execute(stmt)
+        rule = result.scalar_one_or_none()
+        if not rule:
+            return False
+        await session.delete(rule)
+        await session.commit()
+        return True
+
+
+async def approve_video_request(request_id: int, admin_user_id: int) -> ApprovalResult:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        request = result.scalar_one_or_none()
+        if not request:
+            raise LookupError("request_not_found")
+        if request.status == STATUS_REJECTED:
+            raise ValueError("request_rejected")
+        if request.status in {STATUS_SENT, STATUS_REPORTED, STATUS_ARCHIVED}:
+            return ApprovalResult(request=request, delivered=True)
+
+        rule = await _get_active_distribution_rule(session, request.telegram_user_id)
+        if not rule:
+            raise LookupError("rule_not_found")
+        folder_prefix = _parse_folder_prefix_text(rule.folder_prefix)
+        if not folder_prefix:
+            raise ValueError("rule_folder_empty")
+        if rule.weekly_limit <= 0:
+            raise ValueError("rule_weekly_limit_zero")
+
+        week_key = _current_week_key()
+        weekly_count_stmt = select(func.count(TelegramVideoRequest.id)).where(
+            TelegramVideoRequest.telegram_user_id == request.telegram_user_id,
+            TelegramVideoRequest.week_key == week_key,
+            TelegramVideoRequest.status.in_(RESERVED_STATUSES),
+        )
+        weekly_count_result = await session.execute(weekly_count_stmt)
+        weekly_count = int(weekly_count_result.scalar() or 0)
+        if weekly_count >= int(rule.weekly_limit):
+            raise ValueError("weekly_limit_exceeded")
+
+        assigned = await _assign_video_to_request(session, request, folder_prefix, week_key, admin_user_id)
+        if not assigned:
+            raise LookupError("no_videos_for_rule")
+
+    delivered = await deliver_approved_request_to_user(request_id)
+    async with async_session_maker() as session:
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        refreshed = result.scalar_one()
+    return ApprovalResult(request=refreshed, delivered=delivered)
+
+
+async def reject_video_request(request_id: int, admin_user_id: int, reason: Optional[str] = None) -> bool:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        request = result.scalar_one_or_none()
+        if not request:
+            return False
+        if request.status in {STATUS_SENT, STATUS_REPORTED, STATUS_ARCHIVED}:
+            return False
+
+        request.status = STATUS_REJECTED
+        request.approved_by = admin_user_id
+        request.approved_at = datetime.utcnow()
+        request.error_message = (reason or "").strip()[:500] or None
+        session.add(request)
+        await session.commit()
+        return True
+
+
+async def deliver_approved_request_to_user(request_id: int) -> bool:
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning("[TelegramApproval] Bot token is not configured; cannot deliver request=%s", request_id)
+        return False
+
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        request = result.scalar_one_or_none()
+        if not request:
+            return False
+        if request.status == STATUS_SENT:
+            return True
+        if request.status != STATUS_APPROVED:
+            return False
+
+        download_link = await yandex_service.get_download_link(request.video_path)
+
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+    temp_path: Optional[str] = None
+    try:
+        await bot.send_message(
+            request.telegram_user_id,
+            "✅ Заявка одобрена. Отправляю ролик и описание.",
+        )
+        try:
+            temp_path = await download_video_to_temp(download_link, request.video_name or "video.mp4")
+            await bot.send_document(
+                request.telegram_user_id,
+                FSInputFile(temp_path, filename=(request.video_name or "video.mp4")),
+                caption=(request.video_name or "video")[:1024],
+            )
+        except Exception as exc:
+            logger.warning("[TelegramApproval] send_document failed, fallback to link for request=%s: %s", request_id, exc)
+            await bot.send_message(
+                request.telegram_user_id,
+                f"Не удалось отправить файл как документ, даю прямую ссылку:\n{download_link}",
+            )
+
+        await bot.send_message(
+            request.telegram_user_id,
+            "Заголовок для YouTube:\n" + html.escape(request.youtube_title or ""),
+            parse_mode="HTML",
+        )
+        await bot.send_message(
+            request.telegram_user_id,
+            "<b>Описание для YouTube:</b>\n<pre>" + html.escape(request.youtube_description or "") + "</pre>",
+            parse_mode="HTML",
+        )
+        await bot.send_message(
+            request.telegram_user_id,
+            "После публикации отправьте сюда ссылку на YouTube.",
+        )
+    except TelegramBadRequest as exc:
+        logger.exception("[TelegramApproval] Telegram send failed for request=%s", request_id)
+        async with async_session_maker() as session:
+            stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+            result = await session.execute(stmt)
+            row = result.scalar_one_or_none()
+            if row:
+                row.error_message = f"Telegram delivery failed: {exc}"
+                session.add(row)
+                await session.commit()
+        return False
+    finally:
+        if temp_path:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        await bot.session.close()
+
+    async with async_session_maker() as session:
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row:
+            row.status = STATUS_SENT
+            row.error_message = None
+            session.add(row)
+            await session.commit()
+    return True
+
+
+async def _get_active_distribution_rule(
+    session: AsyncSession,
+    telegram_user_id: int,
+) -> Optional[TelegramDistributionRule]:
+    stmt = (
+        select(TelegramDistributionRule)
+        .where(
+            TelegramDistributionRule.telegram_user_id == telegram_user_id,
+            TelegramDistributionRule.is_active.is_(True),
+        )
+        .order_by(TelegramDistributionRule.updated_at.desc(), TelegramDistributionRule.id.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def _assign_video_to_request(
+    session: AsyncSession,
+    request: TelegramVideoRequest,
+    folder_prefix: tuple[str, ...],
+    week_key: str,
+    admin_user_id: int,
+) -> bool:
+    config = await get_db_config(session)
+    used_result = await session.execute(
+        select(TelegramVideoRequest.video_path).where(TelegramVideoRequest.status.in_(RESERVED_STATUSES))
+    )
+    used_paths = {path for path in used_result.scalars().all() if path}
+    videos = await yandex_service.list_files(
+        limit=100000,
+        force_refresh=False,
+        folders=config.yandexFolders,
+        cache_scope="telegram",
+    )
+    scheduler = ContentScheduler(config)
+    candidates = [
+        (video, matched_client)
+        for video in videos
+        if video.get("path")
+        and video["path"] not in used_paths
+        and _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix)
+        for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
+        if matched_client
+    ]
+    if not candidates:
+        return False
+
+    random.shuffle(candidates)
+    for video, client in candidates:
+        request.brand = client.name
+        request.video_path = str(video["path"])
+        request.video_name = str(video.get("name") or request.video_path.rsplit("/", 1)[-1])
+        request.assigned_folder_prefix = _format_folder_prefix(folder_prefix)
+        request.week_key = week_key
+        request.approved_by = admin_user_id
+        request.approved_at = datetime.utcnow()
+        request.status = STATUS_APPROVED
+        session.add(request)
+        try:
+            await session.commit()
+            await session.refresh(request)
+            author_name = extract_author(request.video_path)
+            generated = await content_generator.generate_caption(
+                request.video_path,
+                "youtube",
+                client,
+                author_name if author_name != "unknown" else None,
+            )
+            title, description = parse_youtube_text(generated or "")
+            request.youtube_title = title
+            request.youtube_description = description or f"{title}\n\n#shorts"
+            session.add(request)
+            await session.commit()
+            return True
+        except IntegrityError:
+            await session.rollback()
+            logger.info("[TelegramApproval] Video already reserved concurrently, trying next candidate")
+            continue
+        except Exception as exc:
+            await session.rollback()
+            logger.exception("[TelegramApproval] Failed to generate caption for request=%s", request.id)
+            request.error_message = f"Caption generation failed: {exc}"
+            request.status = STATUS_FAILED
+            session.add(request)
+            await session.commit()
+            return False
+    return False
+
+
 async def get_pending_request(telegram_user_id: int) -> Optional[TelegramVideoRequest]:
     async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
         stmt = (
             select(TelegramVideoRequest)
             .where(
@@ -396,12 +941,19 @@ async def get_pending_request(telegram_user_id: int) -> Optional[TelegramVideoRe
         return result.scalar_one_or_none()
 
 
+async def get_open_request(telegram_user_id: int) -> Optional[TelegramVideoRequest]:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        return await _get_open_request_for_update(session, telegram_user_id)
+
+
 async def cancel_pending_request(telegram_user_id: int) -> bool:
     async with async_session_maker() as session:
-        request = await _get_pending_request_for_update(session, telegram_user_id)
+        await ensure_telegram_schema(session)
+        request = await _get_open_request_for_update(session, telegram_user_id)
         if not request:
             return False
-        request.status = "cancelled"
+        request.status = STATUS_CANCELLED
         session.add(request)
         await session.commit()
         return True
@@ -448,6 +1000,7 @@ async def _prepare_random_video(
     selected_video = None
     selected_client = None
     async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
         await ensure_active_video_unique_index(session)
         config = await get_db_config(session)
         client = next((item for item in config.clients if item.name == brand), None) if brand else None
@@ -587,7 +1140,7 @@ async def _try_reserve_video(
         brand=client.name,
         video_path=video_path,
         video_name=str(video.get("name") or video_path.rsplit("/", 1)[-1]),
-        status="sent",
+        status=STATUS_SENT,
     )
     session.add(request)
     try:
@@ -627,13 +1180,14 @@ async def accept_publication_report(
     published_url: str,
 ) -> TelegramVideoRequest:
     async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
         request = await _get_pending_request_for_update(session, telegram_user_id)
         if not request:
             raise LookupError("no_pending")
 
         request.published_url = published_url.strip()
         request.reported_at = datetime.utcnow()
-        request.status = "reported"
+        request.status = STATUS_REPORTED
         session.add(request)
         await session.commit()
         await session.refresh(request)
@@ -643,7 +1197,7 @@ async def accept_publication_report(
             archive_path = await yandex_service.move_file(request.video_path, dest_folder)
             request.archive_path = archive_path
             request.archived_at = datetime.utcnow()
-            request.status = "archived"
+            request.status = STATUS_ARCHIVED
             session.add(request)
             await session.commit()
             await session.refresh(request)
@@ -658,6 +1212,7 @@ async def accept_publication_report(
 
 async def user_report(telegram_user_id: int) -> dict:
     async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
         stmt = select(
             func.max(TelegramVideoRequest.telegram_username).label("telegram_username"),
             func.max(TelegramVideoRequest.telegram_full_name).label("telegram_full_name"),
@@ -665,7 +1220,7 @@ async def user_report(telegram_user_id: int) -> dict:
             func.coalesce(
                 func.sum(
                     case(
-                        (TelegramVideoRequest.status.in_(("reported", "archived")), 1),
+                        (TelegramVideoRequest.status.in_((STATUS_REPORTED, STATUS_ARCHIVED)), 1),
                         else_=0,
                     )
                 ),
@@ -685,6 +1240,7 @@ async def user_report(telegram_user_id: int) -> dict:
 
 async def admin_report() -> list[dict]:
     async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
         stmt = (
             select(
                 TelegramVideoRequest.telegram_user_id,
@@ -694,7 +1250,7 @@ async def admin_report() -> list[dict]:
                 func.coalesce(
                     func.sum(
                         case(
-                            (TelegramVideoRequest.status.in_(("reported", "archived")), 1),
+                            (TelegramVideoRequest.status.in_((STATUS_REPORTED, STATUS_ARCHIVED)), 1),
                             else_=0,
                         )
                     ),
@@ -721,6 +1277,24 @@ async def _get_pending_request_for_update(
         .where(
             TelegramVideoRequest.telegram_user_id == telegram_user_id,
             TelegramVideoRequest.status.in_(REPORTABLE_STATUSES),
+            TelegramVideoRequest.published_url.is_(None),
+        )
+        .order_by(TelegramVideoRequest.requested_at.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def _get_open_request_for_update(
+    session: AsyncSession,
+    telegram_user_id: int,
+) -> Optional[TelegramVideoRequest]:
+    stmt = (
+        select(TelegramVideoRequest)
+        .where(
+            TelegramVideoRequest.telegram_user_id == telegram_user_id,
+            TelegramVideoRequest.status.in_(OPEN_REQUEST_STATUSES),
             TelegramVideoRequest.published_url.is_(None),
         )
         .order_by(TelegramVideoRequest.requested_at.desc())

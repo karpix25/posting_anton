@@ -26,6 +26,18 @@ from app.services.profile_status import (
     extract_statuses_from_api_profile,
     merge_api_profiles_into_config,
 )
+from app.telegram_bot.service import (
+    approve_video_request,
+    delete_distribution_rule,
+    ensure_telegram_schema,
+    get_video_folder_view,
+    list_distribution_rules,
+    list_pending_approval_requests,
+    list_request_users,
+    list_video_requests,
+    reject_video_request,
+    upsert_distribution_rule,
+)
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
 
@@ -40,7 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.services.config_db import migrate_file_to_db, get_db_config, save_db_config
+from app.services.config_db import migrate_file_to_db, get_db_config, get_yandex_folders, save_db_config
 
 # In-memory caches for expensive Yandex stats scans
 stats_cache: Optional[Dict[str, Any]] = None
@@ -387,8 +399,8 @@ async def warm_yandex_cache_once():
     """Warm Yandex file caches for dashboard and Telegram views."""
     started = time.monotonic()
     async with async_session_maker() as session:
-        config = await get_db_config(session)
-    folders = list(config.yandexFolders or [])
+        folders = await get_yandex_folders(session)
+    folders = list(folders or [])
     if not folders:
         logger.info("[YandexWarmup] Skipped: no configured yandexFolders.")
         return
@@ -470,6 +482,7 @@ async def on_startup():
         from app.seed_data import CLIENTS_SEED
         
         async with async_session_maker() as session:
+             await ensure_telegram_schema(session)
              cfg = await get_db_config(session)
              
              # AGGRESSIVE AUTO-SEED
@@ -645,6 +658,132 @@ async def get_profile_status_summary():
     except Exception as e:
         logger.error(f"Live profile status summary failed: {e}")
         return {"success": False, "error": str(e)}
+
+
+@app.get("/api/telegram/requests")
+async def api_telegram_requests(status: Optional[str] = None, limit: int = 200):
+    rows = await list_video_requests(limit=limit, status=status)
+    return {"success": True, "items": rows}
+
+
+@app.get("/api/telegram/requests/pending")
+async def api_telegram_pending_requests(limit: int = 200):
+    rows = await list_pending_approval_requests(limit=limit)
+    return {"success": True, "items": rows}
+
+
+@app.post("/api/telegram/requests/{request_id}/approve")
+async def api_telegram_approve_request(request_id: int, payload: Dict[str, Any] = Body(default={})):
+    admin_user_id = int(payload.get("admin_user_id") or 0)
+    try:
+        result = await approve_video_request(request_id=request_id, admin_user_id=admin_user_id)
+    except LookupError as exc:
+        code = str(exc)
+        if code == "request_not_found":
+            raise HTTPException(status_code=404, detail="Request not found")
+        if code == "rule_not_found":
+            raise HTTPException(status_code=400, detail="No active distribution rule for this user")
+        if code == "no_videos_for_rule":
+            raise HTTPException(status_code=409, detail="No available videos in assigned folder")
+        raise HTTPException(status_code=400, detail=code)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "weekly_limit_exceeded":
+            raise HTTPException(status_code=409, detail="Weekly limit reached for this user")
+        if code == "rule_folder_empty":
+            raise HTTPException(status_code=400, detail="Rule folder is empty")
+        if code == "rule_weekly_limit_zero":
+            raise HTTPException(status_code=400, detail="Weekly limit is zero")
+        raise HTTPException(status_code=400, detail=code)
+
+    row = result.request
+    return {
+        "success": True,
+        "delivered": result.delivered,
+        "request": {
+            "id": row.id,
+            "telegram_user_id": row.telegram_user_id,
+            "status": row.status,
+            "brand": row.brand,
+            "video_name": row.video_name,
+            "assigned_folder_prefix": row.assigned_folder_prefix,
+            "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+        },
+    }
+
+
+@app.post("/api/telegram/requests/{request_id}/reject")
+async def api_telegram_reject_request(request_id: int, payload: Dict[str, Any] = Body(default={})):
+    admin_user_id = int(payload.get("admin_user_id") or 0)
+    reason = str(payload.get("reason") or "").strip()
+    ok = await reject_video_request(request_id=request_id, admin_user_id=admin_user_id, reason=reason)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Request cannot be rejected in current status")
+    return {"success": True}
+
+
+@app.get("/api/telegram/rules")
+async def api_telegram_rules(limit: int = 500):
+    rules = await list_distribution_rules(limit=limit)
+    return {"success": True, "items": rules}
+
+
+@app.post("/api/telegram/rules")
+async def api_telegram_upsert_rule(payload: Dict[str, Any]):
+    telegram_user_id = int(payload.get("telegram_user_id") or 0)
+    folder_prefix = str(payload.get("folder_prefix") or "").strip()
+    weekly_limit = int(payload.get("weekly_limit") or 0)
+    is_active = bool(payload.get("is_active", True))
+    telegram_username = payload.get("telegram_username")
+    telegram_full_name = payload.get("telegram_full_name")
+    if telegram_user_id <= 0:
+        raise HTTPException(status_code=400, detail="telegram_user_id is required")
+    if not folder_prefix:
+        raise HTTPException(status_code=400, detail="folder_prefix is required")
+    rule = await upsert_distribution_rule(
+        telegram_user_id=telegram_user_id,
+        folder_prefix=folder_prefix,
+        weekly_limit=weekly_limit,
+        is_active=is_active,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+    )
+    return {"success": True, "item": rule}
+
+
+@app.delete("/api/telegram/rules/{rule_id}")
+async def api_telegram_delete_rule(rule_id: int):
+    ok = await delete_distribution_rule(rule_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return {"success": True}
+
+
+@app.get("/api/telegram/users")
+async def api_telegram_users(limit: int = 500):
+    users = await list_request_users(limit=limit)
+    return {"success": True, "items": users}
+
+
+@app.get("/api/telegram/folders")
+async def api_telegram_folders(prefix: str = ""):
+    prefix_tuple = tuple(part.strip() for part in prefix.split("/") if part.strip())
+    view = await get_video_folder_view(prefix_tuple)
+    return {
+        "success": True,
+        "prefix": list(view.prefix),
+        "title": view.title,
+        "total_videos": view.total_videos,
+        "children": [
+            {
+                "name": child.name,
+                "prefix": list(child.prefix),
+                "video_count": child.video_count,
+                "child_count": child.child_count,
+            }
+            for child in view.children
+        ],
+    }
 
 
 @app.get("/api/uploadpost/webhook")

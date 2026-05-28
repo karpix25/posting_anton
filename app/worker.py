@@ -144,7 +144,7 @@ async def _load_local_schedule_reservations(session, days_to_generate: int):
 
     # Reserve videos that are already handed out via Telegram bot, so
     # automation planning cannot schedule the same asset in parallel.
-    tg_reserved_statuses = ["sent", "reported", "archived"]
+    tg_reserved_statuses = ["approved", "sent", "reported", "archived"]
     tg_stmt = select(TelegramVideoRequest.video_path).where(
         TelegramVideoRequest.status.in_(tg_reserved_statuses),
         TelegramVideoRequest.video_path.is_not(None),
@@ -198,11 +198,23 @@ def _extract_tagged_section(text: str, tag_name: str) -> str:
 
 
 def _strip_youtube_template_tokens(text: str) -> str:
-    text = text or ""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"(?is)\[/?YT_(?:TITLE|DESCRIPTION)\]", " ", text)
     text = re.sub(r"(?i)/?YT_(?:TITLE|DESCRIPTION)\b", " ", text)
-    text = re.sub(r"(?im)^\s*(?:YT_TITLE|YT_DESCRIPTION)\s*$", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"(?im)^\s*(?:YT_TITLE|YT_DESCRIPTION)\s*$", "", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    hashtag_match = re.search(r"(?m)(^|\s)(#\S+)", text)
+    if hashtag_match:
+        hashtag_start = hashtag_match.start(2)
+        body = text[:hashtag_start].strip()
+        hashtags = text[hashtag_start:].strip()
+        if body and hashtags:
+            text = f"{body}\n\n{hashtags}"
+
     return text
 
 

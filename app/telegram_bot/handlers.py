@@ -17,17 +17,21 @@ from app.telegram_bot.keyboards import (
     resolve_folder_token,
 )
 from app.telegram_bot.service import (
+    STATUS_APPROVED,
+    STATUS_PENDING_APPROVAL,
     accept_publication_report,
     admin_report,
     build_video_inventory_text,
     cancel_pending_request,
     download_video_to_temp,
+    get_open_request,
     get_video_folder_view,
     get_pending_request,
     is_youtube_url,
     list_brands,
     prepare_random_video,
     prepare_random_video_from_folder,
+    submit_video_request,
     user_report,
 )
 
@@ -48,18 +52,20 @@ def _admin_ids() -> set[int]:
     return ids
 
 
+def _is_admin(user_id: int) -> bool:
+    return user_id in _admin_ids()
+
+
 @router.message(Command("start"))
 async def start(message: Message):
     await message.answer(
         "Готово, бот запущен.\n"
         "Что дальше:\n"
-        "1) Нажмите «Структура» и выберите нужную папку.\n"
-        "2) Внутри папки нажмите «🎬 Выдать видео из этой папки».\n"
+        "1) Нажмите «Подать заявку».\n"
+        "2) Дождитесь подтверждения администратора и выдачи ролика.\n"
         "3) После публикации пришлите сюда ссылку на YouTube.",
         reply_markup=main_menu_keyboard(),
     )
-    await message.answer("⏳ Загружаю структуру с Яндекс.Диска. Это может занять немного времени.")
-    await send_folder_navigation(message, ())
 
 
 @router.message(Command("report"))
@@ -121,16 +127,24 @@ async def cancel(message: Message):
     cancelled = await cancel_pending_request(message.from_user.id)
     if cancelled:
         await message.answer(
-            "Ожидание ссылки отменено. Можно запросить новое видео.",
+            "Текущая заявка/выдача отменена. Можно подать новую заявку.",
             reply_markup=main_menu_keyboard(),
         )
     else:
         await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=main_menu_keyboard())
 
 
+@router.message(Command("request"))
+async def request_video(message: Message):
+    await submit_request(message)
+
+
 @router.callback_query(F.data.startswith(BRAND_CALLBACK_PREFIX))
 async def select_brand(callback: CallbackQuery):
     if not callback.message or not callback.from_user or not callback.data:
+        return
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Сейчас работает режим заявок через администратора.", show_alert=True)
         return
 
     brand = callback.data.removeprefix(BRAND_CALLBACK_PREFIX)
@@ -141,6 +155,9 @@ async def select_brand(callback: CallbackQuery):
 @router.callback_query(F.data.startswith(FOLDER_CALLBACK_PREFIX))
 async def select_folder(callback: CallbackQuery):
     if not callback.message or not callback.data:
+        return
+    if not callback.from_user or not _is_admin(callback.from_user.id):
+        await callback.answer("Сейчас работает режим заявок через администратора.", show_alert=True)
         return
 
     prefix, page = parse_folder_callback_data(callback.data)
@@ -157,6 +174,9 @@ async def select_folder(callback: CallbackQuery):
 async def select_folder_video(callback: CallbackQuery):
     if not callback.message or not callback.from_user or not callback.data:
         return
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Сейчас работает режим заявок через администратора.", show_alert=True)
+        return
 
     token = callback.data.removeprefix(FOLDER_VIDEO_CALLBACK_PREFIX)
     prefix = resolve_folder_token(token)
@@ -170,7 +190,7 @@ async def select_folder_video(callback: CallbackQuery):
 
 
 async def send_brand_video(message: Message, user, brand: str):
-    brands = await list_brands()
+    brands = await list_brands() if _is_admin(message.from_user.id) else []
     await message.answer(f"⏳ Подбираю видео для {brand}…", reply_markup=main_menu_keyboard())
 
     try:
@@ -312,20 +332,29 @@ async def handle_text(message: Message):
     if message.text == "Мой отчет":
         await report(message)
         return
+    if message.text == "Подать заявку":
+        await submit_request(message)
+        return
     if message.text == "Отменить":
         await cancel(message)
         return
     if message.text == "Структура":
-        await message.answer("⏳ Загружаю структуру с Яндекс.Диска. Это может занять немного времени.")
-        await send_folder_navigation(message, ())
+        await message.answer("Сейчас выдача через заявки. Нажмите «Подать заявку».")
         return
-    if message.text in brands:
+    if message.text in brands and _is_admin(message.from_user.id):
         await send_brand_video(message, message.from_user, message.text)
         return
 
     pending = await get_pending_request(message.from_user.id)
     if not pending:
-        await message.answer("Нажмите «Структура», выберите папку и получите видео.", reply_markup=main_menu_keyboard())
+        open_request = await get_open_request(message.from_user.id)
+        if open_request and open_request.status == STATUS_PENDING_APPROVAL:
+            await message.answer("Заявка уже в очереди на подтверждение администратора.", reply_markup=main_menu_keyboard())
+            return
+        if open_request and open_request.status == STATUS_APPROVED:
+            await message.answer("Заявка одобрена. Отправка ролика уже запущена, подождите немного.", reply_markup=main_menu_keyboard())
+            return
+        await message.answer("Нажмите «Подать заявку», чтобы получить следующий ролик.", reply_markup=main_menu_keyboard())
         return
 
     url = message.text.strip()
@@ -348,6 +377,37 @@ async def handle_text(message: Message):
             "Администратор сможет проверить ошибку в логах.",
             reply_markup=main_menu_keyboard(),
         )
+
+
+async def submit_request(message: Message):
+    if not message.from_user:
+        return
+
+    try:
+        request = await submit_video_request(
+            telegram_user_id=message.from_user.id,
+            telegram_username=message.from_user.username,
+            telegram_full_name=" ".join(
+                part for part in [message.from_user.first_name, message.from_user.last_name] if part
+            ),
+        )
+    except RuntimeError:
+        open_request = await get_open_request(message.from_user.id)
+        if open_request and open_request.status == STATUS_PENDING_APPROVAL:
+            await message.answer("Заявка уже создана и ждет подтверждения администратора.", reply_markup=main_menu_keyboard())
+            return
+        await message.answer("У вас уже есть активная заявка или выданный ролик. Сначала завершите текущий процесс.", reply_markup=main_menu_keyboard())
+        return
+    except Exception:
+        logger.exception("Failed to submit Telegram video request")
+        await message.answer("Не удалось создать заявку. Уже проверяю проблему в логах.", reply_markup=main_menu_keyboard())
+        return
+
+    await message.answer(
+        f"✅ Заявка #{request.id} принята.\n"
+        "Передал администратору на подтверждение. Как только одобрит, пришлю ролик и описание.",
+        reply_markup=main_menu_keyboard(),
+    )
 
 
 async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page: int = 0, edit: bool = False):

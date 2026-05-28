@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, JSON
-from sqlalchemy import BigInteger, Column
+from sqlalchemy import BigInteger, Boolean, Column
 from sqlalchemy.dialects.postgresql import JSONB
 
 class PostingHistory(SQLModel, table=True):
@@ -68,5 +68,23 @@ class TelegramVideoRequest(SQLModel, table=True):
     archive_path: Optional[str] = None
     error_message: Optional[str] = None
     requested_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    approved_at: Optional[datetime] = None
+    approved_by: Optional[int] = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    week_key: Optional[str] = Field(default=None, index=True)
+    assigned_folder_prefix: Optional[str] = None
     reported_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
+
+
+class TelegramDistributionRule(SQLModel, table=True):
+    __tablename__ = "telegram_distribution_rules"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    telegram_user_id: int = Field(sa_column=Column(BigInteger, index=True, nullable=False))
+    telegram_username: Optional[str] = Field(default=None, index=True)
+    telegram_full_name: Optional[str] = None
+    folder_prefix: str = Field(default="", nullable=False)
+    weekly_limit: int = Field(default=1, nullable=False)
+    is_active: bool = Field(default=True, sa_column=Column(Boolean, nullable=False, default=True))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

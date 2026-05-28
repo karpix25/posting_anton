@@ -137,10 +137,10 @@ def folder_navigation_keyboard(view, page: int = 0) -> InlineKeyboardMarkup:
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     rows = [[
+        KeyboardButton(text="Подать заявку", style="success"),
         KeyboardButton(text="Мой отчет", style="primary"),
-        KeyboardButton(text="Отменить", style="danger"),
     ], [
-        KeyboardButton(text="Структура", style="success"),
+        KeyboardButton(text="Отменить", style="danger"),
     ]]
 
     return ReplyKeyboardMarkup(
