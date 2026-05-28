@@ -182,6 +182,36 @@
           </div>
 
           <div class="mb-8">
+            <h3 class="text-xl font-bold mb-3">Пользователи: выдача и отчеты</h3>
+            <div class="border rounded overflow-x-auto bg-white">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-2 text-left">Пользователь</th>
+                    <th class="p-2 text-right">Получил видео</th>
+                    <th class="p-2 text-right">Отчитался</th>
+                    <th class="p-2 text-right">Всего заявок</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="user in tgUsers" :key="user.telegram_user_id" class="border-t">
+                    <td class="p-2">
+                      <div class="font-medium">{{ user.telegram_full_name || ('@' + (user.telegram_username || '')) }}</div>
+                      <div class="text-xs text-gray-500">{{ user.telegram_user_id }}</div>
+                    </td>
+                    <td class="p-2 text-right font-semibold">{{ user.received_total || 0 }}</td>
+                    <td class="p-2 text-right font-semibold text-green-700">{{ user.reported_total || 0 }}</td>
+                    <td class="p-2 text-right">{{ user.requests_total || 0 }}</td>
+                  </tr>
+                  <tr v-if="tgUsers.length === 0">
+                    <td colspan="4" class="p-3 text-center text-gray-400">Данных пока нет</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="mb-8">
             <h3 class="text-xl font-bold mb-3">Правила распределения</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">

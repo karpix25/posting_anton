@@ -607,9 +607,32 @@ async def list_request_users(limit: int = 500) -> list[dict]:
                 func.max(TelegramVideoRequest.telegram_username).label("telegram_username"),
                 func.max(TelegramVideoRequest.telegram_full_name).label("telegram_full_name"),
                 func.count(TelegramVideoRequest.id).label("requests_total"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (TelegramVideoRequest.status.in_((STATUS_SENT, STATUS_REPORTED, STATUS_ARCHIVED)), 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("received_total"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (TelegramVideoRequest.status.in_((STATUS_REPORTED, STATUS_ARCHIVED)), 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("reported_total"),
             )
             .group_by(TelegramVideoRequest.telegram_user_id)
-            .order_by(func.count(TelegramVideoRequest.id).desc(), TelegramVideoRequest.telegram_user_id.asc())
+            .order_by(
+                text("received_total DESC"),
+                text("reported_total DESC"),
+                func.count(TelegramVideoRequest.id).desc(),
+                TelegramVideoRequest.telegram_user_id.asc(),
+            )
             .limit(max(1, min(limit, 5000)))
         )
         result = await session.execute(stmt)
