@@ -518,6 +518,13 @@ async def submit_video_request(
         session.add(request)
         await session.commit()
         await session.refresh(request)
+        logger.info(
+            "[TelegramRequest] Created request id=%s user_id=%s username=%s status=%s",
+            request.id,
+            telegram_user_id,
+            telegram_username or "",
+            request.status,
+        )
         return request
 
 
@@ -554,6 +561,12 @@ async def list_video_requests(limit: int = 200, status: Optional[str] = None) ->
         stmt = stmt.order_by(TelegramVideoRequest.requested_at.desc()).limit(max(1, min(limit, 2000)))
         result = await session.execute(stmt)
         rows = result.scalars().all()
+        logger.info(
+            "[TelegramRequest] list_video_requests returned=%s limit=%s status=%s",
+            len(rows),
+            limit,
+            status or "all",
+        )
         return [
             {
                 "id": row.id,

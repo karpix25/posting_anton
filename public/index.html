@@ -983,6 +983,7 @@
                 logsMessage: '',
                 logsAutoRefresh: false,
                 logsRefreshInterval: null,
+                tgRefreshInterval: null,
                 selectedDisabledProfiles: [], // List of selected disabled profiles for bulk actions
                 lastSelected: null, // For Shift+Click
                 lastSelectedDisabled: null, // For Shift+Click in disabled profiles
@@ -1287,23 +1288,40 @@
               },
               async loadTelegramAdminData() {
                 try {
-                  const [requestsRes, rulesRes, usersRes, foldersRes] = await Promise.all([
+                  const [requestsRes, pendingRes, rulesRes, usersRes, foldersRes] = await Promise.all([
                     fetch('/api/telegram/requests?limit=300'),
+                    fetch('/api/telegram/requests/pending?limit=300'),
                     fetch('/api/telegram/rules?limit=500'),
                     fetch('/api/telegram/users?limit=500'),
                     fetch('/api/telegram/folders'),
                   ]);
+                  for (const res of [requestsRes, pendingRes, rulesRes, usersRes, foldersRes]) {
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      throw new Error(err.detail || `HTTP ${res.status}`);
+                    }
+                  }
                   const requestsData = await requestsRes.json();
+                  const pendingData = await pendingRes.json();
                   const rulesData = await rulesRes.json();
                   const usersData = await usersRes.json();
                   const foldersData = await foldersRes.json();
-                  this.tgRequests = requestsData.items || [];
+                  const allItems = [...(requestsData.items || []), ...(pendingData.items || [])];
+                  const uniqueById = new Map();
+                  for (const item of allItems) {
+                    uniqueById.set(item.id, item);
+                  }
+                  this.tgRequests = Array.from(uniqueById.values()).sort((a, b) => {
+                    const left = (a.requested_at || '').toString();
+                    const right = (b.requested_at || '').toString();
+                    return right.localeCompare(left);
+                  });
                   this.tgRules = rulesData.items || [];
                   this.tgUsers = usersData.items || [];
                   this.tgRootFolders = foldersData.children || [];
                 } catch (e) {
                   console.error('[UI] Failed to load telegram admin data:', e);
-                  alert('Не удалось загрузить TG-заявки/правила');
+                  alert(`Не удалось загрузить TG-заявки/правила: ${e.message || e}`);
                 }
               },
               async saveTelegramRule() {
@@ -1830,6 +1848,17 @@
                 }
                 if (newTab === 'tg_requests') {
                   this.loadTelegramAdminData();
+                  if (this.tgRefreshInterval) {
+                    clearInterval(this.tgRefreshInterval);
+                  }
+                  this.tgRefreshInterval = setInterval(() => {
+                    if (this.currentTab === 'tg_requests') {
+                      this.loadTelegramAdminData();
+                    }
+                  }, 15000);
+                } else if (this.tgRefreshInterval) {
+                  clearInterval(this.tgRefreshInterval);
+                  this.tgRefreshInterval = null;
                 }
               }
             }
