@@ -51,6 +51,7 @@ profile_status_sync_task: Optional[asyncio.Task] = None
 telegram_bot_polling_task: Optional[asyncio.Task] = None
 telegram_bot_instance: Optional[Any] = None
 telegram_dispatcher_instance: Optional[Any] = None
+yandex_cache_warmup_task: Optional[asyncio.Task] = None
 
 
 def _walk_uploadpost_payload(value: Any):
@@ -374,6 +375,52 @@ async def profile_status_sync_loop():
         await asyncio.sleep(interval)
 
 
+def _yandex_cache_warmup_interval_seconds() -> int:
+    raw = os.getenv("YANDEX_CACHE_WARMUP_INTERVAL_SECONDS", "1800")
+    try:
+        return max(300, int(raw))
+    except (TypeError, ValueError):
+        return 1800
+
+
+async def warm_yandex_cache_once():
+    """Warm Yandex file caches for dashboard and Telegram views."""
+    started = time.monotonic()
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+    folders = list(config.yandexFolders or [])
+    if not folders:
+        logger.info("[YandexWarmup] Skipped: no configured yandexFolders.")
+        return
+
+    await yandex_service.refresh_files_cache(
+        limit=100000,
+        folders=folders,
+        cache_scope="default",
+    )
+    await yandex_service.refresh_files_cache(
+        limit=100000,
+        folders=folders,
+        cache_scope="telegram",
+    )
+    elapsed = time.monotonic() - started
+    logger.info(
+        f"[YandexWarmup] Cache refreshed for folders={folders} in {elapsed:.1f}s "
+        f"(scopes: default, telegram)."
+    )
+
+
+async def yandex_cache_warmup_loop():
+    interval = _yandex_cache_warmup_interval_seconds()
+    logger.info(f"[YandexWarmup] Started (interval={interval}s).")
+    while True:
+        try:
+            await warm_yandex_cache_once()
+        except Exception as e:
+            logger.warning(f"[YandexWarmup] Refresh failed: {e}")
+        await asyncio.sleep(interval)
+
+
 async def start_telegram_bot_polling_if_configured():
     """Run Telegram polling inside the API process for single-service deploys."""
     global telegram_bot_polling_task, telegram_bot_instance, telegram_dispatcher_instance
@@ -453,8 +500,9 @@ async def on_startup():
              except Exception as e:
                  logger.warning(f"Initial profile status reconcile failed: {e}")
 
-             global profile_status_sync_task
+             global profile_status_sync_task, yandex_cache_warmup_task
              profile_status_sync_task = asyncio.create_task(profile_status_sync_loop())
+             yandex_cache_warmup_task = asyncio.create_task(yandex_cache_warmup_loop())
 
              await start_telegram_bot_polling_if_configured()
              
@@ -464,9 +512,11 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    global profile_status_sync_task, telegram_bot_polling_task, telegram_bot_instance, telegram_dispatcher_instance
+    global profile_status_sync_task, yandex_cache_warmup_task, telegram_bot_polling_task, telegram_bot_instance, telegram_dispatcher_instance
     if profile_status_sync_task and not profile_status_sync_task.done():
         profile_status_sync_task.cancel()
+    if yandex_cache_warmup_task and not yandex_cache_warmup_task.done():
+        yandex_cache_warmup_task.cancel()
     if telegram_dispatcher_instance and telegram_bot_polling_task and not telegram_bot_polling_task.done():
         try:
             await telegram_dispatcher_instance.stop_polling()
