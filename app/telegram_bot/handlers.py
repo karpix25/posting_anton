@@ -161,7 +161,8 @@ async def select_folder_video(callback: CallbackQuery):
     token = callback.data.removeprefix(FOLDER_VIDEO_CALLBACK_PREFIX)
     prefix = resolve_folder_token(token)
     if prefix is None:
-        await callback.answer("Кнопка устарела, обновите список через /start.", show_alert=True)
+        await callback.answer("Список обновился, перезагружаю структуру.", show_alert=True)
+        await send_folder_navigation(callback.message, (), edit=True)
         return
 
     await callback.answer()
