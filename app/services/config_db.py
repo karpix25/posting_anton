@@ -325,6 +325,26 @@ async def get_db_config(session: AsyncSession) -> LegacyConfig:
     return LegacyConfig(limits=DEFAULT_LIMITS)
 
 
+async def get_yandex_folders(session: AsyncSession) -> list[str]:
+    """
+    Lightweight config accessor for folder-navigation flows.
+    Avoids loading AI clients table when only yandexFolders are needed.
+    """
+    stmt = select(PostingSystemConfig).where(PostingSystemConfig.key == CONFIG_KEY)
+    result = await session.execute(stmt)
+    record = result.scalar_one_or_none()
+    if not record:
+        return []
+
+    value = record.value or {}
+    raw_folders = value.get("yandexFolders") or []
+    if not isinstance(raw_folders, list):
+        return []
+
+    folders = [str(folder).strip() for folder in raw_folders if str(folder).strip()]
+    return folders
+
+
 async def save_db_config(session: AsyncSession, config_data: dict, preserve_schedule: bool = True):
     config_data = _enforce_single_day_generation(config_data)
     incoming_cron = config_data.get("cronSchedule")

@@ -2,12 +2,17 @@ import json
 import os
 import asyncio
 import time
+import hmac
+import hashlib
+import base64
+import secrets
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlsplit
 import pytz
-from fastapi import FastAPI, Depends, HTTPException, Body, Request
+from fastapi import FastAPI, Depends, HTTPException, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -64,6 +69,143 @@ telegram_bot_polling_task: Optional[asyncio.Task] = None
 telegram_bot_instance: Optional[Any] = None
 telegram_dispatcher_instance: Optional[Any] = None
 yandex_cache_warmup_task: Optional[asyncio.Task] = None
+
+
+def _admin_ids() -> set[int]:
+    ids: set[int] = set()
+    for raw in (settings.TELEGRAM_ADMIN_IDS or "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            ids.add(int(raw))
+        except ValueError:
+            logger.warning("Invalid TELEGRAM_ADMIN_IDS item: %s", raw)
+    return ids
+
+
+def _web_auth_enabled() -> bool:
+    return bool(settings.TELEGRAM_WEB_AUTH_ENABLED)
+
+
+def _web_auth_secret() -> str:
+    if settings.TELEGRAM_WEB_AUTH_SECRET:
+        return settings.TELEGRAM_WEB_AUTH_SECRET
+    if settings.TELEGRAM_BOT_TOKEN:
+        return settings.TELEGRAM_BOT_TOKEN
+    return "change-me-web-auth-secret"
+
+
+def _session_token_encode(payload: Dict[str, Any]) -> str:
+    compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    token_body = base64.urlsafe_b64encode(compact).decode("utf-8").rstrip("=")
+    signature = hmac.new(
+        _web_auth_secret().encode("utf-8"),
+        token_body.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{token_body}.{signature}"
+
+
+def _session_token_decode(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        token_body, signature = token.split(".", 1)
+    except ValueError:
+        return None
+
+    expected_signature = hmac.new(
+        _web_auth_secret().encode("utf-8"),
+        token_body.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, signature):
+        return None
+
+    try:
+        padding = "=" * (-len(token_body) % 4)
+        raw = base64.urlsafe_b64decode(token_body + padding)
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None
+
+    issued_at = int(payload.get("issued_at") or 0)
+    if not issued_at:
+        return None
+    ttl = max(60, int(settings.TELEGRAM_WEB_AUTH_TTL_SECONDS or 86400))
+    if int(time.time()) - issued_at > ttl:
+        return None
+
+    user_id = int(payload.get("telegram_user_id") or 0)
+    if user_id <= 0:
+        return None
+    if user_id not in _admin_ids():
+        return None
+    return payload
+
+
+def _validate_telegram_login_payload(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not settings.TELEGRAM_BOT_TOKEN:
+        logger.warning("[WebAuth] TELEGRAM_BOT_TOKEN is missing; cannot validate Telegram login")
+        return None
+    if not payload or "hash" not in payload:
+        return None
+
+    payload_hash = str(payload.get("hash") or "")
+    data = {k: v for k, v in payload.items() if k != "hash" and v is not None}
+    data_check_string = "\n".join(f"{k}={data[k]}" for k in sorted(data.keys()))
+    secret_key = hashlib.sha256(settings.TELEGRAM_BOT_TOKEN.encode("utf-8")).digest()
+    calculated_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(calculated_hash, payload_hash):
+        return None
+
+    auth_date = int(data.get("auth_date") or 0)
+    if not auth_date:
+        return None
+    max_age_seconds = max(300, int(settings.TELEGRAM_WEB_AUTH_TTL_SECONDS or 86400))
+    if abs(int(time.time()) - auth_date) > max_age_seconds:
+        return None
+
+    user_id = int(data.get("id") or 0)
+    if user_id <= 0:
+        return None
+
+    return {
+        "telegram_user_id": user_id,
+        "telegram_username": str(data.get("username") or ""),
+        "telegram_first_name": str(data.get("first_name") or ""),
+        "telegram_last_name": str(data.get("last_name") or ""),
+        "auth_date": auth_date,
+    }
+
+
+def _is_public_route(path: str) -> bool:
+    if path in {"/health", "/login", "/auth/telegram", "/auth/me", "/auth/logout"}:
+        return True
+    if path.startswith("/api/uploadpost/webhook") or path.startswith("/api/webhooks/upload-post"):
+        return True
+    return False
+
+
+@app.middleware("http")
+async def web_auth_middleware(request: Request, call_next):
+    if not _web_auth_enabled():
+        return await call_next(request)
+
+    path = request.url.path
+    if request.method == "OPTIONS" or _is_public_route(path):
+        return await call_next(request)
+
+    cookie_name = settings.TELEGRAM_WEB_AUTH_COOKIE_NAME or "posting_admin_session"
+    token = request.cookies.get(cookie_name)
+    session_payload = _session_token_decode(token) if token else None
+    if session_payload:
+        request.state.web_auth_user = session_payload
+        return await call_next(request)
+
+    if path.startswith("/api/"):
+        return JSONResponse({"detail": "Authentication required"}, status_code=401)
+    return RedirectResponse(url="/login", status_code=302)
 
 
 def _walk_uploadpost_payload(value: Any):
@@ -543,6 +685,127 @@ async def on_shutdown():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "2.0.0"}
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def web_login_page():
+    if not _web_auth_enabled():
+        return RedirectResponse(url="/", status_code=302)
+
+    bot_username = (settings.TELEGRAM_WEB_LOGIN_BOT_USERNAME or "").strip().lstrip("@")
+    if not bot_username:
+        return HTMLResponse(
+            "<h2>Telegram web login is not configured</h2>"
+            "<p>Set TELEGRAM_WEB_LOGIN_BOT_USERNAME and restart the service.</p>",
+            status_code=500,
+        )
+
+    html_doc = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Вход в админ-панель</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0f172a; color:#e2e8f0; margin:0; }}
+    .card {{ max-width: 520px; margin: 10vh auto; background:#111827; border:1px solid #1f2937; border-radius:14px; padding:28px; }}
+    h1 {{ margin:0 0 12px; font-size: 24px; }}
+    p {{ color:#94a3b8; line-height:1.4; }}
+    .hint {{ margin-top:18px; font-size:13px; color:#64748b; }}
+    .error {{ margin-top:14px; color:#fca5a5; white-space: pre-line; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Вход через Telegram</h1>
+    <p>Доступ к панели только для Telegram ID из <code>TELEGRAM_ADMIN_IDS</code>.</p>
+    <script async src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="{bot_username}"
+      data-size="large"
+      data-userpic="false"
+      data-request-access="write"
+      data-onauth="onTelegramAuth(user)"></script>
+    <div id="error" class="error"></div>
+    <p class="hint">После успешного входа произойдёт редирект в админку.</p>
+  </div>
+  <script>
+    async function onTelegramAuth(user) {{
+      try {{
+        const res = await fetch('/auth/telegram', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(user)
+        }});
+        if (!res.ok) {{
+          const data = await res.json().catch(() => ({{}}));
+          document.getElementById('error').textContent = data.detail || 'Вход не разрешен';
+          return;
+        }}
+        window.location.href = '/';
+      }} catch (err) {{
+        document.getElementById('error').textContent = 'Ошибка сети при авторизации';
+      }}
+    }}
+  </script>
+</body>
+</html>
+"""
+    return HTMLResponse(html_doc)
+
+
+@app.post("/auth/telegram")
+async def auth_telegram(payload: Dict[str, Any], response: Response, request: Request):
+    if not _web_auth_enabled():
+        raise HTTPException(status_code=404, detail="Web auth disabled")
+
+    validated = _validate_telegram_login_payload(payload)
+    if not validated:
+        raise HTTPException(status_code=401, detail="Invalid Telegram login payload")
+
+    user_id = int(validated["telegram_user_id"])
+    if user_id not in _admin_ids():
+        raise HTTPException(status_code=403, detail="Access denied: admin only")
+
+    session_payload = {
+        "telegram_user_id": user_id,
+        "telegram_username": validated.get("telegram_username", ""),
+        "telegram_first_name": validated.get("telegram_first_name", ""),
+        "telegram_last_name": validated.get("telegram_last_name", ""),
+        "issued_at": int(time.time()),
+        "nonce": secrets.token_hex(8),
+    }
+    cookie_value = _session_token_encode(session_payload)
+    cookie_name = settings.TELEGRAM_WEB_AUTH_COOKIE_NAME or "posting_admin_session"
+    max_age = max(60, int(settings.TELEGRAM_WEB_AUTH_TTL_SECONDS or 86400))
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").lower()
+    is_https = request.url.scheme == "https" or forwarded_proto == "https"
+    secure_cookie = bool(settings.TELEGRAM_WEB_AUTH_STRICT_HTTPS and is_https)
+    response.set_cookie(
+        key=cookie_name,
+        value=cookie_value,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookie,
+        path="/",
+    )
+    return {"success": True, "user": session_payload}
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    user = getattr(request.state, "web_auth_user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {"authenticated": True, "user": user}
+
+
+@app.post("/auth/logout")
+async def auth_logout(response: Response):
+    cookie_name = settings.TELEGRAM_WEB_AUTH_COOKIE_NAME or "posting_admin_session"
+    response.delete_cookie(key=cookie_name, path="/")
+    return {"success": True}
 
 @app.get("/api/config")
 async def get_config(session: AsyncSession = Depends(get_session)):

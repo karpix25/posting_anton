@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ADMIN_IDS: str = ""
     TELEGRAM_BOT_AUTO_START: bool = True
+    TELEGRAM_WEB_LOGIN_BOT_USERNAME: str = ""
+    TELEGRAM_WEB_AUTH_ENABLED: bool = True
+    TELEGRAM_WEB_AUTH_COOKIE_NAME: str = "posting_admin_session"
+    TELEGRAM_WEB_AUTH_TTL_SECONDS: int = 86400
+    TELEGRAM_WEB_AUTH_SECRET: str = ""
+    TELEGRAM_WEB_AUTH_STRICT_HTTPS: bool = True
     
     # Internal state for legacy config
     _legacy_config: Optional[LegacyConfig] = None
