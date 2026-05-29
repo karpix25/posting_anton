@@ -44,7 +44,7 @@
 
       <!-- Sidebar / Tabs -->
       <div class="w-64 bg-gray-50 border-r p-4 space-y-2">
-        <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+        <button v-for="tab in tabsOrdered" :key="tab.id" @click="currentTab = tab.id"
           :class="['w-full text-left px-4 py-2 rounded', currentTab === tab.id ? 'bg-blue-100 text-blue-700 font-semibold' : 'hover:bg-gray-200']">
           {{ tab.name }}
         </button>
@@ -1199,6 +1199,14 @@
               setInterval(() => this.loadUploadPostSummary(), 120000);
             },
             computed: {
+              tabsOrdered() {
+                const list = Array.isArray(this.tabs) ? [...this.tabs] : [];
+                return list.sort((a, b) => {
+                  if (a.id === 'tg_requests' && b.id !== 'tg_requests') return 1;
+                  if (b.id === 'tg_requests' && a.id !== 'tg_requests') return -1;
+                  return 0;
+                });
+              },
               currentStatsList() {
                 let source = {};
                 if (this.statsViewMode === 'author') source = this.stats.byAuthor || {};
