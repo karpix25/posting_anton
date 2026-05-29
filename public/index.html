@@ -1532,6 +1532,17 @@
                 }
                 return data;
               },
+              async responseErrorMessage(res, fallback) {
+                const text = await res.text().catch(() => '');
+                if (!text) return fallback || `HTTP ${res.status}`;
+                try {
+                  const data = JSON.parse(text);
+                  return data.detail || data.error || data.message || fallback || `HTTP ${res.status}`;
+                } catch (e) {
+                  const clean = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                  return clean ? `${fallback || `HTTP ${res.status}`}: ${clean.slice(0, 180)}` : (fallback || `HTTP ${res.status}`);
+                }
+              },
               isSchedulerTheme(theme) {
                 if (!theme || typeof theme !== 'string') return false;
                 const value = theme.trim().toLowerCase();
@@ -2257,8 +2268,7 @@
                 try {
                   const res = await fetch(`/api/telegram/rules/${ruleId}`, { method: 'DELETE' });
                   if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.detail || 'delete failed');
+                    throw new Error(await this.responseErrorMessage(res, `HTTP ${res.status}`));
                   }
                   await this.loadTelegramAdminData();
                 } catch (e) {
