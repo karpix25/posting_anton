@@ -137,12 +137,40 @@
         <div v-if="currentTab === 'tg_requests'">
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Telegram: Заявки и Апрув</h2>
-            <button @click="loadTelegramAdminData(true)" class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">
+            <button @click="loadTelegramAdminData(true)" :disabled="tgAdminLoading"
+              class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50">
               🔄 Обновить
             </button>
           </div>
+          <div v-if="tgAdminLoading" class="mb-4 text-sm text-blue-600">⏳ Загружаю заявки, правила и пользователей...</div>
+          <div v-else-if="tgAdminError" class="mb-4 text-sm text-amber-700">⚠️ {{ tgAdminError }}</div>
 
-          <div class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
+          <div class="mb-6 border rounded-lg bg-white p-2 overflow-x-auto">
+            <div class="flex gap-2 min-w-max">
+              <button @click="tgViewTab = 'pending'"
+                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
+                Актуальная заявка
+              </button>
+              <button @click="tgViewTab = 'users'"
+                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
+                Пользователи
+              </button>
+              <button @click="tgViewTab = 'rules'"
+                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'rules' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
+                Настройки
+              </button>
+              <button @click="tgViewTab = 'history'"
+                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'history' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
+                История заявок
+              </button>
+              <button @click="tgViewTab = 'folders'"
+                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'folders' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
+                Папки
+              </button>
+            </div>
+          </div>
+
+          <div v-if="tgViewTab === 'pending'" class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
             <h3 class="text-3xl font-bold mb-4">Актуальная заявка</h3>
             <div v-if="currentPendingRequest">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-lg">
@@ -161,10 +189,14 @@
               <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <div class="md:col-span-2">
                   <label class="block text-base font-semibold mb-2">Папка для выдачи</label>
-                  <select v-model="tgCurrentRequestForm.folder_prefix" class="border rounded-lg p-4 text-lg w-full bg-white">
-                    <option value="">Выберите папку</option>
-                    <option v-for="folder in tgFolderOptions" :key="folder" :value="folder">{{ folder }}</option>
-                  </select>
+                  <button @click="openFolderPicker({ type: 'current' })"
+                    class="border rounded-lg p-4 text-left text-lg w-full bg-white hover:bg-gray-50">
+                    {{ tgCurrentRequestForm.folder_prefix || 'Выберите папку' }}
+                  </button>
+                  <div v-if="tgCurrentRequestForm.folder_prefix" class="text-xs mt-2"
+                    :class="getFolderCheckClass(tgCurrentRequestForm.folder_prefix)">
+                    {{ getFolderCheckText(tgCurrentRequestForm.folder_prefix) }}
+                  </div>
                 </div>
                 <div>
                   <label class="block text-base font-semibold mb-2">Лимит в день</label>
@@ -200,9 +232,9 @@
             </div>
           </div>
 
-          <div class="mb-8">
+          <div v-if="tgViewTab === 'folders'" class="mb-8">
             <div class="border rounded-lg p-4 bg-slate-50">
-              <h3 class="font-bold mb-3">Подсказка по папкам</h3>
+              <h3 class="font-bold mb-3">Папки и доступ</h3>
               <p class="text-sm text-gray-600 mb-2">Используйте путь после автора, через `/`.</p>
               <p v-if="tgFoldersLoading" class="text-sm text-blue-600 mb-2">⏳ Подгружаю папки с Яндекс.Диска…</p>
               <p v-else-if="tgFoldersError" class="text-sm text-amber-700 mb-2">⚠️ {{ tgFoldersError }}</p>
@@ -217,7 +249,7 @@
             </div>
           </div>
 
-          <div class="mb-8">
+          <div v-if="tgViewTab === 'users'" class="mb-8">
             <h3 class="text-xl font-bold mb-3">Пользователи: выдача и отчеты</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
@@ -230,7 +262,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="user in tgUsers" :key="user.telegram_user_id" class="border-t">
+                  <tr v-for="user in tgUsersPaged" :key="user.telegram_user_id" class="border-t">
                     <td class="p-2">
                       <div class="font-medium">{{ user.telegram_full_name || ('@' + (user.telegram_username || '')) }}</div>
                       <div class="text-xs text-gray-500">{{ user.telegram_user_id }}</div>
@@ -245,9 +277,18 @@
                 </tbody>
               </table>
             </div>
+            <div class="mt-3 flex items-center justify-between text-sm">
+              <div class="text-gray-600">Страница {{ tgUsersPage }} / {{ tgUsersTotalPages }}</div>
+              <div class="flex gap-2">
+                <button @click="changeTgPage('users', -1)" :disabled="tgUsersPage <= 1"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Назад</button>
+                <button @click="changeTgPage('users', 1)" :disabled="tgUsersPage >= tgUsersTotalPages"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Вперёд</button>
+              </div>
+            </div>
           </div>
 
-          <div class="mb-8">
+          <div v-if="tgViewTab === 'rules'" class="mb-8">
             <h3 class="text-xl font-bold mb-3">Настройки пользователей (лимит/день, папка, активность)</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
@@ -261,16 +302,20 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="rule in tgRules" :key="rule.id" class="border-t">
+                  <tr v-for="rule in tgRulesPaged" :key="rule.id" class="border-t">
                     <td class="p-2">
                       <div class="font-medium">{{ rule.telegram_full_name || ('@' + (rule.telegram_username || '')) }}</div>
                       <div class="text-xs text-gray-500">{{ rule.telegram_user_id }}</div>
                     </td>
                     <td class="p-2">
-                      <select v-model="getRuleEdit(rule).folder_prefix" class="border rounded p-2 w-full bg-white">
-                        <option value="">Выберите папку</option>
-                        <option v-for="folder in tgFolderOptions" :key="`rule-${rule.id}-${folder}`" :value="folder">{{ folder }}</option>
-                      </select>
+                      <button @click="openFolderPicker({ type: 'rule', ruleId: rule.id })"
+                        class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50">
+                        {{ getRuleEdit(rule).folder_prefix || 'Выберите папку' }}
+                      </button>
+                      <div v-if="getRuleEdit(rule).folder_prefix" class="text-xs mt-1"
+                        :class="getFolderCheckClass(getRuleEdit(rule).folder_prefix)">
+                        {{ getFolderCheckText(getRuleEdit(rule).folder_prefix) }}
+                      </div>
                     </td>
                     <td class="p-2 text-right">
                       <input v-model.number="getRuleEdit(rule).weekly_limit" type="number" min="0"
@@ -290,9 +335,18 @@
                 </tbody>
               </table>
             </div>
+            <div class="mt-3 flex items-center justify-between text-sm">
+              <div class="text-gray-600">Страница {{ tgRulesPage }} / {{ tgRulesTotalPages }}</div>
+              <div class="flex gap-2">
+                <button @click="changeTgPage('rules', -1)" :disabled="tgRulesPage <= 1"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Назад</button>
+                <button @click="changeTgPage('rules', 1)" :disabled="tgRulesPage >= tgRulesTotalPages"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Вперёд</button>
+              </div>
+            </div>
           </div>
 
-          <div>
+          <div v-if="tgViewTab === 'history'">
             <h3 class="text-xl font-bold mb-3">История заявок</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
@@ -306,7 +360,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in tgHistoryRequests" :key="item.id" class="border-t">
+                  <tr v-for="item in tgHistoryRequestsPaged" :key="item.id" class="border-t">
                     <td class="p-2">#{{ item.id }}</td>
                     <td class="p-2">
                       <div class="font-medium">{{ item.telegram_full_name || ('@' + (item.telegram_username || '')) }}</div>
@@ -321,6 +375,48 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <div class="mt-3 flex items-center justify-between text-sm">
+              <div class="text-gray-600">Страница {{ tgHistoryPage }} / {{ tgHistoryTotalPages }}</div>
+              <div class="flex gap-2">
+                <button @click="changeTgPage('history', -1)" :disabled="tgHistoryPage <= 1"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Назад</button>
+                <button @click="changeTgPage('history', 1)" :disabled="tgHistoryPage >= tgHistoryTotalPages"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Вперёд</button>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="tgFolderPickerOpen" class="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div class="px-4 py-3 border-b flex items-center justify-between">
+                <h4 class="font-semibold text-lg">Выбор папки</h4>
+                <button @click="closeFolderPicker" class="text-gray-500 hover:text-gray-800">✕</button>
+              </div>
+              <div class="p-4 overflow-auto max-h-[68vh]">
+                <div class="mb-3 text-xs text-gray-500">Клик по папке раскрывает вложенность. Кнопка “Выбрать” применяет путь.</div>
+                <div class="space-y-1">
+                  <template v-for="node in tgFolderTreeFlat" :key="node.pathKey">
+                    <div class="border rounded-lg">
+                      <div class="flex items-center justify-between px-3 py-2">
+                        <button @click="toggleFolderTreeNode(node)"
+                          class="text-left flex-1 hover:text-blue-700"
+                          :style="{ paddingLeft: `${node.level * 14}px` }">
+                          <span class="mr-2">{{ node.expanded ? '▾' : '▸' }}</span>{{ node.name }}
+                          <span class="ml-2 text-xs text-gray-500">({{ node.video_count || 0 }})</span>
+                        </button>
+                        <button @click="selectFolderFromPicker(node.path)"
+                          class="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">Выбрать</button>
+                      </div>
+                      <div v-if="node.expanded && node.loading" class="text-xs text-blue-600 px-3 pb-2"
+                        :style="{ paddingLeft: `${(node.level + 1) * 14}px` }">Загрузка…</div>
+                      <div v-if="node.expanded && node.error" class="text-xs text-red-600 px-3 pb-2"
+                        :style="{ paddingLeft: `${(node.level + 1) * 14}px` }">{{ node.error }}</div>
+                    </div>
+                  </template>
+                  <div v-if="tgFolderTreeFlat.length === 0" class="text-sm text-gray-500 py-4">Папок пока нет</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1045,7 +1141,20 @@
                 tgFoldersError: '',
                 tgFoldersLoadPromise: null,
                 tgFoldersLoadedAt: 0,
+                tgAdminLoading: false,
+                tgAdminError: '',
+                tgAdminLoadPromise: null,
+                tgViewTab: 'pending',
+                tgPageSize: 10,
+                tgUsersPage: 1,
+                tgRulesPage: 1,
+                tgHistoryPage: 1,
                 tgRuleEdits: {},
+                tgFolderChecks: {},
+                tgFolderPickerOpen: false,
+                tgFolderPickerTarget: null,
+                tgFolderTree: {},
+                tgFolderTreeRootKeys: [],
                 tgCurrentRequestForm: {
                   request_id: null,
                   telegram_user_id: null,
@@ -1092,6 +1201,40 @@
               },
               tgHistoryRequests() {
                 return this.tgRequests.filter(item => item.status !== 'pending_approval');
+              },
+              tgUsersTotalPages() {
+                return Math.max(1, Math.ceil((this.tgUsers || []).length / this.tgPageSize));
+              },
+              tgRulesTotalPages() {
+                return Math.max(1, Math.ceil((this.tgRules || []).length / this.tgPageSize));
+              },
+              tgHistoryTotalPages() {
+                return Math.max(1, Math.ceil((this.tgHistoryRequests || []).length / this.tgPageSize));
+              },
+              tgUsersPaged() {
+                const start = (this.tgUsersPage - 1) * this.tgPageSize;
+                return (this.tgUsers || []).slice(start, start + this.tgPageSize);
+              },
+              tgRulesPaged() {
+                const start = (this.tgRulesPage - 1) * this.tgPageSize;
+                return (this.tgRules || []).slice(start, start + this.tgPageSize);
+              },
+              tgHistoryRequestsPaged() {
+                const start = (this.tgHistoryPage - 1) * this.tgPageSize;
+                return (this.tgHistoryRequests || []).slice(start, start + this.tgPageSize);
+              },
+              tgFolderTreeFlat() {
+                const rows = [];
+                const walk = (pathKey, level) => {
+                  const node = this.tgFolderTree[pathKey];
+                  if (!node) return;
+                  rows.push({ ...node, level });
+                  if (node.expanded && Array.isArray(node.childrenKeys)) {
+                    node.childrenKeys.forEach(childKey => walk(childKey, level + 1));
+                  }
+                };
+                (this.tgFolderTreeRootKeys || []).forEach(rootKey => walk(rootKey, 0));
+                return rows;
               },
               tgFolderOptions() {
                 const set = new Set();
@@ -1351,7 +1494,12 @@
                 }
               },
               async loadTelegramAdminData(forceFolders = false) {
-                try {
+                if (this.tgAdminLoadPromise) {
+                  return this.tgAdminLoadPromise;
+                }
+                this.tgAdminLoading = true;
+                this.tgAdminError = '';
+                this.tgAdminLoadPromise = (async () => {
                   const [requestsRes, pendingRes, rulesRes, usersRes] = await Promise.all([
                     fetch('/api/telegram/requests?limit=300'),
                     fetch('/api/telegram/requests/pending?limit=300'),
@@ -1380,12 +1528,21 @@
                   });
                   this.tgRules = rulesData.items || [];
                   this.tgUsers = usersData.items || [];
+                  this.tgUsersPage = 1;
+                  this.tgRulesPage = 1;
+                  this.tgHistoryPage = 1;
                   this.initRuleEdits();
                   this.syncCurrentPendingForm();
                   this.loadTelegramFoldersInBackground(forceFolders);
+                })();
+                try {
+                  await this.tgAdminLoadPromise;
                 } catch (e) {
                   console.error('[UI] Failed to load telegram admin data:', e);
-                  alert(`Не удалось загрузить TG-заявки/правила: ${e.message || e}`);
+                  this.tgAdminError = `Не удалось загрузить данные: ${e.message || e}`;
+                } finally {
+                  this.tgAdminLoading = false;
+                  this.tgAdminLoadPromise = null;
                 }
               },
               async loadTelegramFoldersInBackground(force = false) {
@@ -1412,6 +1569,7 @@
                   const foldersData = await res.json();
                   this.tgRootFolders = foldersData.children || [];
                   this.tgFoldersLoadedAt = Date.now();
+                  this.initFolderTreeFromRoot();
                 })();
 
                 try {
@@ -1424,6 +1582,19 @@
                   this.tgFoldersLoadPromise = null;
                 }
               },
+              changeTgPage(kind, delta) {
+                if (kind === 'users') {
+                  this.tgUsersPage = Math.min(this.tgUsersTotalPages, Math.max(1, this.tgUsersPage + delta));
+                  return;
+                }
+                if (kind === 'rules') {
+                  this.tgRulesPage = Math.min(this.tgRulesTotalPages, Math.max(1, this.tgRulesPage + delta));
+                  return;
+                }
+                if (kind === 'history') {
+                  this.tgHistoryPage = Math.min(this.tgHistoryTotalPages, Math.max(1, this.tgHistoryPage + delta));
+                }
+              },
               normalizeFolderPrefix(value) {
                 return (value || '')
                   .toString()
@@ -1432,6 +1603,150 @@
                   .map(part => part.trim())
                   .filter(Boolean)
                   .join('/');
+              },
+              getFolderCheckText(path) {
+                const key = this.normalizeFolderPrefix(path);
+                const status = this.tgFolderChecks[key];
+                if (!status) return 'Папка не проверялась';
+                if (status.state === 'checking') return 'Проверяю доступ...';
+                if (status.state === 'ok') return `Доступ есть${status.note ? ` (${status.note})` : ''}`;
+                return `Проблема с доступом: ${status.note || 'ошибка'}`;
+              },
+              getFolderCheckClass(path) {
+                const key = this.normalizeFolderPrefix(path);
+                const status = this.tgFolderChecks[key];
+                if (!status) return 'text-gray-500';
+                if (status.state === 'checking') return 'text-blue-600';
+                if (status.state === 'ok') return 'text-green-600';
+                return 'text-red-600';
+              },
+              async checkFolderAccess(path) {
+                const normalized = this.normalizeFolderPrefix(path);
+                if (!normalized) return;
+                this.tgFolderChecks = {
+                  ...this.tgFolderChecks,
+                  [normalized]: { state: 'checking', note: '' }
+                };
+                try {
+                  const res = await fetch(`/api/telegram/folders?prefix=${encodeURIComponent(normalized)}`);
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                  }
+                  const data = await res.json();
+                  const note = data.total_videos ? `видео: ${data.total_videos}` : 'папка доступна';
+                  this.tgFolderChecks = {
+                    ...this.tgFolderChecks,
+                    [normalized]: { state: 'ok', note }
+                  };
+                } catch (e) {
+                  this.tgFolderChecks = {
+                    ...this.tgFolderChecks,
+                    [normalized]: { state: 'error', note: e.message || String(e) }
+                  };
+                }
+              },
+              async ensureFolderAccessible(path) {
+                const normalized = this.normalizeFolderPrefix(path);
+                if (!normalized) return false;
+                await this.checkFolderAccess(normalized);
+                const status = this.tgFolderChecks[normalized];
+                return !!status && status.state === 'ok';
+              },
+              initFolderTreeFromRoot() {
+                const nextTree = { ...this.tgFolderTree };
+                const rootKeys = [];
+                (this.tgRootFolders || []).forEach(folder => {
+                  const path = (folder.prefix || []).join('/');
+                  const key = this.normalizeFolderPrefix(path);
+                  if (!key) return;
+                  nextTree[key] = {
+                    path,
+                    pathKey: key,
+                    name: folder.name || key.split('/').slice(-1)[0],
+                    video_count: folder.video_count || 0,
+                    expanded: false,
+                    loading: false,
+                    loaded: false,
+                    error: '',
+                    childrenKeys: Array.isArray(nextTree[key]?.childrenKeys) ? nextTree[key].childrenKeys : [],
+                  };
+                  rootKeys.push(key);
+                });
+                this.tgFolderTree = nextTree;
+                this.tgFolderTreeRootKeys = rootKeys;
+              },
+              openFolderPicker(target) {
+                this.tgFolderPickerTarget = target;
+                this.tgFolderPickerOpen = true;
+                if (!this.tgRootFolders.length) {
+                  this.loadTelegramFoldersInBackground(true);
+                } else {
+                  this.initFolderTreeFromRoot();
+                }
+              },
+              closeFolderPicker() {
+                this.tgFolderPickerOpen = false;
+                this.tgFolderPickerTarget = null;
+              },
+              async toggleFolderTreeNode(node) {
+                const key = node.pathKey;
+                const tree = { ...this.tgFolderTree };
+                tree[key] = { ...tree[key], expanded: !tree[key].expanded };
+                this.tgFolderTree = tree;
+                if (!tree[key].expanded || tree[key].loaded || tree[key].loading) return;
+
+                tree[key] = { ...tree[key], loading: true, error: '' };
+                this.tgFolderTree = tree;
+                try {
+                  const res = await fetch(`/api/telegram/folders?prefix=${encodeURIComponent(node.path)}`);
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                  }
+                  const data = await res.json();
+                  const children = data.children || [];
+                  const childrenKeys = [];
+                  const treeCopy = { ...this.tgFolderTree };
+                  children.forEach(child => {
+                    const childPath = (child.prefix || []).join('/');
+                    const childKey = this.normalizeFolderPrefix(childPath);
+                    if (!childKey) return;
+                    treeCopy[childKey] = {
+                      path: childPath,
+                      pathKey: childKey,
+                      name: child.name || childKey.split('/').slice(-1)[0],
+                      video_count: child.video_count || 0,
+                      expanded: false,
+                      loading: false,
+                      loaded: false,
+                      error: '',
+                      childrenKeys: Array.isArray(treeCopy[childKey]?.childrenKeys) ? treeCopy[childKey].childrenKeys : [],
+                    };
+                    childrenKeys.push(childKey);
+                  });
+                  treeCopy[key] = { ...treeCopy[key], loading: false, loaded: true, childrenKeys, error: '' };
+                  this.tgFolderTree = treeCopy;
+                } catch (e) {
+                  this.tgFolderTree = {
+                    ...this.tgFolderTree,
+                    [key]: { ...this.tgFolderTree[key], loading: false, loaded: false, error: e.message || String(e) }
+                  };
+                }
+              },
+              async selectFolderFromPicker(path) {
+                const selected = this.normalizeFolderPrefix(path);
+                if (!selected || !this.tgFolderPickerTarget) return;
+                if (this.tgFolderPickerTarget.type === 'current') {
+                  this.tgCurrentRequestForm.folder_prefix = selected;
+                } else if (this.tgFolderPickerTarget.type === 'rule') {
+                  const rule = this.tgRules.find(r => r.id === this.tgFolderPickerTarget.ruleId);
+                  if (rule) {
+                    this.getRuleEdit(rule).folder_prefix = selected;
+                  }
+                }
+                await this.checkFolderAccess(selected);
+                this.closeFolderPicker();
               },
               initRuleEdits() {
                 const next = {};
@@ -1475,6 +1790,13 @@
                   if (payload.is_active && !payload.folder_prefix) {
                     alert('Для активного пользователя выберите папку');
                     return;
+                  }
+                  if (payload.is_active) {
+                    const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
+                    if (!accessible) {
+                      alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
+                      return;
+                    }
                   }
                   const res = await fetch('/api/telegram/rules', {
                     method: 'POST',
@@ -1573,6 +1895,13 @@
                     alert('Выберите папку');
                     return;
                   }
+                  if (payload.is_active) {
+                    const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
+                    if (!accessible) {
+                      alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
+                      return;
+                    }
+                  }
                   const res = await fetch('/api/telegram/rules', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1642,6 +1971,13 @@
                     if (isActive && !folderPrefix) {
                       alert('Выберите папку для этой заявки');
                       return;
+                    }
+                    if (isActive) {
+                      const accessible = await this.ensureFolderAccessible(folderPrefix);
+                      if (!accessible) {
+                        alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
+                        return;
+                      }
                     }
                     previousRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(item.telegram_user_id)) || null;
                     const weeklyLimit = Math.max(0, Number(this.tgCurrentRequestForm.weekly_limit) || 0);
@@ -2181,6 +2517,11 @@
                 } else if (this.tgRefreshInterval) {
                   clearInterval(this.tgRefreshInterval);
                   this.tgRefreshInterval = null;
+                }
+              },
+              tgViewTab(newTab) {
+                if (newTab === 'folders') {
+                  this.loadTelegramFoldersInBackground(false);
                 }
               }
             }
