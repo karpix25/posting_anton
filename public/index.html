@@ -26,7 +26,8 @@
   <div id="app" class="min-h-screen p-8">
 
     <!-- Header -->
-    <div class="w-full mx-auto mb-8 flex justify-between items-center gap-4">
+    <div class="sticky top-0 z-40 -mx-8 mb-8 border-b border-gray-200 bg-gray-100/95 px-8 py-4 backdrop-blur">
+      <div class="w-full mx-auto flex justify-between items-center gap-4">
       <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
       <div class="flex items-center gap-3">
         <button @click="loadStats(true)" :disabled="statsLoading"
@@ -38,6 +39,7 @@
         <span :class="['px-3 py-2 rounded border text-sm font-semibold', globalSaveStatusClass]">
           {{ globalSaveStatusText }}
         </span>
+      </div>
       </div>
     </div>
 
