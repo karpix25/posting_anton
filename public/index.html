@@ -157,15 +157,11 @@
             <div class="flex gap-2 min-w-max">
               <button @click="tgViewTab = 'pending'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
-                Заявки + апрув
+                Заявки + настройки
               </button>
               <button @click="tgViewTab = 'users'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
                 Пользователи
-              </button>
-              <button @click="tgViewTab = 'rules'"
-                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'rules' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
-                Настройки
               </button>
               <button @click="tgViewTab = 'history'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'history' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
@@ -179,13 +175,14 @@
           </div>
 
           <div v-if="tgViewTab === 'pending'" class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
-            <h3 class="text-2xl font-bold mb-4">Заявки на апрув с настройками</h3>
+            <h3 class="text-2xl font-bold mb-4">Заявки + апрув с настройками</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
                 <thead class="bg-gray-100">
                   <tr>
                     <th class="p-2 text-left">Пользователь</th>
                     <th class="p-2 text-left">Заявка</th>
+                    <th class="p-2 text-left">Статус</th>
                     <th class="p-2 text-left">Папка</th>
                     <th class="p-2 text-right">Лимит/день</th>
                     <th class="p-2 text-center">Активен</th>
@@ -201,6 +198,12 @@
                     <td class="p-2">
                       <div class="font-medium">#{{ item.id }}</div>
                       <div class="text-xs text-gray-500">{{ item.requested_at ? item.requested_at.replace('T', ' ').slice(0, 19) : '--' }}</div>
+                    </td>
+                    <td class="p-2">
+                      <span class="px-2 py-1 rounded text-xs"
+                        :class="item.status === 'pending_approval' ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'">
+                        {{ item.status }}
+                      </span>
                     </td>
                     <td class="p-2 min-w-[260px]">
                       <button @click="openFolderPicker({ type: 'pending', requestId: item.id })"
@@ -220,17 +223,18 @@
                       <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
                     </td>
                     <td class="p-2 text-right whitespace-nowrap">
-                      <button v-if="!isPendingApprovedUi(item)" @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
+                      <button v-if="item.status === 'pending_approval' && !isPendingApprovedUi(item)"
+                        @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
                       <button
-                        @click="isPendingApprovedUi(item) ? deleteTelegramRequest(item) : rejectTelegramRequest(item)"
+                        @click="isPendingApprovedUi(item) || item.status !== 'pending_approval' ? deleteTelegramRequest(item) : rejectTelegramRequest(item)"
                         class="text-red-600 hover:underline mr-3">
-                        {{ isPendingApprovedUi(item) ? 'Удалить' : 'Отклонить' }}
+                        {{ isPendingApprovedUi(item) || item.status !== 'pending_approval' ? 'Удалить' : 'Отклонить' }}
                       </button>
                       <button @click="savePendingRule(item)" class="text-blue-700 hover:underline">Сохранить</button>
                     </td>
                   </tr>
                   <tr v-if="tgPendingRequests.length === 0">
-                    <td colspan="6" class="p-3 text-center text-gray-400">Нет заявок на одобрение</td>
+                    <td colspan="7" class="p-3 text-center text-gray-400">Заявок пока нет</td>
                   </tr>
                 </tbody>
               </table>
@@ -302,7 +306,7 @@
             </div>
           </div>
 
-          <div v-if="tgViewTab === 'rules'" class="mb-8">
+          <div v-if="false && tgViewTab === 'rules'" class="mb-8">
             <h3 class="text-xl font-bold mb-3">Настройки пользователей (лимит/день, папка, активность)</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
@@ -1256,10 +1260,10 @@
                 return this.tgRequests.find(item => item.status === 'pending_approval') || null;
               },
               tgPendingRequests() {
-                return this.tgRequests.filter(item => item.status === 'pending_approval');
+                return this.tgRequests.filter(item => !['rejected', 'cancelled'].includes(String(item.status || '').toLowerCase()));
               },
               tgHistoryRequests() {
-                return this.tgRequests.filter(item => item.status !== 'pending_approval');
+                return this.tgRequests.filter(item => ['rejected', 'cancelled'].includes(String(item.status || '').toLowerCase()));
               },
               tgPendingTotalPages() {
                 return Math.max(1, Math.ceil((this.tgPendingRequests || []).length / this.tgPageSize));
@@ -1933,13 +1937,14 @@
                   is_active: edit.is_active,
                 }, { reloadAfterSuccess: false });
                 if (!ok) return;
+                item.status = 'approved';
                 this.tgPendingUiState = {
                   ...this.tgPendingUiState,
                   [item.id]: { approved: true },
                 };
               },
               isPendingApprovedUi(item) {
-                return !!this.tgPendingUiState[item.id]?.approved;
+                return !!this.tgPendingUiState[item.id]?.approved || String(item.status || '').toLowerCase() !== 'pending_approval';
               },
               async deleteTelegramRequest(item) {
                 if (!confirm(`Удалить заявку #${item.id}?`)) return;
