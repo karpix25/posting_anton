@@ -51,7 +51,7 @@
       </div>
 
       <!-- Tab Content -->
-      <div class="flex-1 p-8">
+      <div class="flex-1 min-w-0 p-8">
         <div v-if="loading" class="text-center text-gray-500">Загрузка настроек...</div>
 
         <div v-else>
@@ -176,8 +176,8 @@
 
           <div v-if="tgViewTab === 'pending'" class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
             <h3 class="text-2xl font-bold mb-4">Заявки + апрув с настройками</h3>
-            <div class="border rounded overflow-x-auto bg-white">
-              <table class="w-full text-sm">
+            <div class="border rounded bg-white max-w-full overflow-x-auto">
+              <table class="w-full min-w-[1240px] text-sm">
                 <thead class="bg-gray-100">
                   <tr>
                     <th class="p-2 text-left">Пользователь</th>
@@ -205,7 +205,7 @@
                         {{ item.status }}
                       </span>
                     </td>
-                    <td class="p-2 min-w-[260px]">
+                    <td class="p-2 min-w-[320px]">
                       <button @click="openFolderPicker({ type: 'pending', requestId: item.id })"
                         class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50">
                         {{ getPendingEdit(item).folder_prefix || 'Выберите папку' }}
@@ -222,7 +222,7 @@
                     <td class="p-2 text-center">
                       <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
                     </td>
-                    <td class="p-2 text-right whitespace-nowrap">
+                    <td class="p-2 text-right whitespace-nowrap min-w-[230px]">
                       <button v-if="item.status === 'pending_approval' && !isPendingApprovedUi(item)"
                         @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
                       <button
