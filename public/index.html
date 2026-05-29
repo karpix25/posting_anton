@@ -154,8 +154,7 @@
               🔄 Обновить
             </button>
           </div>
-          <div v-if="tgAdminLoading" class="mb-4 text-sm text-blue-600">⏳ Загружаю заявки, правила и пользователей...</div>
-          <div v-else-if="tgAdminError" class="mb-4 text-sm text-amber-700">⚠️ {{ tgAdminError }}</div>
+          <div v-if="tgAdminError" class="mb-4 text-sm text-amber-700">⚠️ {{ tgAdminError }}</div>
 
           <div class="mb-6 border rounded-lg bg-white p-2 overflow-x-auto">
             <div class="flex gap-2 min-w-max">
