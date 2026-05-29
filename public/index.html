@@ -220,8 +220,12 @@
                       <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
                     </td>
                     <td class="p-2 text-right whitespace-nowrap">
-                      <button @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
-                      <button @click="rejectTelegramRequest(item)" class="text-red-600 hover:underline mr-3">Отклонить</button>
+                      <button v-if="!isPendingApprovedUi(item)" @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
+                      <button
+                        @click="isPendingApprovedUi(item) ? deleteTelegramRequest(item) : rejectTelegramRequest(item)"
+                        class="text-red-600 hover:underline mr-3">
+                        {{ isPendingApprovedUi(item) ? 'Удалить' : 'Отклонить' }}
+                      </button>
                       <button @click="savePendingRule(item)" class="text-blue-700 hover:underline">Сохранить</button>
                     </td>
                   </tr>
@@ -1163,6 +1167,7 @@
                 tgHistoryPage: 1,
                 tgRuleEdits: {},
                 tgPendingEdits: {},
+                tgPendingUiState: {},
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
                 tgFolderPickerTarget: null,
@@ -1600,6 +1605,7 @@
                   this.tgHistoryPage = 1;
                   this.initRuleEdits();
                   this.initPendingEdits();
+                  this.tgPendingUiState = {};
                   this.syncCurrentPendingForm();
                   this.loadTelegramFoldersInBackground(forceFolders);
                 })();
@@ -1911,13 +1917,37 @@
               },
               async approvePendingRow(item) {
                 const edit = this.getPendingEdit(item);
-                await this.approveTelegramRequest(item, true, {
+                const ok = await this.approveTelegramRequest(item, true, {
                   telegram_username: item.telegram_username || '',
                   telegram_full_name: item.telegram_full_name || '',
                   folder_prefix: edit.folder_prefix,
                   weekly_limit: edit.weekly_limit,
                   is_active: edit.is_active,
-                });
+                }, { reloadAfterSuccess: false });
+                if (!ok) return;
+                this.tgPendingUiState = {
+                  ...this.tgPendingUiState,
+                  [item.id]: { approved: true },
+                };
+              },
+              isPendingApprovedUi(item) {
+                return !!this.tgPendingUiState[item.id]?.approved;
+              },
+              async deleteTelegramRequest(item) {
+                if (!confirm(`Удалить заявку #${item.id}?`)) return;
+                try {
+                  const res = await fetch(`/api/telegram/requests/${item.id}`, { method: 'DELETE' });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                  }
+                  this.tgRequests = this.tgRequests.filter(row => row.id !== item.id);
+                  const nextUiState = { ...this.tgPendingUiState };
+                  delete nextUiState[item.id];
+                  this.tgPendingUiState = nextUiState;
+                } catch (e) {
+                  alert(`Ошибка удаления заявки: ${e.message || e}`);
+                }
               },
               getRuleEdit(rule) {
                 if (!this.tgRuleEdits[rule.id]) {
@@ -2116,10 +2146,11 @@
                   return false;
                 }
               },
-              async approveTelegramRequest(item, useCurrentForm = false, formData = null) {
+              async approveTelegramRequest(item, useCurrentForm = false, formData = null, options = {}) {
                 let previousRule = null;
                 let createdRuleId = null;
                 let triedToSaveRule = false;
+                const reloadAfterSuccess = options.reloadAfterSuccess !== false;
                 try {
                   if (useCurrentForm) {
                     const form = formData || this.tgCurrentRequestForm;
@@ -2127,17 +2158,17 @@
                     const isActive = !!form.is_active;
                     if (!isActive) {
                       alert('Пользователь отключен. Одобрение недоступно.');
-                      return;
+                      return false;
                     }
                     if (isActive && !folderPrefix) {
                       alert('Выберите папку для этой заявки');
-                      return;
+                      return false;
                     }
                     if (isActive) {
                       const accessible = await this.ensureFolderAccessible(folderPrefix);
                       if (!accessible) {
                         alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
-                        return;
+                        return false;
                       }
                     }
                     previousRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(item.telegram_user_id)) || null;
@@ -2175,12 +2206,15 @@
                     throw new Error(err.detail || 'approve failed');
                   }
                   const data = await res.json();
-                  await this.loadTelegramAdminData();
+                  if (reloadAfterSuccess) {
+                    await this.loadTelegramAdminData();
+                  }
                   if (data.delivered) {
                     alert(`Заявка #${item.id} одобрена и отправлена пользователю`);
                   } else {
                     alert(`Заявка #${item.id} одобрена, но отправка в TG не удалась. Проверьте логи.`);
                   }
+                  return true;
                 } catch (e) {
                   const message = String(e?.message || e || 'approve failed');
                   let rollbackOk = true;
@@ -2194,9 +2228,10 @@
                     } else {
                       alert('В выбранной папке сейчас нет свободных видео. Но откат настроек не удался, проверьте правило вручную.');
                     }
-                    return;
+                    return false;
                   }
                   alert(`Ошибка approve: ${message}`);
+                  return false;
                 }
               },
               async rejectTelegramRequest(item) {

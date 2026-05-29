@@ -33,6 +33,7 @@ from app.services.profile_status import (
 )
 from app.telegram_bot.service import (
     approve_video_request,
+    delete_video_request,
     delete_distribution_rule,
     ensure_telegram_schema,
     get_video_folder_view,
@@ -982,6 +983,14 @@ async def api_telegram_reject_request(request_id: int, payload: Dict[str, Any] =
     ok = await reject_video_request(request_id=request_id, admin_user_id=admin_user_id, reason=reason)
     if not ok:
         raise HTTPException(status_code=400, detail="Request cannot be rejected in current status")
+    return {"success": True}
+
+
+@app.delete("/api/telegram/requests/{request_id}")
+async def api_telegram_delete_request(request_id: int):
+    ok = await delete_video_request(request_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Request not found")
     return {"success": True}
 
 

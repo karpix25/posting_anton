@@ -816,6 +816,19 @@ async def reject_video_request(request_id: int, admin_user_id: int, reason: Opti
         return True
 
 
+async def delete_video_request(request_id: int) -> bool:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        request = result.scalar_one_or_none()
+        if not request:
+            return False
+        await session.delete(request)
+        await session.commit()
+        return True
+
+
 async def deliver_approved_request_to_user(request_id: int) -> bool:
     if not settings.TELEGRAM_BOT_TOKEN:
         logger.warning("[TelegramApproval] Bot token is not configured; cannot deliver request=%s", request_id)
