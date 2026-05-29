@@ -24,11 +24,19 @@
   <div id="app" class="min-h-screen p-8">
 
     <!-- Header -->
-    <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center">
+    <div class="max-w-6xl mx-auto mb-8 flex justify-between items-center gap-4">
       <h1 class="text-3xl font-bold text-blue-600">🚀 Автоматизация Контента</h1>
-      <button @click="saveConfig" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">
-        {{ currentTab === 'settings' ? 'Сохранить общие настройки' : 'Сохранить изменения' }}
-      </button>
+      <div class="flex items-center gap-3">
+        <button @click="loadStats(true)" :disabled="statsLoading"
+          :title="yandexSyncTitle"
+          :class="['flex items-center gap-2 px-3 py-2 rounded border text-sm font-semibold shadow-sm transition disabled:cursor-wait', yandexSyncClass]">
+          <span :class="['inline-block h-2.5 w-2.5 rounded-full', yandexSyncDotClass]"></span>
+          <span>{{ yandexSyncText }}</span>
+        </button>
+        <button @click="saveConfig" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded shadow">
+          {{ currentTab === 'settings' ? 'Сохранить общие настройки' : 'Сохранить изменения' }}
+        </button>
+      </div>
     </div>
 
     <!-- Main Content -->
@@ -1090,6 +1098,7 @@
                 brandStats: {},
                 currentMonth: new Date().toISOString().substring(0, 7),
                 statsSummary: null,
+                yandexLastSyncedAt: null,
                 todayStats: {
                   date: '--',
                   time_msk: '--:--',
@@ -1195,6 +1204,36 @@
                 if (this.statsViewMode === 'category') return 'Категория';
                 if (this.statsViewMode === 'brand') return 'Бренд';
                 return 'Автор';
+              },
+              yandexSyncStatus() {
+                if (this.statsLoading) return 'syncing';
+                if (this.stats?.error) return 'error';
+                if (this.yandexLastSyncedAt) return 'ready';
+                return 'unknown';
+              },
+              yandexSyncText() {
+                if (this.yandexSyncStatus === 'syncing') return 'Яндекс: синхронизация';
+                if (this.yandexSyncStatus === 'error') return 'Яндекс: ошибка';
+                if (this.yandexSyncStatus === 'ready') return 'Яндекс: готов';
+                return 'Яндекс: проверка';
+              },
+              yandexSyncTitle() {
+                if (this.yandexSyncStatus === 'syncing') return 'Идет сканирование Яндекс.Диска';
+                if (this.yandexSyncStatus === 'error') return `Яндекс.Диск недоступен: ${this.stats.error}`;
+                if (this.yandexLastSyncedAt) return `Последняя успешная синхронизация: ${this.yandexLastSyncedAt}`;
+                return 'Статус Яндекс.Диска еще не проверен';
+              },
+              yandexSyncClass() {
+                if (this.yandexSyncStatus === 'syncing') return 'bg-blue-50 border-blue-200 text-blue-700';
+                if (this.yandexSyncStatus === 'error') return 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100';
+                if (this.yandexSyncStatus === 'ready') return 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100';
+                return 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100';
+              },
+              yandexSyncDotClass() {
+                if (this.yandexSyncStatus === 'syncing') return 'bg-blue-500 animate-pulse';
+                if (this.yandexSyncStatus === 'error') return 'bg-red-500';
+                if (this.yandexSyncStatus === 'ready') return 'bg-emerald-500';
+                return 'bg-gray-400';
               },
               currentPendingRequest() {
                 return this.tgRequests.find(item => item.status === 'pending_approval') || null;
@@ -1453,7 +1492,11 @@
                 try {
                   const res = await fetch(`/api/stats${refresh ? '?refresh=true' : ''}`);
                   if (res.ok) {
-                    this.stats = await res.json();
+                    const data = await res.json();
+                    this.stats = data;
+                    if (!data.error) {
+                      this.yandexLastSyncedAt = new Date().toLocaleString('ru-RU');
+                    }
 
                     // Auto-persist found folders as themes
                     let changed = false;
@@ -1475,9 +1518,18 @@
                       this.saveConfig();
                       // No alert needed, just silent save
                     }
+                  } else {
+                    this.stats = {
+                      ...this.stats,
+                      error: `HTTP ${res.status}: не удалось получить статистику Яндекс.Диска`
+                    };
                   }
                 } catch (e) {
                   console.error('Failed to load stats', e);
+                  this.stats = {
+                    ...this.stats,
+                    error: e.message || 'Не удалось подключиться к Яндекс.Диску'
+                  };
                 } finally {
                   this.statsLoading = false;
                 }
