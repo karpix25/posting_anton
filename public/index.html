@@ -157,7 +157,7 @@
             <div class="flex gap-2 min-w-max">
               <button @click="tgViewTab = 'pending'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
-                Актуальная заявка
+                Заявки + апрув
               </button>
               <button @click="tgViewTab = 'users'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
@@ -179,64 +179,66 @@
           </div>
 
           <div v-if="tgViewTab === 'pending'" class="mb-8 border rounded-xl p-6 bg-white shadow-sm">
-            <h3 class="text-3xl font-bold mb-4">Актуальная заявка</h3>
-            <div v-if="currentPendingRequest">
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5 text-lg">
-                <div class="bg-gray-50 rounded-lg p-4 border">
-                  <div class="text-gray-500 text-sm mb-1">Пользователь</div>
-                  <div class="font-semibold">{{ currentPendingRequest.telegram_full_name || ('@' + (currentPendingRequest.telegram_username || '')) }}</div>
-                  <div class="text-sm text-gray-500">ID: {{ currentPendingRequest.telegram_user_id }}</div>
-                </div>
-                <div class="bg-gray-50 rounded-lg p-4 border">
-                  <div class="text-gray-500 text-sm mb-1">Заявка</div>
-                  <div class="font-semibold">#{{ currentPendingRequest.id }}</div>
-                  <div class="text-sm text-gray-500">{{ currentPendingRequest.requested_at ? currentPendingRequest.requested_at.replace('T', ' ').slice(0, 19) : '--' }}</div>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div class="md:col-span-2">
-                  <label class="block text-base font-semibold mb-2">Папка для выдачи</label>
-                  <button @click="openFolderPicker({ type: 'current' })"
-                    class="border rounded-lg p-4 text-left text-lg w-full bg-white hover:bg-gray-50">
-                    {{ tgCurrentRequestForm.folder_prefix || 'Выберите папку' }}
-                  </button>
-                  <div v-if="tgCurrentRequestForm.folder_prefix" class="text-xs mt-2"
-                    :class="getFolderCheckClass(tgCurrentRequestForm.folder_prefix)">
-                    {{ getFolderCheckText(tgCurrentRequestForm.folder_prefix) }}
-                  </div>
-                </div>
-                <div>
-                  <label class="block text-base font-semibold mb-2">Лимит в день</label>
-                  <input v-model.number="tgCurrentRequestForm.weekly_limit" type="number" min="0"
-                    class="border rounded-lg p-4 text-lg w-full" />
-                </div>
-              </div>
-
-              <div class="mt-4">
-                <label class="inline-flex items-center gap-2 text-base font-semibold">
-                  <input type="checkbox" v-model="tgCurrentRequestForm.is_active" class="h-5 w-5">
-                  <span>Пользователь активен</span>
-                </label>
-              </div>
-
-              <div class="mt-5 flex flex-wrap gap-3">
-                <button @click="approveCurrentRequest"
-                  class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 text-lg font-semibold">
-                  ✅ Одобрить
-                </button>
-                <button @click="rejectCurrentRequest"
-                  class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 text-lg font-semibold">
-                  ⛔ Отклонить
-                </button>
-                <button @click="saveCurrentRequestRule"
-                  class="bg-slate-700 text-white px-6 py-3 rounded-lg hover:bg-slate-800 text-lg font-semibold">
-                  💾 Сохранить настройки
-                </button>
-              </div>
+            <h3 class="text-2xl font-bold mb-4">Заявки на апрув с настройками</h3>
+            <div class="border rounded overflow-x-auto bg-white">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-100">
+                  <tr>
+                    <th class="p-2 text-left">Пользователь</th>
+                    <th class="p-2 text-left">Заявка</th>
+                    <th class="p-2 text-left">Папка</th>
+                    <th class="p-2 text-right">Лимит/день</th>
+                    <th class="p-2 text-center">Активен</th>
+                    <th class="p-2 text-right">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in tgPendingRequestsPaged" :key="item.id" class="border-t align-top">
+                    <td class="p-2">
+                      <div class="font-medium">{{ item.telegram_full_name || ('@' + (item.telegram_username || '')) }}</div>
+                      <div class="text-xs text-gray-500">{{ item.telegram_user_id }}</div>
+                    </td>
+                    <td class="p-2">
+                      <div class="font-medium">#{{ item.id }}</div>
+                      <div class="text-xs text-gray-500">{{ item.requested_at ? item.requested_at.replace('T', ' ').slice(0, 19) : '--' }}</div>
+                    </td>
+                    <td class="p-2 min-w-[260px]">
+                      <button @click="openFolderPicker({ type: 'pending', requestId: item.id })"
+                        class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50">
+                        {{ getPendingEdit(item).folder_prefix || 'Выберите папку' }}
+                      </button>
+                      <div v-if="getPendingEdit(item).folder_prefix" class="text-xs mt-1"
+                        :class="getFolderCheckClass(getPendingEdit(item).folder_prefix)">
+                        {{ getFolderCheckText(getPendingEdit(item).folder_prefix) }}
+                      </div>
+                    </td>
+                    <td class="p-2 text-right">
+                      <input v-model.number="getPendingEdit(item).weekly_limit" type="number" min="0"
+                        class="border rounded p-2 w-24 text-right" />
+                    </td>
+                    <td class="p-2 text-center">
+                      <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
+                    </td>
+                    <td class="p-2 text-right whitespace-nowrap">
+                      <button @click="approvePendingRow(item)" class="text-green-700 hover:underline mr-3">Одобрить</button>
+                      <button @click="rejectTelegramRequest(item)" class="text-red-600 hover:underline mr-3">Отклонить</button>
+                      <button @click="savePendingRule(item)" class="text-blue-700 hover:underline">Сохранить</button>
+                    </td>
+                  </tr>
+                  <tr v-if="tgPendingRequests.length === 0">
+                    <td colspan="6" class="p-3 text-center text-gray-400">Нет заявок на одобрение</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <div v-else class="text-lg text-gray-500 bg-gray-50 border rounded-lg p-6">
-              Нет заявок на одобрение.
+            <div class="mt-3 flex items-center justify-between text-sm">
+              <div class="text-gray-600">Страница {{ tgPendingPage }} / {{ tgPendingTotalPages }}</div>
+              <div class="flex gap-2">
+                <button @click="changeTgPage('pending', -1)" :disabled="tgPendingPage <= 1"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Назад</button>
+                <button @click="changeTgPage('pending', 1)" :disabled="tgPendingPage >= tgPendingTotalPages"
+                  class="px-3 py-1 border rounded disabled:opacity-40">Вперёд</button>
+              </div>
             </div>
           </div>
 
@@ -1073,12 +1075,12 @@
                 currentTab: 'dashboard',
                 tabs: [
                   { id: 'dashboard', name: 'Дашборд' },
-                  { id: 'tg_requests', name: 'TG Заявки' },
                   { id: 'stats', name: 'Аналитика' },
                   { id: 'settings', name: 'Настройки' },
                   { id: 'profiles', name: 'Профили' },
                   { id: 'clients', name: 'AI Клиенты' },
-                  { id: 'logs', name: '📋 Логи' }
+                  { id: 'logs', name: '📋 Логи' },
+                  { id: 'tg_requests', name: 'TG Заявки' }
                 ],
                 config: {
                   cronSchedule: '',
@@ -1155,10 +1157,12 @@
                 tgAdminLoadPromise: null,
                 tgViewTab: 'pending',
                 tgPageSize: 10,
+                tgPendingPage: 1,
                 tgUsersPage: 1,
                 tgRulesPage: 1,
                 tgHistoryPage: 1,
                 tgRuleEdits: {},
+                tgPendingEdits: {},
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
                 tgFolderPickerTarget: null,
@@ -1238,8 +1242,14 @@
               currentPendingRequest() {
                 return this.tgRequests.find(item => item.status === 'pending_approval') || null;
               },
+              tgPendingRequests() {
+                return this.tgRequests.filter(item => item.status === 'pending_approval');
+              },
               tgHistoryRequests() {
                 return this.tgRequests.filter(item => item.status !== 'pending_approval');
+              },
+              tgPendingTotalPages() {
+                return Math.max(1, Math.ceil((this.tgPendingRequests || []).length / this.tgPageSize));
               },
               tgUsersTotalPages() {
                 return Math.max(1, Math.ceil((this.tgUsers || []).length / this.tgPageSize));
@@ -1253,6 +1263,10 @@
               tgUsersPaged() {
                 const start = (this.tgUsersPage - 1) * this.tgPageSize;
                 return (this.tgUsers || []).slice(start, start + this.tgPageSize);
+              },
+              tgPendingRequestsPaged() {
+                const start = (this.tgPendingPage - 1) * this.tgPageSize;
+                return (this.tgPendingRequests || []).slice(start, start + this.tgPageSize);
               },
               tgRulesPaged() {
                 const start = (this.tgRulesPage - 1) * this.tgPageSize;
@@ -1580,10 +1594,12 @@
                   });
                   this.tgRules = rulesData.items || [];
                   this.tgUsers = usersData.items || [];
+                  this.tgPendingPage = 1;
                   this.tgUsersPage = 1;
                   this.tgRulesPage = 1;
                   this.tgHistoryPage = 1;
                   this.initRuleEdits();
+                  this.initPendingEdits();
                   this.syncCurrentPendingForm();
                   this.loadTelegramFoldersInBackground(forceFolders);
                 })();
@@ -1635,6 +1651,10 @@
                 }
               },
               changeTgPage(kind, delta) {
+                if (kind === 'pending') {
+                  this.tgPendingPage = Math.min(this.tgPendingTotalPages, Math.max(1, this.tgPendingPage + delta));
+                  return;
+                }
                 if (kind === 'users') {
                   this.tgUsersPage = Math.min(this.tgUsersTotalPages, Math.max(1, this.tgUsersPage + delta));
                   return;
@@ -1791,6 +1811,11 @@
                 if (!selected || !this.tgFolderPickerTarget) return;
                 if (this.tgFolderPickerTarget.type === 'current') {
                   this.tgCurrentRequestForm.folder_prefix = selected;
+                } else if (this.tgFolderPickerTarget.type === 'pending') {
+                  const request = this.tgPendingRequests.find(r => r.id === this.tgFolderPickerTarget.requestId);
+                  if (request) {
+                    this.getPendingEdit(request).folder_prefix = selected;
+                  }
                 } else if (this.tgFolderPickerTarget.type === 'rule') {
                   const rule = this.tgRules.find(r => r.id === this.tgFolderPickerTarget.ruleId);
                   if (rule) {
@@ -1810,6 +1835,89 @@
                   };
                 }
                 this.tgRuleEdits = next;
+              },
+              initPendingEdits() {
+                const next = {};
+                for (const item of (this.tgPendingRequests || [])) {
+                  const userRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(item.telegram_user_id));
+                  next[item.id] = {
+                    folder_prefix: this.normalizeFolderPrefix(
+                      (userRule && userRule.folder_prefix === '__disabled__' ? '' : (userRule && userRule.folder_prefix)) || item.assigned_folder_prefix || ''
+                    ),
+                    weekly_limit: Number((userRule && userRule.weekly_limit) || 1),
+                    is_active: userRule ? !!userRule.is_active : true,
+                  };
+                }
+                this.tgPendingEdits = next;
+              },
+              getPendingEdit(item) {
+                if (!this.tgPendingEdits[item.id]) {
+                  const userRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(item.telegram_user_id));
+                  this.tgPendingEdits[item.id] = {
+                    folder_prefix: this.normalizeFolderPrefix(
+                      (userRule && userRule.folder_prefix === '__disabled__' ? '' : (userRule && userRule.folder_prefix)) || item.assigned_folder_prefix || ''
+                    ),
+                    weekly_limit: Number((userRule && userRule.weekly_limit) || 1),
+                    is_active: userRule ? !!userRule.is_active : true,
+                  };
+                }
+                return this.tgPendingEdits[item.id];
+              },
+              async savePendingRule(item, silent = false) {
+                const edit = this.getPendingEdit(item);
+                try {
+                  const folderPrefix = this.normalizeFolderPrefix(edit.folder_prefix);
+                  const dailyLimit = Math.max(0, Number(edit.weekly_limit) || 0);
+                  const payload = {
+                    telegram_user_id: Number(item.telegram_user_id),
+                    telegram_username: item.telegram_username || '',
+                    telegram_full_name: item.telegram_full_name || '',
+                    folder_prefix: folderPrefix,
+                    weekly_limit: dailyLimit,
+                    daily_limit: dailyLimit,
+                    is_active: !!edit.is_active,
+                  };
+                  if (payload.is_active && !payload.folder_prefix) {
+                    if (!silent) alert('Выберите папку');
+                    return false;
+                  }
+                  if (payload.is_active) {
+                    const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
+                    if (!accessible) {
+                      if (!silent) alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
+                      return false;
+                    }
+                  }
+                  const res = await fetch('/api/telegram/rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'save failed');
+                  }
+                  if (!silent) {
+                    await this.loadTelegramAdminData();
+                    alert('Настройки сохранены');
+                  }
+                  return true;
+                } catch (e) {
+                  if (!silent) {
+                    alert(`Ошибка сохранения настроек: ${e.message || e}`);
+                  }
+                  return false;
+                }
+              },
+              async approvePendingRow(item) {
+                const edit = this.getPendingEdit(item);
+                await this.approveTelegramRequest(item, true, {
+                  telegram_username: item.telegram_username || '',
+                  telegram_full_name: item.telegram_full_name || '',
+                  folder_prefix: edit.folder_prefix,
+                  weekly_limit: edit.weekly_limit,
+                  is_active: edit.is_active,
+                });
               },
               getRuleEdit(rule) {
                 if (!this.tgRuleEdits[rule.id]) {
@@ -2008,14 +2116,15 @@
                   return false;
                 }
               },
-              async approveTelegramRequest(item, useCurrentForm = false) {
+              async approveTelegramRequest(item, useCurrentForm = false, formData = null) {
                 let previousRule = null;
                 let createdRuleId = null;
                 let triedToSaveRule = false;
                 try {
                   if (useCurrentForm) {
-                    const folderPrefix = this.normalizeFolderPrefix(this.tgCurrentRequestForm.folder_prefix);
-                    const isActive = !!this.tgCurrentRequestForm.is_active;
+                    const form = formData || this.tgCurrentRequestForm;
+                    const folderPrefix = this.normalizeFolderPrefix(form.folder_prefix);
+                    const isActive = !!form.is_active;
                     if (!isActive) {
                       alert('Пользователь отключен. Одобрение недоступно.');
                       return;
@@ -2032,15 +2141,15 @@
                       }
                     }
                     previousRule = this.tgRules.find(rule => Number(rule.telegram_user_id) === Number(item.telegram_user_id)) || null;
-                    const weeklyLimit = Math.max(0, Number(this.tgCurrentRequestForm.weekly_limit) || 0);
+                    const weeklyLimit = Math.max(0, Number(form.weekly_limit) || 0);
                     const rulePayload = {
                       telegram_user_id: Number(item.telegram_user_id),
-                      telegram_username: this.tgCurrentRequestForm.telegram_username || item.telegram_username || '',
-                      telegram_full_name: this.tgCurrentRequestForm.telegram_full_name || item.telegram_full_name || '',
+                      telegram_username: form.telegram_username || item.telegram_username || '',
+                      telegram_full_name: form.telegram_full_name || item.telegram_full_name || '',
                       folder_prefix: folderPrefix,
                       weekly_limit: weeklyLimit,
                       daily_limit: weeklyLimit,
-                      is_active: !!this.tgCurrentRequestForm.is_active,
+                      is_active: !!form.is_active,
                     };
                     const ruleRes = await fetch('/api/telegram/rules', {
                       method: 'POST',
