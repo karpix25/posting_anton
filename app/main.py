@@ -945,17 +945,13 @@ async def api_telegram_approve_request(request_id: int, payload: Dict[str, Any] 
         code = str(exc)
         if code == "request_not_found":
             raise HTTPException(status_code=404, detail="Request not found")
-        if code == "rule_not_found":
-            raise HTTPException(status_code=400, detail="No active distribution rule for this user")
         if code == "no_videos_for_rule":
-            raise HTTPException(status_code=409, detail="No available videos in assigned folder")
+            raise HTTPException(status_code=409, detail="Нет свободных видео для выдачи. Попробуйте обновить Яндекс или выбрать другую папку.")
         raise HTTPException(status_code=400, detail=code)
     except ValueError as exc:
         code = str(exc)
         if code in {"weekly_limit_exceeded", "daily_limit_exceeded"}:
             raise HTTPException(status_code=409, detail="Daily limit reached for this user")
-        if code == "rule_folder_empty":
-            raise HTTPException(status_code=400, detail="Rule folder is empty")
         if code in {"rule_weekly_limit_zero", "rule_daily_limit_zero"}:
             raise HTTPException(status_code=400, detail="Daily limit is zero")
         raise HTTPException(status_code=400, detail=code)
@@ -1011,9 +1007,7 @@ async def api_telegram_upsert_rule(payload: Dict[str, Any]):
     telegram_full_name = payload.get("telegram_full_name")
     if telegram_user_id <= 0:
         raise HTTPException(status_code=400, detail="telegram_user_id is required")
-    if is_active and not folder_prefix:
-        raise HTTPException(status_code=400, detail="folder_prefix is required for active rule")
-    if not folder_prefix:
+    if not is_active and not folder_prefix:
         folder_prefix = "__disabled__"
     rule = await upsert_distribution_rule(
         telegram_user_id=telegram_user_id,

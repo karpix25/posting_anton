@@ -215,7 +215,7 @@
                       <td class="p-2 min-w-[260px]">
                         <button @click="openFolderPicker({ type: 'pending', requestId: item.id })" :disabled="tgFoldersLoading"
                           class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait">
-                          {{ tgFoldersLoading ? 'Папки загружаются...' : (getPendingEdit(item).folder_prefix || 'Выберите папку') }}
+                          {{ tgFoldersLoading ? 'Папки загружаются...' : (getPendingEdit(item).folder_prefix || 'Любая подходящая папка') }}
                         </button>
                         <div v-if="getPendingEdit(item).folder_prefix" class="text-xs mt-1"
                           :class="getFolderCheckClass(getPendingEdit(item).folder_prefix)">
@@ -283,7 +283,7 @@
                     <td class="p-2 min-w-[320px]">
 	                      <button @click="openFolderPicker({ type: 'rule', ruleId: rule.id })" :disabled="tgFoldersLoading"
 	                        class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait">
-	                        {{ tgFoldersLoading ? 'Папки загружаются...' : (getRuleEdit(rule).folder_prefix || 'Выберите папку') }}
+	                        {{ tgFoldersLoading ? 'Папки загружаются...' : (getRuleEdit(rule).folder_prefix || 'Любая подходящая папка') }}
 	                      </button>
                         <div v-if="tgFoldersError" class="text-xs mt-1 text-red-600">{{ tgFoldersError }}</div>
                       <div v-if="getRuleEdit(rule).folder_prefix" class="text-xs mt-1"
@@ -1192,6 +1192,7 @@
                 tgPendingEdits: {},
                 tgPendingUiState: {},
                 tgRequestActionState: {},
+                tgLastApproveError: '',
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
                 tgFolderPickerTarget: null,
@@ -2040,11 +2041,7 @@
                     daily_limit: dailyLimit,
                     is_active: !!edit.is_active,
                   };
-                  if (payload.is_active && !payload.folder_prefix) {
-                    if (!silent) alert('Выберите папку');
-                    return false;
-                  }
-                  if (payload.is_active) {
+                  if (payload.is_active && payload.folder_prefix) {
                     const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
                     if (!accessible) {
                       if (!silent) alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
@@ -2096,8 +2093,9 @@
 	                      return;
 	                    }
 	                  }
-		                const ok = await this.approveTelegramRequest(item, false);
-                  this.setRequestActionState(item.id, ok ? { status: 'approved', error: '' } : { status: 'error', error: 'Ошибка одобрения' });
+		                const ok = await this.approveTelegramRequest(item, false, null, { suppressNoVideosAlert: true });
+                  const errorText = this.tgLastApproveError.includes('Нет свободных видео') ? 'Нет свободных видео' : 'Ошибка одобрения';
+                  this.setRequestActionState(item.id, ok ? { status: 'approved', error: '' } : { status: 'error', error: errorText });
 		              },
                 setRequestActionState(requestId, patch) {
                   const current = this.tgRequestActionState[requestId] || { status: '', error: '' };
@@ -2216,15 +2214,12 @@
                     daily_limit: dailyLimit,
                     is_active: !!edit.is_active,
                   };
-                  if (payload.is_active && !payload.folder_prefix) {
-                    throw new Error('Для активного пользователя выберите папку');
-                  }
-                  return payload;
+	                  return payload;
                 },
 	              async saveRuleFromTable(rule, options = {}) {
 	                try {
                     const payload = this.buildRulePayload(rule);
-	                  if (payload.is_active) {
+                  if (payload.is_active && payload.folder_prefix) {
 	                    const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
 	                    if (!accessible) {
                         throw new Error('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
@@ -2352,11 +2347,7 @@
                     daily_limit: dailyLimit,
                     is_active: !!this.tgCurrentRequestForm.is_active,
                   };
-                  if (payload.is_active && !payload.folder_prefix) {
-                    alert('Выберите папку');
-                    return;
-                  }
-                  if (payload.is_active) {
+                  if (payload.is_active && payload.folder_prefix) {
                     const accessible = await this.ensureFolderAccessible(payload.folder_prefix);
                     if (!accessible) {
                       alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
@@ -2417,11 +2408,12 @@
                   return false;
                 }
               },
-              async approveTelegramRequest(item, useCurrentForm = false, formData = null, options = {}) {
-                let previousRule = null;
-                let createdRuleId = null;
-                let triedToSaveRule = false;
-                const reloadAfterSuccess = options.reloadAfterSuccess !== false;
+	              async approveTelegramRequest(item, useCurrentForm = false, formData = null, options = {}) {
+	                let previousRule = null;
+	                let createdRuleId = null;
+	                let triedToSaveRule = false;
+	                const reloadAfterSuccess = options.reloadAfterSuccess !== false;
+                  this.tgLastApproveError = '';
                 try {
                   if (useCurrentForm) {
                     const form = formData || this.tgCurrentRequestForm;
@@ -2431,11 +2423,7 @@
                       alert('Пользователь отключен. Одобрение недоступно.');
                       return false;
                     }
-                    if (isActive && !folderPrefix) {
-                      alert('Выберите папку для этой заявки');
-                      return false;
-                    }
-                    if (isActive) {
+                    if (isActive && folderPrefix) {
                       const accessible = await this.ensureFolderAccessible(folderPrefix);
                       if (!accessible) {
                         alert('Эта папка недоступна. Проверьте доступ на Яндекс.Диске или выберите другую.');
@@ -2486,21 +2474,24 @@
                     alert(`Заявка #${item.id} одобрена, но отправка в TG не удалась. Проверьте логи.`);
                   }
                   return true;
-                } catch (e) {
-                  const message = String(e?.message || e || 'approve failed');
-                  let rollbackOk = true;
+	                } catch (e) {
+	                  const message = String(e?.message || e || 'approve failed');
+                    this.tgLastApproveError = message;
+	                  let rollbackOk = true;
                   if (useCurrentForm && triedToSaveRule) {
                     rollbackOk = await this.rollbackRuleAfterApproveError(previousRule, createdRuleId);
                     await this.loadTelegramAdminData();
                   }
-                  if (message.includes('No available videos in assigned folder')) {
-                    if (rollbackOk) {
-                      alert('В выбранной папке сейчас нет свободных видео. Настройки откатил, правило не изменено.');
-                    } else {
-                      alert('В выбранной папке сейчас нет свободных видео. Но откат настроек не удался, проверьте правило вручную.');
-                    }
-                    return false;
-                  }
+	                  if (message.includes('No available videos in assigned folder') || message.includes('Нет свободных видео')) {
+                      if (!options.suppressNoVideosAlert) {
+	                      if (rollbackOk) {
+	                        alert('Сейчас нет свободных видео для выдачи. Попробуйте обновить Яндекс или выбрать другую папку.');
+	                      } else {
+	                        alert('Сейчас нет свободных видео для выдачи. Проверьте правило вручную.');
+	                      }
+                      }
+	                    return false;
+	                  }
                   alert(`Ошибка approve: ${message}`);
                   return false;
                 }

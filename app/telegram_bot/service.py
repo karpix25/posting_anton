@@ -765,12 +765,9 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
             return ApprovalResult(request=request, delivered=True)
 
         rule = await _get_active_distribution_rule(session, request.telegram_user_id)
-        if not rule:
-            raise LookupError("rule_not_found")
-        folder_prefix = _parse_folder_prefix_text(rule.folder_prefix)
-        if not folder_prefix:
-            raise ValueError("rule_folder_empty")
-        if rule.weekly_limit <= 0:
+        folder_prefix = _parse_folder_prefix_text(rule.folder_prefix) if rule else ()
+        daily_limit = int(rule.weekly_limit) if rule else 1
+        if daily_limit <= 0:
             raise ValueError("rule_daily_limit_zero")
 
         day_key = _current_day_key()
@@ -781,10 +778,10 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
         )
         daily_count_result = await session.execute(daily_count_stmt)
         daily_count = int(daily_count_result.scalar() or 0)
-        if daily_count >= int(rule.weekly_limit):
+        if daily_count >= daily_limit:
             raise ValueError("daily_limit_exceeded")
 
-        assigned = await _assign_video_to_request(session, request, folder_prefix, day_key, admin_user_id)
+        assigned = await _assign_video_to_request(session, request, folder_prefix or None, day_key, admin_user_id)
         if not assigned:
             raise LookupError("no_videos_for_rule")
 
@@ -919,7 +916,7 @@ async def _get_active_distribution_rule(
 async def _assign_video_to_request(
     session: AsyncSession,
     request: TelegramVideoRequest,
-    folder_prefix: tuple[str, ...],
+    folder_prefix: Optional[tuple[str, ...]],
     day_key: str,
     admin_user_id: int,
 ) -> bool:
@@ -940,7 +937,7 @@ async def _assign_video_to_request(
         for video in videos
         if video.get("path")
         and video["path"] not in used_paths
-        and _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix)
+        and (not folder_prefix or _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix))
         for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
         if matched_client
     ]
@@ -952,7 +949,7 @@ async def _assign_video_to_request(
         request.brand = client.name
         request.video_path = str(video["path"])
         request.video_name = str(video.get("name") or request.video_path.rsplit("/", 1)[-1])
-        request.assigned_folder_prefix = _format_folder_prefix(folder_prefix)
+        request.assigned_folder_prefix = _format_folder_prefix(folder_prefix) if folder_prefix else ""
         request.week_key = day_key
         request.approved_by = admin_user_id
         request.approved_at = datetime.utcnow()
