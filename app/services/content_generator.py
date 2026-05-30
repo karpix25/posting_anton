@@ -2,6 +2,7 @@ import openai
 from typing import Optional, List
 from app.config import settings
 from app.config import ClientConfig
+from app.services.generation_prompt_rules import build_cta_case_instruction
 
 class ContentGenerator:
     def __init__(self):
@@ -21,14 +22,14 @@ class ContentGenerator:
             print("[Generator] No client config provided.")
             return None
 
+        decoded_path = video_path # Decode if needed, Python usually handles strings unicode natively
         system_prompt = client_config.prompt
+        system_prompt += build_cta_case_instruction(system_prompt, decoded_path)
         
         if author_name:
              hashtag_author = author_name.replace(" ", "")
              system_prompt += f"\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by{hashtag_author} (для указания авторства)."
 
-        decoded_path = video_path # Decode if needed, Python usually handles strings unicode natively
-        
         user_prompt = f"Путь к файлу: {decoded_path}. Платформа: {platform}."
         
         if platform == 'youtube':

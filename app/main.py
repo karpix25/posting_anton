@@ -25,6 +25,7 @@ from app.services.yandex import yandex_service
 from app.utils import extract_theme, extract_brand, extract_author
 from app.logging_conf import setup_logging
 from app.services.dynamic_scheduler import dynamic_scheduler
+from app.services.config_db import get_db_config
 from app.services.platforms import upload_post_client
 from app.services.profile_status import (
     apply_webhook_event_to_profile,
@@ -44,6 +45,7 @@ from app.telegram_bot.service import (
     reject_video_request,
     upsert_distribution_rule,
 )
+from app.telegram_bot.video_inventory import load_folder_video_candidates
 
 app = FastAPI(title="Automation Dashboard API", version="2.0.0")
 
@@ -1038,11 +1040,17 @@ async def api_telegram_users(limit: int = 500):
 async def api_telegram_folders(prefix: str = ""):
     prefix_tuple = tuple(part.strip() for part in prefix.split("/") if part.strip())
     view = await get_video_folder_view(prefix_tuple)
+    async with async_session_maker() as session:
+        config = await get_db_config(session)
+        _, stats = await load_folder_video_candidates(session, config, prefix_tuple)
     return {
         "success": True,
         "prefix": list(view.prefix),
         "title": view.title,
-        "total_videos": view.total_videos,
+        "total_videos": stats.total_videos,
+        "reserved_videos": stats.reserved_videos,
+        "unmatched_client_videos": stats.unmatched_client_videos,
+        "available_videos": stats.available_videos,
         "children": [
             {
                 "name": child.name,

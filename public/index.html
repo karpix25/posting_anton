@@ -1841,6 +1841,7 @@
                 if (!status) return 'Папка не проверялась';
                 if (status.state === 'checking') return 'Проверяю доступ...';
                 if (status.state === 'ok') return `Доступ есть${status.note ? ` (${status.note})` : ''}`;
+                if (status.state === 'empty') return `Нет видео для выдачи${status.note ? ` (${status.note})` : ''}`;
                 return `Проблема с доступом: ${status.note || 'ошибка'}`;
               },
               getFolderCheckClass(path) {
@@ -1849,6 +1850,7 @@
                 if (!status) return 'text-gray-500';
                 if (status.state === 'checking') return 'text-blue-600';
                 if (status.state === 'ok') return 'text-green-600';
+                if (status.state === 'empty') return 'text-red-600';
                 return 'text-red-600';
               },
               async checkFolderAccess(path) {
@@ -1865,10 +1867,19 @@
                     throw new Error(err.detail || `HTTP ${res.status}`);
                   }
                   const data = await res.json();
-                  const note = data.total_videos ? `видео: ${data.total_videos}` : 'папка доступна';
+                  const total = Number(data.total_videos || 0);
+                  const available = Number(data.available_videos ?? total);
+                  const reserved = Number(data.reserved_videos || 0);
+                  const unmatched = Number(data.unmatched_client_videos || 0);
+                  const noteParts = [`свободных: ${available}`, `всего: ${total}`];
+                  if (reserved) noteParts.push(`занято: ${reserved}`);
+                  if (unmatched) noteParts.push(`без AI клиента: ${unmatched}`);
                   this.tgFolderChecks = {
                     ...this.tgFolderChecks,
-                    [normalized]: { state: 'ok', note }
+                    [normalized]: {
+                      state: available > 0 ? 'ok' : 'empty',
+                      note: noteParts.join(', ')
+                    }
                   };
                 } catch (e) {
                   this.tgFolderChecks = {
