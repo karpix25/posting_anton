@@ -15,6 +15,7 @@ from app.telegram_bot.keyboards import (
     parse_folder_callback_data,
     resolve_folder_token,
 )
+from app.telegram_bot.menu_state import message_menu_keyboard, user_menu_keyboard
 from app.telegram_bot.service import (
     STATUS_APPROVED,
     STATUS_PENDING_APPROVAL,
@@ -63,7 +64,7 @@ async def start(message: Message):
         "1) Нажмите «Подать заявку».\n"
         "2) Дождитесь подтверждения администратора и выдачи ролика.\n"
         "3) После публикации нажмите «Отправить ссылку» и пришлите ссылку(и).",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=await user_menu_keyboard(message.from_user.id),
     )
 
 
@@ -85,7 +86,7 @@ async def report(message: Message):
         f"Запрошено видео: {stats['requested']}\n"
         f"Отчитано ссылками: {stats['reported']}\n"
         f"Ожидает отчета: {pending}",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=await user_menu_keyboard(message.from_user.id),
     )
 
 
@@ -128,10 +129,10 @@ async def cancel(message: Message):
     if cancelled:
         await message.answer(
             "Текущая заявка/выдача отменена. Можно подать новую заявку.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("idle"),
         )
     else:
-        await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=main_menu_keyboard())
+        await message.answer("У вас нет видео, ожидающего отчета.", reply_markup=await user_menu_keyboard(message.from_user.id))
 
 
 @router.message(Command("request"))
@@ -190,8 +191,8 @@ async def select_folder_video(callback: CallbackQuery):
 
 
 async def send_brand_video(message: Message, user, brand: str):
-    brands = await list_brands() if _is_admin(message.from_user.id) else []
-    await message.answer(f"⏳ Подбираю видео для {brand}…", reply_markup=main_menu_keyboard())
+    brands = await list_brands() if _is_admin(user.id) else []
+    await message.answer(f"⏳ Подбираю видео для {brand}…", reply_markup=await user_menu_keyboard(user.id))
 
     try:
         prepared = await prepare_random_video(
@@ -232,14 +233,14 @@ async def send_brand_video(message: Message, user, brand: str):
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
         "Опубликуйте видео, нажмите «Отправить ссылку» и пришлите ссылку(и): YouTube / Instagram / TikTok.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_keyboard("report"),
     )
     await message.answer("Можете сразу выбрать следующее видео:", reply_markup=brands_keyboard(brands))
 
 
 async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ...]):
     label = " / ".join(folder_prefix)
-    await message.answer(f"⏳ Подбираю видео из папки: {label}", reply_markup=main_menu_keyboard())
+    await message.answer(f"⏳ Подбираю видео из папки: {label}", reply_markup=await user_menu_keyboard(user.id))
 
     try:
         prepared = await prepare_random_video_from_folder(
@@ -285,7 +286,7 @@ async def send_prepared_video(message: Message, prepared):
     await message.answer(f"<pre>{escape(request.youtube_description or '')}</pre>")
     await message.answer(
         "Опубликуйте видео, нажмите «Отправить ссылку» и пришлите ссылку(и): YouTube / Instagram / TikTok.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_keyboard("report"),
     )
 
 
@@ -307,17 +308,23 @@ async def handle_text(message: Message):
     if message.text == "Отправить ссылку":
         pending = await get_pending_request(message.from_user.id)
         if not pending:
-            await message.answer("Сейчас нет выданного ролика, для которого нужен отчет.", reply_markup=main_menu_keyboard())
+            await message.answer(
+                "Сейчас нет выданного ролика, для которого нужен отчет.",
+                reply_markup=await user_menu_keyboard(message.from_user.id),
+            )
             return
         _awaiting_report_link_users.add(message.from_user.id)
         await message.answer(
             "Пришлите одну или несколько ссылок на публикации.\n"
             "Можно сразу в одном сообщении: YouTube, Instagram, TikTok.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("report"),
         )
         return
     if message.text == "Структура":
-        await message.answer("Сейчас выдача через заявки. Нажмите «Подать заявку».")
+        await message.answer(
+            "Сейчас выдача идет через заявки.",
+            reply_markup=await user_menu_keyboard(message.from_user.id),
+        )
         return
     if message.text in brands and _is_admin(message.from_user.id):
         await send_brand_video(message, message.from_user, message.text)
@@ -327,19 +334,28 @@ async def handle_text(message: Message):
     if not pending:
         open_request = await get_open_request(message.from_user.id)
         if open_request and open_request.status == STATUS_PENDING_APPROVAL:
-            await message.answer("Заявка уже в очереди на подтверждение администратора.", reply_markup=main_menu_keyboard())
+            await message.answer(
+                "Заявка уже в очереди на подтверждение администратора.",
+                reply_markup=main_menu_keyboard("pending"),
+            )
             return
         if open_request and open_request.status == STATUS_APPROVED:
-            await message.answer("Заявка одобрена. Отправка ролика уже запущена, подождите немного.", reply_markup=main_menu_keyboard())
+            await message.answer(
+                "Заявка одобрена. Отправка ролика уже запущена, подождите немного.",
+                reply_markup=main_menu_keyboard("pending"),
+            )
             return
-        await message.answer("Нажмите «Подать заявку», чтобы получить следующий ролик.", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "Нажмите «Подать заявку», чтобы получить следующий ролик.",
+            reply_markup=main_menu_keyboard("idle"),
+        )
         return
 
     user_id = message.from_user.id
     if user_id not in _awaiting_report_link_users:
         await message.answer(
             "Чтобы отправить отчет, сначала нажмите кнопку «Отправить ссылку».",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("report"),
         )
         return
 
@@ -348,7 +364,7 @@ async def handle_text(message: Message):
         await message.answer(
             "Не нашел корректных ссылок YouTube / Instagram / TikTok. "
             "Пришлите ссылку(и) в формате https://...",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("report"),
         )
         return
 
@@ -363,13 +379,13 @@ async def handle_text(message: Message):
     if request.status == "archived":
         await message.answer(
             f"Спасибо, отчет принят ({accepted}). Видео перенесено в папку опубликовано.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("idle"),
         )
     else:
         await message.answer(
             f"Спасибо, отчет принят ({accepted}). Видео помечено как опубликованное, но перенос на Яндекс.Диске не удался. "
             "Администратор сможет проверить ошибку в логах.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=main_menu_keyboard("idle"),
         )
 
 
@@ -388,19 +404,28 @@ async def submit_request(message: Message):
     except RuntimeError:
         open_request = await get_open_request(message.from_user.id)
         if open_request and open_request.status == STATUS_PENDING_APPROVAL:
-            await message.answer("Заявка уже создана и ждет подтверждения администратора.", reply_markup=main_menu_keyboard())
+            await message.answer(
+                "Заявка уже создана и ждет подтверждения администратора.",
+                reply_markup=main_menu_keyboard("pending"),
+            )
             return
-        await message.answer("У вас уже есть активная заявка или выданный ролик. Сначала завершите текущий процесс.", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "У вас уже есть активная заявка или выданный ролик. Сначала завершите текущий процесс.",
+            reply_markup=await user_menu_keyboard(message.from_user.id),
+        )
         return
     except Exception:
         logger.exception("Failed to submit Telegram video request")
-        await message.answer("Не удалось создать заявку. Уже проверяю проблему в логах.", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "Не удалось создать заявку. Уже проверяю проблему в логах.",
+            reply_markup=await user_menu_keyboard(message.from_user.id),
+        )
         return
 
     await message.answer(
         f"✅ Заявка #{request.id} принята.\n"
         "Передал администратору на подтверждение. Как только одобрит, пришлю ролик и описание.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_keyboard("pending"),
     )
 
 
@@ -411,12 +436,12 @@ async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page
         logger.exception("Failed to build Telegram folder navigation")
         await message.answer(
             "Сейчас не удалось загрузить список папок с Яндекс.Диска. Уже проверяю проблему в логах.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=await message_menu_keyboard(message),
         )
         return
 
     if not view.children and not view.total_videos:
-        await message.answer("В этой папке пока нет видео.", reply_markup=main_menu_keyboard())
+        await message.answer("В этой папке пока нет видео.", reply_markup=await message_menu_keyboard(message))
         return
 
     if view.prefix:
@@ -444,16 +469,19 @@ async def send_folder_navigation(message: Message, prefix: tuple[str, ...], page
 
 
 async def send_inventory(message: Message):
-    await message.answer("Сканирую структуру видео на диске...", reply_markup=main_menu_keyboard())
+    await message.answer("Сканирую структуру видео на диске...", reply_markup=await message_menu_keyboard(message))
     try:
         text = await build_video_inventory_text()
     except Exception:
         logger.exception("Failed to build Telegram video inventory")
-        await message.answer("Не удалось собрать структуру видео. Уже проверяю проблему в логах.", reply_markup=main_menu_keyboard())
+        await message.answer(
+            "Не удалось собрать структуру видео. Уже проверяю проблему в логах.",
+            reply_markup=await message_menu_keyboard(message),
+        )
         return
 
     for chunk in split_telegram_text(text):
-        await message.answer(f"<pre>{escape(chunk)}</pre>", reply_markup=main_menu_keyboard())
+        await message.answer(f"<pre>{escape(chunk)}</pre>", reply_markup=await message_menu_keyboard(message))
 
 
 def split_telegram_text(text: str, limit: int = 3500) -> list[str]:

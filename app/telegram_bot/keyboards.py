@@ -135,19 +135,32 @@ def folder_navigation_keyboard(view, page: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    rows = [[
-        KeyboardButton(text="Подать заявку", style="success"),
-        KeyboardButton(text="Мой отчет", style="primary"),
-    ], [
-        KeyboardButton(text="Отправить ссылку", style="primary"),
-    ], [
-        KeyboardButton(text="Отменить", style="danger"),
-    ]]
+def main_menu_keyboard(state: str = "idle") -> ReplyKeyboardMarkup:
+    if state == "pending":
+        rows = [[
+            KeyboardButton(text="Мой отчет", style="primary"),
+        ], [
+            KeyboardButton(text="Отменить", style="danger"),
+        ]]
+        placeholder = "Заявка ожидает подтверждения администратора"
+    elif state == "report":
+        rows = [[
+            KeyboardButton(text="Отправить ссылку", style="primary"),
+            KeyboardButton(text="Мой отчет", style="primary"),
+        ], [
+            KeyboardButton(text="Отменить", style="danger"),
+        ]]
+        placeholder = "Пришлите ссылку на публикацию или выберите действие"
+    else:
+        rows = [[
+            KeyboardButton(text="Подать заявку", style="success"),
+            KeyboardButton(text="Мой отчет", style="primary"),
+        ]]
+        placeholder = "Пришлите ссылку YouTube или выберите действие"
 
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Пришлите ссылку YouTube или выберите действие",
+        input_field_placeholder=placeholder,
     )
