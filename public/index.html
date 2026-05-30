@@ -230,10 +230,17 @@
                         <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
                       </td>
 	                    <td class="p-2 text-right whitespace-nowrap">
+                        <span v-if="getRequestActionText(item.id)" :class="['mr-3 text-xs px-2 py-1 rounded', getRequestActionClass(item.id)]">
+                          {{ getRequestActionText(item.id) }}
+                        </span>
 	                      <button
 	                        @click="approvePendingRow(item)"
-	                        class="text-green-700 hover:underline mr-3">Одобрить</button>
-	                      <button @click="rejectTelegramRequest(item)" class="text-red-600 hover:underline">Отклонить</button>
+                          :disabled="isRequestActionBusy(item.id)"
+	                        class="text-green-700 hover:underline disabled:opacity-50 disabled:cursor-wait mr-3">
+                          {{ getRequestActionState(item.id).status === 'approving' ? 'Одобряю...' : 'Одобрить' }}
+                        </button>
+	                      <button @click="rejectTelegramRequest(item)" :disabled="isRequestActionBusy(item.id)"
+                          class="text-red-600 hover:underline disabled:opacity-50 disabled:cursor-wait">Отклонить</button>
 	                    </td>
                   </tr>
                   <tr v-if="tgPendingRequests.length === 0">
@@ -1184,6 +1191,7 @@
                 tgRuleAbortControllers: {},
                 tgPendingEdits: {},
                 tgPendingUiState: {},
+                tgRequestActionState: {},
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
                 tgFolderPickerTarget: null,
@@ -1740,10 +1748,11 @@
                   this.tgUsersPage = 1;
                   this.tgRulesPage = 1;
                   this.tgHistoryPage = 1;
-                  this.initRuleEdits();
-	                  this.initPendingEdits();
-	                  this.tgPendingUiState = {};
-	                  this.syncCurrentPendingForm();
+	                  this.initRuleEdits();
+		                  this.initPendingEdits();
+		                  this.tgPendingUiState = {};
+                    this.tgRequestActionState = {};
+		                  this.syncCurrentPendingForm();
 	                  await this.loadTelegramFoldersInBackground(forceFolders);
                     this.setReadiness('telegram', 'ready');
                 })();
@@ -2064,28 +2073,61 @@
                 }
               },
 	              async approvePendingRow(item) {
-                  const pendingEdit = this.getPendingEdit(item);
-                  if (!pendingEdit.is_active) {
-                    alert('Пользователь отключен. Включите его или отклоните заявку.');
-                    return;
-                  }
-                  const pendingSaved = await this.savePendingRule(item, true);
-                  if (!pendingSaved) {
-                    alert('Сначала выберите доступную папку и сохраните настройки пользователя.');
-                    return;
-                  }
+                  this.setRequestActionState(item.id, { status: 'approving', error: '' });
+	                  const pendingEdit = this.getPendingEdit(item);
+	                  if (!pendingEdit.is_active) {
+                    this.setRequestActionState(item.id, { status: 'error', error: 'Пользователь отключен' });
+	                    alert('Пользователь отключен. Включите его или отклоните заявку.');
+	                    return;
+	                  }
+	                  const pendingSaved = await this.savePendingRule(item, true);
+	                  if (!pendingSaved) {
+                    this.setRequestActionState(item.id, { status: 'error', error: 'Настройки не сохранены' });
+	                    alert('Сначала выберите доступную папку и сохраните настройки пользователя.');
+	                    return;
+	                  }
                   const rule = this.tgRules.find(row => Number(row.telegram_user_id) === Number(item.telegram_user_id));
                   const saveState = rule ? this.tgRuleSaveState[rule.id] : null;
                   if (rule && saveState && ['dirty', 'saving', 'error'].includes(saveState.status)) {
-                    const saved = await this.saveRuleFromTable(rule, { silent: true, reload: false });
-                    if (!saved) {
-                      alert('Сначала исправьте и сохраните настройки пользователя.');
-                      return;
-                    }
-                  }
-	                await this.approveTelegramRequest(item, false);
-	              },
-              isPendingApprovedUi(item) {
+	                    const saved = await this.saveRuleFromTable(rule, { silent: true, reload: false });
+	                    if (!saved) {
+                        this.setRequestActionState(item.id, { status: 'error', error: 'Настройки не сохранены' });
+	                      alert('Сначала исправьте и сохраните настройки пользователя.');
+	                      return;
+	                    }
+	                  }
+		                const ok = await this.approveTelegramRequest(item, false);
+                  this.setRequestActionState(item.id, ok ? { status: 'approved', error: '' } : { status: 'error', error: 'Ошибка одобрения' });
+		              },
+                setRequestActionState(requestId, patch) {
+                  const current = this.tgRequestActionState[requestId] || { status: '', error: '' };
+                  this.tgRequestActionState = {
+                    ...this.tgRequestActionState,
+                    [requestId]: { ...current, ...patch }
+                  };
+                },
+                getRequestActionState(requestId) {
+                  return this.tgRequestActionState[requestId] || { status: '', error: '' };
+                },
+                isRequestActionBusy(requestId) {
+                  return ['approving', 'rejecting'].includes(this.getRequestActionState(requestId).status);
+                },
+                getRequestActionText(requestId) {
+                  const state = this.getRequestActionState(requestId);
+                  if (state.status === 'approving') return 'Одобряю...';
+                  if (state.status === 'rejecting') return 'Отклоняю...';
+                  if (state.status === 'approved') return 'Одобрено';
+                  if (state.status === 'error') return state.error || 'Ошибка';
+                  return '';
+                },
+                getRequestActionClass(requestId) {
+                  const state = this.getRequestActionState(requestId);
+                  if (['approving', 'rejecting'].includes(state.status)) return 'bg-blue-50 text-blue-700';
+                  if (state.status === 'approved') return 'bg-emerald-50 text-emerald-700';
+                  if (state.status === 'error') return 'bg-red-50 text-red-700';
+                  return 'bg-gray-50 text-gray-600';
+                },
+	              isPendingApprovedUi(item) {
                 return !!this.tgPendingUiState[item.id]?.approved || String(item.status || '').toLowerCase() !== 'pending_approval';
               },
               async deleteTelegramRequest(item) {
@@ -2463,9 +2505,10 @@
                   return false;
                 }
               },
-              async rejectTelegramRequest(item) {
-                const reason = prompt('Причина отклонения (опционально):', '') || '';
-                try {
+	              async rejectTelegramRequest(item) {
+	                const reason = prompt('Причина отклонения (опционально):', '') || '';
+                  this.setRequestActionState(item.id, { status: 'rejecting', error: '' });
+	                try {
                   const res = await fetch(`/api/telegram/requests/${item.id}/reject`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2474,12 +2517,13 @@
                   if (!res.ok) {
                     const err = await res.json();
                     throw new Error(err.detail || 'reject failed');
-                  }
-                  await this.loadTelegramAdminData();
-                } catch (e) {
-                  alert(`Ошибка reject: ${e.message || e}`);
-                }
-              },
+	                  }
+	                  await this.loadTelegramAdminData();
+	                } catch (e) {
+                    this.setRequestActionState(item.id, { status: 'error', error: e.message || String(e) });
+	                  alert(`Ошибка reject: ${e.message || e}`);
+	                }
+	              },
               async loadConfig() {
                 this.loading = true;
                 this.setReadiness('config', 'loading');
