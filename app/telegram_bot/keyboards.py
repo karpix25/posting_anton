@@ -7,6 +7,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 BRAND_CALLBACK_PREFIX = "brand:"
 FOLDER_CALLBACK_PREFIX = "folder:"
 FOLDER_VIDEO_CALLBACK_PREFIX = "folder_video:"
+ACTION_CALLBACK_PREFIX = "action:"
+ACTION_REQUEST = f"{ACTION_CALLBACK_PREFIX}request"
+ACTION_REPORT = f"{ACTION_CALLBACK_PREFIX}report"
+ACTION_MY_REPORT = f"{ACTION_CALLBACK_PREFIX}my_report"
+ACTION_CANCEL = f"{ACTION_CALLBACK_PREFIX}cancel"
 BRAND_BUTTON_STYLES = ("primary", "success")
 FOLDER_PAGE_SIZE = 20
 _FOLDER_TOKEN_CACHE: dict[str, tuple[str, ...]] = {"root": ()}
@@ -131,6 +136,28 @@ def folder_navigation_keyboard(view, page: int = 0) -> InlineKeyboardMarkup:
                 style="primary",
             ),
         ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def action_inline_keyboard(state: str = "idle") -> InlineKeyboardMarkup:
+    if state == "pending":
+        rows = [[
+            InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
+            InlineKeyboardButton(text="Отменить", callback_data=ACTION_CANCEL, style="danger"),
+        ]]
+    elif state == "report":
+        rows = [[
+            InlineKeyboardButton(text="Отправить ссылку", callback_data=ACTION_REPORT, style="primary"),
+            InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
+        ], [
+            InlineKeyboardButton(text="Отменить", callback_data=ACTION_CANCEL, style="danger"),
+        ]]
+    else:
+        rows = [[
+            InlineKeyboardButton(text="Подать заявку", callback_data=ACTION_REQUEST, style="success"),
+            InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
+        ]]
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

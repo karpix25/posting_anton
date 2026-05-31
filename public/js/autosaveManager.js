@@ -59,6 +59,9 @@
           try {
             const result = await save(valueToSave, meta || {});
             if (currentRequestId !== requestId || savedChangeId !== changeId) {
+              if (currentRequestId === requestId && savedChangeId !== changeId && timer) {
+                emit({ status: 'dirty', saving: false, dirty: true, error: '' });
+              }
               resolve(Object.assign({}, state));
               return;
             }

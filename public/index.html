@@ -1331,7 +1331,7 @@
                 return this.tgRequests.filter(item => String(item.status || '').toLowerCase() === 'pending_approval');
               },
               tgHistoryRequests() {
-                return this.tgRequests.filter(item => ['rejected', 'cancelled'].includes(String(item.status || '').toLowerCase()));
+                return this.tgRequests.filter(item => String(item.status || '').toLowerCase() !== 'pending_approval');
               },
               tgPendingTotalPages() {
                 return Math.max(1, Math.ceil((this.tgPendingRequests || []).length / this.tgPageSize));
@@ -1504,7 +1504,7 @@
                   this.readiness = state;
                 });
                 this.configAutosave = window.AppAutosave.createAutosaveManager({
-                  debounceMs: 1000,
+                  debounceMs: 1800,
                   save: (value) => this.persistConfig(value),
                   onStateChange: (state) => {
                     this.configSaveState = state;

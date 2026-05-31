@@ -14,6 +14,7 @@ from typing import Optional
 import httpx
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy import case, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,7 @@ from app.services.config_db import get_db_config, get_yandex_folders
 from app.services.content_generator import content_generator
 from app.services.scheduler import ContentScheduler
 from app.services.yandex import yandex_service
-from app.telegram_bot.keyboards import main_menu_keyboard
+from app.telegram_bot.keyboards import action_inline_keyboard
 from app.utils import extract_author
 
 logger = logging.getLogger(__name__)
@@ -851,6 +852,7 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
         await bot.send_message(
             request.telegram_user_id,
             "✅ Заявка одобрена. Отправляю ролик и описание.",
+            reply_markup=ReplyKeyboardRemove(),
         )
         await bot.send_message(
             request.telegram_user_id,
@@ -870,7 +872,7 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
         await bot.send_message(
             request.telegram_user_id,
             "После публикации нажмите кнопку «Отправить ссылку» и пришлите сюда ссылку(и): YouTube / Instagram / TikTok.",
-            reply_markup=main_menu_keyboard("report"),
+            reply_markup=action_inline_keyboard("report"),
         )
     except TelegramBadRequest as exc:
         logger.exception("[TelegramApproval] Telegram send failed for request=%s", request_id)
