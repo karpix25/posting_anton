@@ -27,12 +27,14 @@ from app.telegram_bot.service import (
     STATUS_PENDING_APPROVAL,
     accept_publication_report,
     admin_report,
+    approve_video_request,
     build_video_inventory_text,
     cancel_pending_request,
     extract_supported_publication_links,
     get_open_request,
     get_video_folder_view,
     get_pending_request,
+    has_active_distribution_rule,
     list_brands,
     prepare_random_video,
     prepare_random_video_from_folder,
@@ -442,6 +444,49 @@ async def submit_request(message: Message):
     await submit_request_for_user(message, message.from_user)
 
 
+async def _try_auto_approve_request(message: Message, user, request) -> bool:
+    if not await has_active_distribution_rule(user.id):
+        return False
+
+    try:
+        approval = await approve_video_request(request.id, admin_user_id=0)
+    except LookupError as exc:
+        if str(exc) == "no_videos_for_rule":
+            await cancel_pending_request(user.id)
+            await message.answer(
+                "Вы уже одобрены, но сейчас нет доступного ролика в вашей папке. "
+                "Повторную заявку в очередь не ставлю.",
+                reply_markup=await user_action_keyboard(user.id),
+            )
+            return True
+        logger.exception("Failed to auto-approve Telegram video request")
+        return False
+    except ValueError as exc:
+        await cancel_pending_request(user.id)
+        if str(exc) == "daily_limit_exceeded":
+            text = "Вы уже получили ролик на сегодня. Повторную заявку в очередь не ставлю."
+        else:
+            text = "Вы уже одобрены, но сейчас ролик выдать нельзя. Повторную заявку в очередь не ставлю."
+        await message.answer(text, reply_markup=await user_action_keyboard(user.id))
+        return True
+    except Exception:
+        logger.exception("Failed to auto-approve Telegram video request")
+        return False
+
+    if approval.delivered:
+        await message.answer(
+            f"✅ Заявка #{request.id} одобрена автоматически. Ролик и описание уже отправлены.",
+            reply_markup=await user_action_keyboard(user.id),
+        )
+    else:
+        await message.answer(
+            f"✅ Заявка #{request.id} одобрена автоматически, но отправка ролика не завершилась. "
+            "Администратор проверит логи.",
+            reply_markup=await user_action_keyboard(user.id),
+        )
+    return True
+
+
 async def submit_request_for_user(message: Message, user):
     try:
         request = await submit_video_request(
@@ -454,6 +499,8 @@ async def submit_request_for_user(message: Message, user):
     except RuntimeError:
         open_request = await get_open_request(user.id)
         if open_request and open_request.status == STATUS_PENDING_APPROVAL:
+            if await _try_auto_approve_request(message, user, open_request):
+                return
             await message.answer(
                 "Заявка уже создана и ждет подтверждения администратора.",
                 reply_markup=action_inline_keyboard("pending"),
@@ -470,6 +517,9 @@ async def submit_request_for_user(message: Message, user):
             "Не удалось создать заявку. Уже проверяю проблему в логах.",
             reply_markup=await user_action_keyboard(user.id),
         )
+        return
+
+    if await _try_auto_approve_request(message, user, request):
         return
 
     await message.answer(

@@ -177,6 +177,17 @@ def _short_youtube_title_from_text(text: str) -> str:
     return title[:97].rstrip() + "..." if len(title) > 100 else title
 
 
+def _active_rule_exists_for_request():
+    return (
+        select(TelegramDistributionRule.id)
+        .where(
+            TelegramDistributionRule.telegram_user_id == TelegramVideoRequest.telegram_user_id,
+            TelegramDistributionRule.is_active.is_(True),
+        )
+        .exists()
+    )
+
+
 def parse_youtube_text(generated: str) -> tuple[str, str]:
     text = (generated or "").strip()
     if not text:
@@ -561,12 +572,19 @@ async def submit_video_request(
         return request
 
 
+async def has_active_distribution_rule(telegram_user_id: int) -> bool:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        return await _get_active_distribution_rule(session, telegram_user_id) is not None
+
+
 async def list_pending_approval_requests(limit: int = 200) -> list[dict]:
     async with async_session_maker() as session:
         await ensure_telegram_schema(session)
         stmt = (
             select(TelegramVideoRequest)
             .where(TelegramVideoRequest.status == STATUS_PENDING_APPROVAL)
+            .where(~_active_rule_exists_for_request())
             .order_by(TelegramVideoRequest.requested_at.asc())
             .limit(max(1, min(limit, 1000)))
         )
@@ -591,6 +609,11 @@ async def list_video_requests(limit: int = 200, status: Optional[str] = None) ->
         stmt = select(TelegramVideoRequest)
         if status:
             stmt = stmt.where(TelegramVideoRequest.status == status)
+        if not status or status == STATUS_PENDING_APPROVAL:
+            stmt = stmt.where(
+                (TelegramVideoRequest.status != STATUS_PENDING_APPROVAL)
+                | (~_active_rule_exists_for_request())
+            )
         stmt = stmt.order_by(TelegramVideoRequest.requested_at.desc()).limit(max(1, min(limit, 2000)))
         result = await session.execute(stmt)
         rows = result.scalars().all()
