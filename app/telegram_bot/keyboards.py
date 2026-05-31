@@ -144,14 +144,11 @@ def action_inline_keyboard(state: str = "idle") -> InlineKeyboardMarkup:
     if state == "pending":
         rows = [[
             InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
-            InlineKeyboardButton(text="Отменить", callback_data=ACTION_CANCEL, style="danger"),
         ]]
     elif state == "report":
         rows = [[
             InlineKeyboardButton(text="Отправить ссылку", callback_data=ACTION_REPORT, style="primary"),
             InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
-        ], [
-            InlineKeyboardButton(text="Отменить", callback_data=ACTION_CANCEL, style="danger"),
         ]]
     else:
         rows = [[
@@ -166,16 +163,12 @@ def main_menu_keyboard(state: str = "idle") -> ReplyKeyboardMarkup:
     if state == "pending":
         rows = [[
             KeyboardButton(text="Мой отчет", style="primary"),
-        ], [
-            KeyboardButton(text="Отменить", style="danger"),
         ]]
         placeholder = "Заявка ожидает подтверждения администратора"
     elif state == "report":
         rows = [[
             KeyboardButton(text="Отправить ссылку", style="primary"),
             KeyboardButton(text="Мой отчет", style="primary"),
-        ], [
-            KeyboardButton(text="Отменить", style="danger"),
         ]]
         placeholder = "Пришлите ссылку на публикацию или выберите действие"
     else:

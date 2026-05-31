@@ -159,22 +159,10 @@ async def inventory(message: Message):
 async def cancel(message: Message):
     if not message.from_user:
         return
-    await cancel_for_user(message, message.from_user.id)
-
-
-async def cancel_for_user(message: Message, telegram_user_id: int):
-    cancelled = await cancel_pending_request(telegram_user_id)
-    _awaiting_report_link_users.discard(telegram_user_id)
-    if cancelled:
-        await message.answer(
-            "Текущая заявка/выдача отменена. Можно подать новую заявку.",
-            reply_markup=action_inline_keyboard("idle"),
-        )
-    else:
-        await message.answer(
-            "У вас нет видео, ожидающего отчета.",
-            reply_markup=await user_action_keyboard(telegram_user_id),
-        )
+    await message.answer(
+        "Отмена заявки пользователем отключена. Если нужно изменить выдачу, напишите администратору.",
+        reply_markup=await user_action_keyboard(message.from_user.id),
+    )
 
 
 @router.message(Command("request"))
@@ -192,7 +180,10 @@ async def handle_action_callback(callback: CallbackQuery):
         await send_user_report(callback.message, callback.from_user)
         return
     if callback.data == ACTION_CANCEL:
-        await cancel_for_user(callback.message, callback.from_user.id)
+        await callback.message.answer(
+            "Отмена заявки пользователем отключена. Если нужно изменить выдачу, напишите администратору.",
+            reply_markup=await user_action_keyboard(callback.from_user.id),
+        )
         return
     if callback.data == ACTION_REPORT:
         await send_report_prompt(callback.message, callback.from_user.id)
@@ -269,8 +260,7 @@ async def send_brand_video(message: Message, user, brand: str):
             pending = await get_pending_request(user.id)
             name = pending.video_name if pending else "предыдущее видео"
             await message.answer(
-                f"Сначала пришлите ссылку на уже выданное видео: {name}\n"
-                "Если это видео больше не нужно, нажмите «Отменить»."
+                f"Сначала пришлите ссылку на уже выданное видео: {name}."
             )
             return
         raise
@@ -317,8 +307,7 @@ async def send_folder_video(message: Message, user, folder_prefix: tuple[str, ..
             pending = await get_pending_request(user.id)
             name = pending.video_name if pending else "предыдущее видео"
             await message.answer(
-                f"Сначала пришлите ссылку на уже выданное видео: {name}\n"
-                "Если это видео больше не нужно, нажмите «Отменить»."
+                f"Сначала пришлите ссылку на уже выданное видео: {name}."
             )
             return
         raise
@@ -364,7 +353,10 @@ async def handle_text(message: Message):
         await submit_request(message)
         return
     if message.text == "Отменить":
-        await cancel(message)
+        await message.answer(
+            "Отмена заявки пользователем отключена. Если нужно изменить выдачу, напишите администратору.",
+            reply_markup=await user_action_keyboard(message.from_user.id),
+        )
         return
     if message.text == "Отправить ссылку":
         await send_report_prompt(message, message.from_user.id)
