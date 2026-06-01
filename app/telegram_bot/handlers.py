@@ -25,6 +25,7 @@ from app.telegram_bot.menu_state import message_menu_keyboard, user_action_keybo
 from app.telegram_bot.service import (
     STATUS_APPROVED,
     STATUS_PENDING_APPROVAL,
+    STATUS_SENT,
     accept_publication_report,
     admin_report,
     approve_video_request,
@@ -277,6 +278,7 @@ async def send_brand_video(message: Message, user, brand: str):
         "Ссылка на ролик:\n"
         f"{prepared.download_link}"
     )
+    await send_video_file_name(message, request)
 
     await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
@@ -329,6 +331,7 @@ async def send_prepared_video(message: Message, prepared):
         "Ссылка на ролик:\n"
         f"{prepared.download_link}"
     )
+    await send_video_file_name(message, request)
 
     await message.answer("Заголовок для YouTube:")
     await message.answer(f"<code>{escape(request.youtube_title or '')}</code>")
@@ -338,6 +341,13 @@ async def send_prepared_video(message: Message, prepared):
         "Опубликуйте видео, нажмите «Отправить ссылку» и пришлите ссылку(и): YouTube / Instagram / TikTok.",
         reply_markup=action_inline_keyboard("report"),
     )
+
+
+async def send_video_file_name(message: Message, request):
+    file_name = request.video_name or request.video_path or ""
+    if not file_name:
+        return
+    await message.answer(f"Файл:\n<code>{escape(file_name)}</code>")
 
 
 @router.message(F.text)
@@ -414,7 +424,16 @@ async def handle_text(message: Message):
         for platform in ("youtube", "instagram", "tiktok")
         if platform in links
     )
-    request = await accept_publication_report(message.from_user.id, serialized_links)
+    try:
+        request = await accept_publication_report(message.from_user.id, serialized_links)
+    except ValueError as exc:
+        if str(exc) == "duplicate_publication_url":
+            await message.answer(
+                "Такую ссылку уже присылали в отчете. Пришлите ссылку на новую публикацию.",
+                reply_markup=action_inline_keyboard("report"),
+            )
+            return
+        raise
     _awaiting_report_link_users.discard(user_id)
     accepted = ", ".join(platform for platform in ("youtube", "instagram", "tiktok") if platform in links)
     if request.status == "archived":
@@ -461,6 +480,15 @@ async def _try_auto_approve_request(message: Message, user, request) -> bool:
             text = "Вы уже одобрены, но сейчас ролик выдать нельзя. Повторную заявку в очередь не ставлю."
         await message.answer(text, reply_markup=await user_action_keyboard(user.id))
         return True
+    except RuntimeError as exc:
+        if str(exc) == "pending_report":
+            await message.answer(
+                "Сначала пришлите отчет по предыдущему ролику. Новый ролик выдам после отчета.",
+                reply_markup=action_inline_keyboard("report"),
+            )
+            return True
+        logger.exception("Failed to auto-approve Telegram video request")
+        return False
     except Exception:
         logger.exception("Failed to auto-approve Telegram video request")
         return False
@@ -496,6 +524,12 @@ async def submit_request_for_user(message: Message, user):
             await message.answer(
                 "Заявка уже создана и ждет подтверждения администратора.",
                 reply_markup=action_inline_keyboard("pending"),
+            )
+            return
+        if open_request and open_request.status == STATUS_SENT:
+            await message.answer(
+                "Сначала пришлите отчет по предыдущему ролику. Новый ролик выдам после отчета.",
+                reply_markup=action_inline_keyboard("report"),
             )
             return
         await message.answer(

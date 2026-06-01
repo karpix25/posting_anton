@@ -957,6 +957,10 @@ async def api_telegram_approve_request(request_id: int, payload: Dict[str, Any] 
         if code in {"rule_weekly_limit_zero", "rule_daily_limit_zero"}:
             raise HTTPException(status_code=400, detail="Daily limit is zero")
         raise HTTPException(status_code=400, detail=code)
+    except RuntimeError as exc:
+        if str(exc) == "pending_report":
+            raise HTTPException(status_code=409, detail="Пользователь еще не прислал отчет по предыдущему ролику.")
+        raise
 
     row = result.request
     return {

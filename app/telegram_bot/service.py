@@ -10,6 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from aiogram import Bot
@@ -244,6 +245,40 @@ def extract_supported_publication_links(text: str) -> dict[str, str]:
             links["tiktok"] = candidate
             continue
     return links
+
+
+def _canonical_publication_url(url: str) -> str:
+    parsed = urlsplit((url or "").strip())
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    path = parsed.path.rstrip("/")
+
+    if host in {"youtu.be", "m.youtube.com", "youtube.com"}:
+        if host == "youtu.be":
+            video_id = path.strip("/").split("/", 1)[0]
+        elif path.startswith("/shorts/"):
+            video_id = path.split("/")[2] if len(path.split("/")) > 2 else ""
+        else:
+            video_id = parse_qs(parsed.query).get("v", [""])[0]
+        return f"youtube:{video_id}" if video_id else f"{host}{path}"
+
+    if host in {"instagram.com", "m.instagram.com"}:
+        return f"instagram:{path.lower()}"
+
+    if host in {"tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"}:
+        return f"tiktok:{path.lower()}"
+
+    return f"{host}{path}".lower()
+
+
+def _canonical_publication_urls(text: str) -> set[str]:
+    links = extract_supported_publication_links(text)
+    return {
+        _canonical_publication_url(url)
+        for url in links.values()
+        if url
+    }
 
 
 def _client_matches_extracted_brand(client: ClientConfig, brand_name: str) -> bool:
@@ -788,6 +823,9 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
             raise ValueError("request_rejected")
         if request.status in {STATUS_SENT, STATUS_REPORTED, STATUS_ARCHIVED}:
             return ApprovalResult(request=request, delivered=True)
+        pending_report = await _get_pending_request_for_update(session, request.telegram_user_id)
+        if pending_report and pending_report.id != request.id:
+            raise RuntimeError("pending_report")
 
         rule = await _get_active_distribution_rule(session, request.telegram_user_id)
         folder_prefix = _parse_folder_prefix_text(rule.folder_prefix) if rule else ()
@@ -881,6 +919,12 @@ async def deliver_approved_request_to_user(request_id: int) -> bool:
             request.telegram_user_id,
             "Ссылка на ролик:\n" + download_link,
         )
+        if request.video_name or request.video_path:
+            await bot.send_message(
+                request.telegram_user_id,
+                "Файл:\n<code>" + html.escape(request.video_name or request.video_path or "") + "</code>",
+                parse_mode="HTML",
+            )
 
         await bot.send_message(
             request.telegram_user_id,
@@ -1273,6 +1317,8 @@ async def accept_publication_report(
         request = await _get_pending_request_for_update(session, telegram_user_id)
         if not request:
             raise LookupError("no_pending")
+        if await _has_duplicate_publication_url(session, published_url, request.id):
+            raise ValueError("duplicate_publication_url")
 
         request.published_url = published_url.strip()
         request.reported_at = datetime.utcnow()
@@ -1355,6 +1401,28 @@ async def admin_report() -> list[dict]:
         )
         result = await session.execute(stmt)
         return [dict(row) for row in result.mappings().all()]
+
+
+async def _has_duplicate_publication_url(
+    session: AsyncSession,
+    published_url: str,
+    request_id: Optional[int],
+) -> bool:
+    canonical_urls = _canonical_publication_urls(published_url)
+    if not canonical_urls:
+        return False
+
+    stmt = select(TelegramVideoRequest.id, TelegramVideoRequest.published_url).where(
+        TelegramVideoRequest.published_url.is_not(None)
+    )
+    if request_id is not None:
+        stmt = stmt.where(TelegramVideoRequest.id != request_id)
+    result = await session.execute(stmt)
+    for row in result.all():
+        existing_urls = _canonical_publication_urls(row.published_url or "")
+        if canonical_urls & existing_urls:
+            return True
+    return False
 
 
 async def _get_pending_request_for_update(
