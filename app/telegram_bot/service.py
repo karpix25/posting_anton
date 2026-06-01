@@ -219,6 +219,19 @@ def parse_youtube_text(generated: str) -> tuple[str, str]:
     return _short_youtube_title_from_text(description), description
 
 
+def _description_with_video_file_name(description: str, video_name: str) -> str:
+    clean_description = (description or "").strip()
+    clean_name = (video_name or "").strip()
+    if not clean_name:
+        return clean_description
+    file_tag = "#" + re.sub(r"[^0-9A-Za-zА-Яа-яЁё_]+", "", os.path.splitext(clean_name)[0])
+    if file_tag == "#":
+        return clean_description
+    if file_tag.lower() in clean_description.lower():
+        return clean_description
+    return f"{clean_description}\n\n{file_tag}" if clean_description else file_tag
+
+
 def is_youtube_url(text: str) -> bool:
     return bool(YOUTUBE_URL_RE.match((text or "").strip()))
 
@@ -1038,7 +1051,10 @@ async def _assign_video_to_request(
             )
             title, description = parse_youtube_text(generated or "")
             request.youtube_title = title
-            request.youtube_description = description or f"{title}\n\n#shorts"
+            request.youtube_description = _description_with_video_file_name(
+                description or f"{title}\n\n#shorts",
+                request.video_name,
+            )
             session.add(request)
             await session.commit()
             return True
@@ -1238,7 +1254,7 @@ async def _prepare_random_video(
             description = f"{title}\n\n#shorts"
 
         request.youtube_title = title
-        request.youtube_description = description
+        request.youtube_description = _description_with_video_file_name(description, request.video_name)
         session.add(request)
         await session.commit()
         await session.refresh(request)
