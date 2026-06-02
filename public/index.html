@@ -351,6 +351,7 @@
                     <th class="p-2 text-right">Получил видео</th>
                     <th class="p-2 text-right">Отчитался</th>
                     <th class="p-2 text-right">Всего заявок</th>
+                    <th class="p-2 text-right">Действие</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -362,9 +363,16 @@
                     <td class="p-2 text-right font-semibold">{{ user.received_total || 0 }}</td>
                     <td class="p-2 text-right font-semibold text-green-700">{{ user.reported_total || 0 }}</td>
                     <td class="p-2 text-right">{{ user.requests_total || 0 }}</td>
+                    <td class="p-2 text-right">
+                      <button @click="reissueTelegramUser(user)"
+                        :disabled="(Number(user.received_total || 0) - Number(user.reported_total || 0)) <= 0 || tgUserActionState[user.telegram_user_id]?.status === 'reissuing'"
+                        class="text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-wait">
+                        {{ tgUserActionState[user.telegram_user_id]?.status === 'reissuing' ? 'Перевыдаю...' : 'Перевыдать' }}
+                      </button>
+                    </td>
                   </tr>
                   <tr v-if="tgUsers.length === 0">
-                    <td colspan="4" class="p-3 text-center text-gray-400">Данных пока нет</td>
+                    <td colspan="5" class="p-3 text-center text-gray-400">Данных пока нет</td>
                   </tr>
                 </tbody>
               </table>
@@ -1192,6 +1200,7 @@
                 tgPendingEdits: {},
                 tgPendingUiState: {},
                 tgRequestActionState: {},
+                tgUserActionState: {},
                 tgLastApproveError: '',
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
@@ -1749,10 +1758,11 @@
                   this.tgUsersPage = 1;
                   this.tgRulesPage = 1;
                   this.tgHistoryPage = 1;
-	                  this.initRuleEdits();
+                  this.initRuleEdits();
 		                  this.initPendingEdits();
 		                  this.tgPendingUiState = {};
                     this.tgRequestActionState = {};
+                    this.tgUserActionState = {};
 		                  this.syncCurrentPendingForm();
 	                  await this.loadTelegramFoldersInBackground(forceFolders);
                     this.setReadiness('telegram', 'ready');
@@ -2505,6 +2515,40 @@
 	                  }
                   alert(`Ошибка approve: ${message}`);
                   return false;
+                }
+              },
+              async reissueTelegramUser(user) {
+                const userId = Number(user.telegram_user_id);
+                const label = user.telegram_full_name || user.telegram_username || userId;
+                if (!confirm(`Перевыдать ролик для ${label}? Текущая выдача без отчета будет сброшена.`)) return;
+                this.tgUserActionState = {
+                  ...this.tgUserActionState,
+                  [userId]: { status: 'reissuing', error: '' },
+                };
+                try {
+                  const res = await fetch(`/api/telegram/users/${userId}/reissue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ admin_user_id: 0 }),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'reissue failed');
+                  }
+                  const data = await res.json();
+                  await this.loadTelegramAdminData();
+                  if (data.delivered) {
+                    alert(`Новый ролик отправлен пользователю. Заявка #${data.request?.id || ''}`);
+                  } else {
+                    alert('Выдача сброшена, но отправка нового ролика в TG не завершилась. Проверьте логи.');
+                  }
+                } catch (e) {
+                  const message = e.message || String(e);
+                  this.tgUserActionState = {
+                    ...this.tgUserActionState,
+                    [userId]: { status: 'error', error: message },
+                  };
+                  alert(`Ошибка перевыдачи: ${message}`);
                 }
               },
 	              async rejectTelegramRequest(item) {

@@ -43,6 +43,7 @@ from app.telegram_bot.service import (
     list_request_users,
     list_video_requests,
     reject_video_request,
+    reissue_current_delivery,
     upsert_distribution_rule,
 )
 from app.telegram_bot.video_inventory import load_folder_video_candidates
@@ -1038,6 +1039,44 @@ async def api_telegram_delete_rule(rule_id: int):
 async def api_telegram_users(limit: int = 500):
     users = await list_request_users(limit=limit)
     return {"success": True, "items": users}
+
+
+@app.post("/api/telegram/users/{telegram_user_id}/reissue")
+async def api_telegram_reissue_user(telegram_user_id: int, payload: Dict[str, Any] = Body(default={})):
+    admin_user_id = int(payload.get("admin_user_id") or 0)
+    try:
+        result = await reissue_current_delivery(telegram_user_id=telegram_user_id, admin_user_id=admin_user_id)
+    except LookupError as exc:
+        code = str(exc)
+        if code == "no_current_delivery":
+            raise HTTPException(status_code=409, detail="У пользователя нет текущей выдачи без отчета.")
+        if code == "no_active_rule":
+            raise HTTPException(status_code=409, detail="У пользователя нет активного правила выдачи.")
+        if code == "no_videos_for_rule":
+            raise HTTPException(status_code=409, detail="Нет свободных видео для перевыдачи. Попробуйте обновить Яндекс или выбрать другую папку.")
+        raise HTTPException(status_code=400, detail=code)
+    except ValueError as exc:
+        code = str(exc)
+        if code in {"weekly_limit_exceeded", "daily_limit_exceeded"}:
+            raise HTTPException(status_code=409, detail="Daily limit reached for this user")
+        if code in {"rule_weekly_limit_zero", "rule_daily_limit_zero"}:
+            raise HTTPException(status_code=400, detail="Daily limit is zero")
+        raise HTTPException(status_code=400, detail=code)
+
+    row = result.request
+    return {
+        "success": True,
+        "delivered": result.delivered,
+        "request": {
+            "id": row.id,
+            "telegram_user_id": row.telegram_user_id,
+            "status": row.status,
+            "brand": row.brand,
+            "video_name": row.video_name,
+            "assigned_folder_prefix": row.assigned_folder_prefix,
+            "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+        },
+    }
 
 
 @app.get("/api/telegram/folders")

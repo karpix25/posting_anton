@@ -1108,6 +1108,54 @@ async def cancel_pending_request(telegram_user_id: int) -> bool:
         return True
 
 
+async def reissue_current_delivery(telegram_user_id: int, admin_user_id: int = 0) -> ApprovalResult:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        current = await _get_pending_request_for_update(session, telegram_user_id)
+        if not current:
+            raise LookupError("no_current_delivery")
+        rule = await _get_active_distribution_rule(session, telegram_user_id)
+        if not rule:
+            raise LookupError("no_active_rule")
+        if int(rule.weekly_limit or 0) <= 0:
+            raise ValueError("rule_daily_limit_zero")
+
+        telegram_username = current.telegram_username
+        telegram_full_name = current.telegram_full_name
+        current.status = STATUS_CANCELLED
+        current.error_message = "admin_reissue"
+        session.add(current)
+        await session.commit()
+
+    new_request = await submit_video_request(
+        telegram_user_id=telegram_user_id,
+        telegram_username=telegram_username,
+        telegram_full_name=telegram_full_name,
+    )
+    try:
+        return await approve_video_request(new_request.id, admin_user_id=admin_user_id)
+    except Exception:
+        await _cancel_request_by_id(new_request.id, "admin_reissue_failed")
+        raise
+
+
+async def _cancel_request_by_id(request_id: int, reason: str) -> bool:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        stmt = select(TelegramVideoRequest).where(TelegramVideoRequest.id == request_id).limit(1)
+        result = await session.execute(stmt)
+        request = result.scalar_one_or_none()
+        if not request:
+            return False
+        if request.status in {STATUS_REPORTED, STATUS_ARCHIVED}:
+            return False
+        request.status = STATUS_CANCELLED
+        request.error_message = reason[:500]
+        session.add(request)
+        await session.commit()
+        return True
+
+
 async def prepare_random_video(
     brand: str,
     telegram_user_id: int,
