@@ -186,9 +186,6 @@
 	                    <th class="p-2 text-left">Пользователь</th>
 	                    <th class="p-2 text-left">Заявка</th>
 	                    <th class="p-2 text-left">Статус</th>
-	                    <th class="p-2 text-left">Папка</th>
-	                    <th class="p-2 text-right">Лимит/день</th>
-	                    <th class="p-2 text-center">Активно</th>
 	                    <th class="p-2 text-right">Действия</th>
                   </tr>
                 </thead>
@@ -208,23 +205,6 @@
                         {{ item.status }}
 	                      </span>
 	                    </td>
-                      <td class="p-2 min-w-[260px]">
-                        <button @click="openFolderPicker({ type: 'pending', requestId: item.id })" :disabled="tgFoldersLoading"
-                          class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait">
-                          {{ tgFoldersLoading ? 'Папки загружаются...' : (getPendingEdit(item).folder_prefix || 'Любая подходящая папка') }}
-                        </button>
-                        <div v-if="getPendingEdit(item).folder_prefix" class="text-xs mt-1"
-                          :class="getFolderCheckClass(getPendingEdit(item).folder_prefix)">
-                          {{ getFolderCheckText(getPendingEdit(item).folder_prefix) }}
-                        </div>
-                      </td>
-                      <td class="p-2 text-right">
-                        <input v-model.number="getPendingEdit(item).weekly_limit" type="number" min="0"
-                          class="border rounded p-2 w-24 text-right" />
-                      </td>
-                      <td class="p-2 text-center">
-                        <input type="checkbox" v-model="getPendingEdit(item).is_active" class="h-4 w-4" />
-                      </td>
 	                    <td class="p-2 text-right whitespace-nowrap">
                         <span v-if="getRequestActionText(item.id)" :class="['mr-3 text-xs px-2 py-1 rounded', getRequestActionClass(item.id)]">
                           {{ getRequestActionText(item.id) }}
@@ -240,7 +220,7 @@
 	                    </td>
                   </tr>
                   <tr v-if="tgPendingRequests.length === 0">
-	                    <td colspan="7" class="p-3 text-center text-gray-400">Заявок на одобрение пока нет</td>
+	                    <td colspan="4" class="p-3 text-center text-gray-400">Заявок на одобрение пока нет</td>
                   </tr>
                 </tbody>
               </table>
@@ -290,8 +270,13 @@
                   <template v-for="user in tgUsersPaged" :key="user.telegram_user_id">
                   <tr class="border-t bg-white">
                     <td class="p-2">
-                      <div class="font-medium">{{ user.telegram_full_name || ('@' + (user.telegram_username || '')) }}</div>
-                      <div class="text-xs text-gray-500">{{ user.telegram_user_id }}</div>
+                      <button @click="toggleParticipantRules(user)" class="text-left group">
+                        <span class="inline-flex items-center gap-2 font-medium group-hover:text-blue-700">
+                          <span class="text-gray-400">{{ isParticipantExpanded(user) ? '▾' : '▸' }}</span>
+                          <span>{{ user.telegram_full_name || ('@' + (user.telegram_username || '')) }}</span>
+                        </span>
+                        <span class="block pl-6 text-xs text-gray-500">{{ user.telegram_user_id }}</span>
+                      </button>
                     </td>
                     <td class="p-2 text-right font-semibold">{{ user.received_total || 0 }}</td>
                     <td class="p-2 text-right font-semibold text-green-700">{{ user.reported_total || 0 }}</td>
@@ -309,7 +294,7 @@
                       </div>
                     </td>
                   </tr>
-                  <tr class="border-t bg-slate-50">
+                  <tr v-if="isParticipantExpanded(user)" class="border-t bg-slate-50">
                     <td colspan="5" class="p-0">
                       <div class="px-4 py-3">
                         <div class="mb-2 flex items-center justify-between">
@@ -1195,6 +1180,7 @@
                 tgPendingUiState: {},
                 tgRequestActionState: {},
                 tgUserActionState: {},
+                tgParticipantExpanded: {},
                 tgLastApproveError: '',
                 tgFolderChecks: {},
                 tgFolderPickerOpen: false,
@@ -2095,28 +2081,6 @@
               },
 	              async approvePendingRow(item) {
                   this.setRequestActionState(item.id, { status: 'approving', error: '' });
-	                  const pendingEdit = this.getPendingEdit(item);
-	                  if (!pendingEdit.is_active) {
-                    this.setRequestActionState(item.id, { status: 'error', error: 'Пользователь отключен' });
-	                    alert('Пользователь отключен. Включите его или отклоните заявку.');
-	                    return;
-	                  }
-	                  const pendingSaved = await this.savePendingRule(item, true);
-	                  if (!pendingSaved) {
-                    this.setRequestActionState(item.id, { status: 'error', error: 'Настройки не сохранены' });
-	                    alert('Сначала выберите доступную папку и сохраните настройки пользователя.');
-	                    return;
-	                  }
-                  const rule = this.tgRules.find(row => Number(row.telegram_user_id) === Number(item.telegram_user_id));
-                  const saveState = rule ? this.tgRuleSaveState[rule.id] : null;
-                  if (rule && saveState && ['dirty', 'saving', 'error'].includes(saveState.status)) {
-	                    const saved = await this.saveRuleFromTable(rule, { silent: true, reload: false });
-	                    if (!saved) {
-                        this.setRequestActionState(item.id, { status: 'error', error: 'Настройки не сохранены' });
-	                      alert('Сначала исправьте и сохраните настройки пользователя.');
-	                      return;
-	                    }
-	                  }
 		                const ok = await this.approveTelegramRequest(item, false, null, { suppressNoVideosAlert: true });
                   const errorText = this.tgLastApproveError.includes('Нет свободных видео') ? 'Нет свободных видео' : 'Ошибка одобрения';
                   this.setRequestActionState(item.id, ok ? { status: 'approved', error: '' } : { status: 'error', error: errorText });
@@ -2570,6 +2534,16 @@
                     return leftFolder.localeCompare(rightFolder);
                   });
               },
+              isParticipantExpanded(user) {
+                return !!this.tgParticipantExpanded[Number(user.telegram_user_id)];
+              },
+              toggleParticipantRules(user) {
+                const userId = Number(user.telegram_user_id);
+                this.tgParticipantExpanded = {
+                  ...this.tgParticipantExpanded,
+                  [userId]: !this.tgParticipantExpanded[userId],
+                };
+              },
               async createTelegramUserRule(user, options = {}) {
                 const userId = Number(user.telegram_user_id);
                 try {
@@ -2595,6 +2569,10 @@
                   const index = this.tgParticipants.findIndex(row => Number(row.telegram_user_id) === userId);
                   this.tgUsersPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
                   this.tgViewTab = 'users';
+                  this.tgParticipantExpanded = {
+                    ...this.tgParticipantExpanded,
+                    [userId]: true,
+                  };
                   if (!options.silent) {
                     alert('Новое правило добавлено. Выберите папку, лимит и включите активность.');
                   }
