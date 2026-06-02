@@ -364,11 +364,19 @@
                     <td class="p-2 text-right font-semibold text-green-700">{{ user.reported_total || 0 }}</td>
                     <td class="p-2 text-right">{{ user.requests_total || 0 }}</td>
                     <td class="p-2 text-right">
-                      <button @click="reissueTelegramUser(user)"
-                        :disabled="(Number(user.received_total || 0) - Number(user.reported_total || 0)) <= 0 || tgUserActionState[user.telegram_user_id]?.status === 'reissuing'"
-                        class="text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-wait">
-                        {{ tgUserActionState[user.telegram_user_id]?.status === 'reissuing' ? 'Перевыдаю...' : 'Перевыдать' }}
-                      </button>
+                      <div class="flex justify-end gap-3 whitespace-nowrap">
+                        <button @click="openTelegramUserRule(user)" class="text-blue-600 hover:underline">
+                          Настроить
+                        </button>
+                        <button @click="createTelegramUserRule(user)" class="text-blue-600 hover:underline">
+                          Добавить папку
+                        </button>
+                        <button @click="reissueTelegramUser(user)"
+                          :disabled="(Number(user.received_total || 0) - Number(user.reported_total || 0)) <= 0 || tgUserActionState[user.telegram_user_id]?.status === 'reissuing'"
+                          class="text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-wait">
+                          {{ tgUserActionState[user.telegram_user_id]?.status === 'reissuing' ? 'Перевыдаю...' : 'Перевыдать' }}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   <tr v-if="tgUsers.length === 0">
@@ -2227,6 +2235,8 @@
                   const folderPrefix = this.normalizeFolderPrefix(edit.folder_prefix);
                   const dailyLimit = Math.max(0, Number(edit.weekly_limit) || 0);
                   const payload = {
+                    id: rule.id,
+                    rule_id: rule.id,
                     telegram_user_id: Number(rule.telegram_user_id),
                     telegram_username: rule.telegram_username || '',
                     telegram_full_name: rule.telegram_full_name || '',
@@ -2549,6 +2559,56 @@
                     [userId]: { status: 'error', error: message },
                   };
                   alert(`Ошибка перевыдачи: ${message}`);
+                }
+              },
+              async openTelegramUserRule(user) {
+                const userId = Number(user.telegram_user_id);
+                let rule = this.tgRules.find(row => Number(row.telegram_user_id) === userId);
+                try {
+                  if (!rule) {
+                    await this.createTelegramUserRule(user, { silent: true });
+                    rule = this.tgRules.find(row => Number(row.telegram_user_id) === userId);
+                  }
+                  if (!rule) {
+                    throw new Error('Правило создано, но не найдено после обновления.');
+                  }
+                  const index = this.tgRules.findIndex(row => Number(row.telegram_user_id) === userId);
+                  this.tgRulesPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
+                  this.tgViewTab = 'settings';
+                } catch (e) {
+                  alert(`Ошибка открытия настроек пользователя: ${e.message || e}`);
+                }
+              },
+              async createTelegramUserRule(user, options = {}) {
+                const userId = Number(user.telegram_user_id);
+                try {
+                  const res = await fetch('/api/telegram/rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      telegram_user_id: userId,
+                      telegram_username: user.telegram_username || '',
+                      telegram_full_name: user.telegram_full_name || '',
+                      folder_prefix: '',
+                      weekly_limit: 1,
+                      daily_limit: 1,
+                      is_active: false,
+                      create_new: true,
+                    }),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'rule create failed');
+                  }
+                  await this.loadTelegramAdminData();
+                  const index = this.tgRules.findIndex(row => Number(row.telegram_user_id) === userId);
+                  this.tgRulesPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
+                  this.tgViewTab = 'settings';
+                  if (!options.silent) {
+                    alert('Новое правило добавлено. Выберите папку, лимит и включите активность.');
+                  }
+                } catch (e) {
+                  alert(`Ошибка создания правила: ${e.message || e}`);
                 }
               },
 	              async rejectTelegramRequest(item) {

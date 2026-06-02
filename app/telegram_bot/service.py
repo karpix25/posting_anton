@@ -763,19 +763,31 @@ async def upsert_distribution_rule(
     is_active: bool = True,
     telegram_username: Optional[str] = None,
     telegram_full_name: Optional[str] = None,
+    rule_id: Optional[int] = None,
+    create_new: bool = False,
 ) -> dict:
     weekly_limit = max(int(weekly_limit or 0), 0)
     folder_prefix = str(folder_prefix or "").strip()
     async with async_session_maker() as session:
         await ensure_telegram_schema(session)
-        stmt = (
-            select(TelegramDistributionRule)
-            .where(TelegramDistributionRule.telegram_user_id == telegram_user_id)
-            .order_by(TelegramDistributionRule.id.desc())
-            .limit(1)
-        )
-        result = await session.execute(stmt)
-        rule = result.scalar_one_or_none()
+        if create_new:
+            rule = None
+        elif rule_id:
+            stmt = select(TelegramDistributionRule).where(TelegramDistributionRule.id == rule_id).limit(1)
+            result = await session.execute(stmt)
+            rule = result.scalar_one_or_none()
+        else:
+            stmt = (
+                select(TelegramDistributionRule)
+                .where(
+                    TelegramDistributionRule.telegram_user_id == telegram_user_id,
+                    TelegramDistributionRule.folder_prefix == folder_prefix,
+                )
+                .order_by(TelegramDistributionRule.id.desc())
+                .limit(1)
+            )
+            result = await session.execute(stmt)
+            rule = result.scalar_one_or_none()
         now = datetime.utcnow()
         if not rule:
             rule = TelegramDistributionRule(
@@ -840,26 +852,43 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
         if pending_report and pending_report.id != request.id:
             raise RuntimeError("pending_report")
 
-        rule = await _get_active_distribution_rule(session, request.telegram_user_id)
-        folder_prefix = _parse_folder_prefix_text(rule.folder_prefix) if rule else ()
-        daily_limit = int(rule.weekly_limit) if rule else 1
-        if daily_limit <= 0:
-            raise ValueError("rule_daily_limit_zero")
-
         day_key = _current_day_key()
-        daily_count_stmt = select(func.count(TelegramVideoRequest.id)).where(
-            TelegramVideoRequest.telegram_user_id == request.telegram_user_id,
-            TelegramVideoRequest.week_key == day_key,
-            TelegramVideoRequest.status.in_(RESERVED_STATUSES),
-        )
-        daily_count_result = await session.execute(daily_count_stmt)
-        daily_count = int(daily_count_result.scalar() or 0)
-        if daily_count >= daily_limit:
-            raise ValueError("daily_limit_exceeded")
-
-        assigned = await _assign_video_to_request(session, request, folder_prefix or None, day_key, admin_user_id)
-        if not assigned:
+        rules = await _get_active_distribution_rules(session, request.telegram_user_id)
+        rule_options = rules or [None]
+        any_positive_limit = False
+        any_limit_available = False
+        for rule in rule_options:
+            folder_prefix = _parse_folder_prefix_text(rule.folder_prefix) if rule else ()
+            daily_limit = int(rule.weekly_limit) if rule else 1
+            if daily_limit <= 0:
+                continue
+            any_positive_limit = True
+            assigned_folder = _format_folder_prefix(folder_prefix) if folder_prefix else ""
+            daily_count_stmt = select(func.count(TelegramVideoRequest.id)).where(
+                TelegramVideoRequest.telegram_user_id == request.telegram_user_id,
+                TelegramVideoRequest.week_key == day_key,
+                TelegramVideoRequest.assigned_folder_prefix == assigned_folder,
+                TelegramVideoRequest.status.in_(RESERVED_STATUSES),
+            )
+            daily_count_result = await session.execute(daily_count_stmt)
+            daily_count = int(daily_count_result.scalar() or 0)
+            if daily_count >= daily_limit:
+                continue
+            any_limit_available = True
+            assigned = await _assign_video_to_request(session, request, folder_prefix or None, day_key, admin_user_id)
+            if assigned:
+                break
+        else:
+            if not any_positive_limit:
+                raise ValueError("rule_daily_limit_zero")
+            if not any_limit_available:
+                raise ValueError("daily_limit_exceeded")
             raise LookupError("no_videos_for_rule")
+
+        if not any_positive_limit:
+            raise ValueError("rule_daily_limit_zero")
+        if not any_limit_available:
+            raise ValueError("daily_limit_exceeded")
 
     delivered = await deliver_approved_request_to_user(request_id)
     async with async_session_maker() as session:
@@ -984,6 +1013,14 @@ async def _get_active_distribution_rule(
     session: AsyncSession,
     telegram_user_id: int,
 ) -> Optional[TelegramDistributionRule]:
+    rules = await _get_active_distribution_rules(session, telegram_user_id)
+    return rules[0] if rules else None
+
+
+async def _get_active_distribution_rules(
+    session: AsyncSession,
+    telegram_user_id: int,
+) -> list[TelegramDistributionRule]:
     stmt = (
         select(TelegramDistributionRule)
         .where(
@@ -991,10 +1028,9 @@ async def _get_active_distribution_rule(
             TelegramDistributionRule.is_active.is_(True),
         )
         .order_by(TelegramDistributionRule.updated_at.desc(), TelegramDistributionRule.id.desc())
-        .limit(1)
     )
     result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    return list(result.scalars().all())
 
 
 async def _assign_video_to_request(
@@ -1114,10 +1150,10 @@ async def reissue_current_delivery(telegram_user_id: int, admin_user_id: int = 0
         current = await _get_pending_request_for_update(session, telegram_user_id)
         if not current:
             raise LookupError("no_current_delivery")
-        rule = await _get_active_distribution_rule(session, telegram_user_id)
-        if not rule:
+        rules = await _get_active_distribution_rules(session, telegram_user_id)
+        if not rules:
             raise LookupError("no_active_rule")
-        if int(rule.weekly_limit or 0) <= 0:
+        if not any(int(rule.weekly_limit or 0) > 0 for rule in rules):
             raise ValueError("rule_daily_limit_zero")
 
         telegram_username = current.telegram_username

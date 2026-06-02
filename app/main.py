@@ -1005,11 +1005,13 @@ async def api_telegram_rules(limit: int = 500):
 
 @app.post("/api/telegram/rules")
 async def api_telegram_upsert_rule(payload: Dict[str, Any]):
+    rule_id = int(payload.get("id") or payload.get("rule_id") or 0) or None
     telegram_user_id = int(payload.get("telegram_user_id") or 0)
     folder_prefix = str(payload.get("folder_prefix") or "").strip()
     raw_limit = payload.get("daily_limit", payload.get("weekly_limit", 0))
     weekly_limit = int(raw_limit or 0)
     is_active = bool(payload.get("is_active", True))
+    create_new = bool(payload.get("create_new", False))
     telegram_username = payload.get("telegram_username")
     telegram_full_name = payload.get("telegram_full_name")
     if telegram_user_id <= 0:
@@ -1023,6 +1025,8 @@ async def api_telegram_upsert_rule(payload: Dict[str, Any]):
         is_active=is_active,
         telegram_username=telegram_username,
         telegram_full_name=telegram_full_name,
+        rule_id=rule_id,
+        create_new=create_new,
     )
     return {"success": True, "item": rule}
 
