@@ -162,13 +162,9 @@
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'pending' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
                 Заявки
               </button>
-              <button @click="tgViewTab = 'settings'"
-                :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'settings' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
-                Настройки
-              </button>
               <button @click="tgViewTab = 'users'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'users' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
-                Пользователи
+                Участники
               </button>
               <button @click="tgViewTab = 'history'"
                 :class="['px-4 py-2 rounded-lg text-sm font-semibold', tgViewTab === 'history' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200']">
@@ -260,70 +256,6 @@
             </div>
           </div>
 
-          <div v-if="tgViewTab === 'settings'" class="mb-8">
-            <h3 class="text-xl font-bold mb-3">Настройки пользователей (лимит/день, папка, удаление)</h3>
-            <div class="border rounded overflow-x-auto bg-white">
-              <table class="w-full text-sm">
-                <thead class="bg-gray-100">
-                  <tr>
-                    <th class="p-2 text-left">Пользователь</th>
-	                    <th class="p-2 text-left">Папка</th>
-	                    <th class="p-2 text-right">Лимит/день</th>
-	                    <th class="p-2 text-center">Активно</th>
-                      <th class="p-2 text-left">Сохранение</th>
-	                    <th class="p-2 text-right">Действие</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="rule in tgRulesPaged" :key="rule.id" class="border-t align-top">
-                    <td class="p-2">
-                      <div class="font-medium">{{ rule.telegram_full_name || ('@' + (rule.telegram_username || '')) }}</div>
-                      <div class="text-xs text-gray-500">{{ rule.telegram_user_id }}</div>
-                    </td>
-                    <td class="p-2 min-w-[320px]">
-	                      <button @click="openFolderPicker({ type: 'rule', ruleId: rule.id })" :disabled="tgFoldersLoading"
-	                        class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait">
-	                        {{ tgFoldersLoading ? 'Папки загружаются...' : (getRuleEdit(rule).folder_prefix || 'Любая подходящая папка') }}
-	                      </button>
-                        <div v-if="tgFoldersError" class="text-xs mt-1 text-red-600">{{ tgFoldersError }}</div>
-                      <div v-if="getRuleEdit(rule).folder_prefix" class="text-xs mt-1"
-                        :class="getFolderCheckClass(getRuleEdit(rule).folder_prefix)">
-                        {{ getFolderCheckText(getRuleEdit(rule).folder_prefix) }}
-                      </div>
-                    </td>
-                    <td class="p-2 text-right">
-	                      <input v-model.number="getRuleEdit(rule).weekly_limit" @input="scheduleRuleAutosave(rule)" type="number" min="0"
-	                        class="border rounded p-2 w-24 text-right" />
-	                    </td>
-	                    <td class="p-2 text-center">
-	                      <input type="checkbox" v-model="getRuleEdit(rule).is_active" @change="scheduleRuleAutosave(rule)" class="h-4 w-4" />
-	                    </td>
-	                    <td class="p-2 text-left">
-	                      <span :title="tgRuleSaveState[rule.id]?.error || ''" :class="['text-xs px-2 py-1 rounded', getRuleSaveClass(rule.id)]">
-                          {{ getRuleSaveText(rule.id) }}
-                        </span>
-	                    </td>
-	                    <td class="p-2 text-right whitespace-nowrap">
-	                      <button @click="removeTelegramRule(rule.id)" class="text-red-600 hover:underline">Удалить</button>
-                    </td>
-                  </tr>
-                  <tr v-if="tgRules.length === 0">
-	                    <td colspan="6" class="p-3 text-center text-gray-400">Правил пока нет</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="mt-3 flex items-center justify-between text-sm">
-              <div class="text-gray-600">Страница {{ tgRulesPage }} / {{ tgRulesTotalPages }}</div>
-              <div class="flex gap-2">
-                <button @click="changeTgPage('rules', -1)" :disabled="tgRulesPage <= 1"
-                  class="px-3 py-1 border rounded disabled:opacity-40">Назад</button>
-                <button @click="changeTgPage('rules', 1)" :disabled="tgRulesPage >= tgRulesTotalPages"
-                  class="px-3 py-1 border rounded disabled:opacity-40">Вперёд</button>
-              </div>
-            </div>
-          </div>
-
           <div v-if="tgViewTab === 'folders'" class="mb-8">
             <div class="border rounded-lg p-4 bg-slate-50">
               <h3 class="font-bold mb-3">Папки и доступ</h3>
@@ -342,7 +274,7 @@
           </div>
 
           <div v-if="tgViewTab === 'users'" class="mb-8">
-            <h3 class="text-xl font-bold mb-3">Пользователи: выдача и отчеты</h3>
+            <h3 class="text-xl font-bold mb-3">Участники: выдача, отчеты и папки</h3>
             <div class="border rounded overflow-x-auto bg-white">
               <table class="w-full text-sm">
                 <thead class="bg-gray-100">
@@ -355,7 +287,8 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="user in tgUsersPaged" :key="user.telegram_user_id" class="border-t">
+                  <template v-for="user in tgUsersPaged" :key="user.telegram_user_id">
+                  <tr class="border-t bg-white">
                     <td class="p-2">
                       <div class="font-medium">{{ user.telegram_full_name || ('@' + (user.telegram_username || '')) }}</div>
                       <div class="text-xs text-gray-500">{{ user.telegram_user_id }}</div>
@@ -365,9 +298,6 @@
                     <td class="p-2 text-right">{{ user.requests_total || 0 }}</td>
                     <td class="p-2 text-right">
                       <div class="flex justify-end gap-3 whitespace-nowrap">
-                        <button @click="openTelegramUserRule(user)" class="text-blue-600 hover:underline">
-                          Настроить
-                        </button>
                         <button @click="createTelegramUserRule(user)" class="text-blue-600 hover:underline">
                           Добавить папку
                         </button>
@@ -379,7 +309,64 @@
                       </div>
                     </td>
                   </tr>
-                  <tr v-if="tgUsers.length === 0">
+                  <tr class="border-t bg-slate-50">
+                    <td colspan="5" class="p-0">
+                      <div class="px-4 py-3">
+                        <div class="mb-2 flex items-center justify-between">
+                          <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Папки и лимиты</div>
+                          <div class="text-xs text-gray-500">{{ userRules(user).length }} правил</div>
+                        </div>
+                        <div v-if="userRules(user).length > 0" class="overflow-x-auto rounded border bg-white">
+                          <table class="w-full text-xs">
+                            <thead class="bg-gray-50 text-gray-600">
+                              <tr>
+                                <th class="p-2 text-left">Папка</th>
+                                <th class="p-2 text-right">Лимит/день</th>
+                                <th class="p-2 text-center">Активно</th>
+                                <th class="p-2 text-left">Сохранение</th>
+                                <th class="p-2 text-right">Действие</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr v-for="rule in userRules(user)" :key="rule.id" class="border-t align-top">
+                                <td class="p-2 min-w-[320px]">
+                                  <button @click="openFolderPicker({ type: 'rule', ruleId: rule.id })" :disabled="tgFoldersLoading"
+                                    class="border rounded p-2 w-full bg-white text-left hover:bg-gray-50 disabled:opacity-60 disabled:cursor-wait">
+                                    {{ tgFoldersLoading ? 'Папки загружаются...' : (getRuleEdit(rule).folder_prefix || 'Любая подходящая папка') }}
+                                  </button>
+                                  <div v-if="tgFoldersError" class="text-xs mt-1 text-red-600">{{ tgFoldersError }}</div>
+                                  <div v-if="getRuleEdit(rule).folder_prefix" class="text-xs mt-1"
+                                    :class="getFolderCheckClass(getRuleEdit(rule).folder_prefix)">
+                                    {{ getFolderCheckText(getRuleEdit(rule).folder_prefix) }}
+                                  </div>
+                                </td>
+                                <td class="p-2 text-right">
+                                  <input v-model.number="getRuleEdit(rule).weekly_limit" @input="scheduleRuleAutosave(rule)" type="number" min="0"
+                                    class="border rounded p-2 w-24 text-right" />
+                                </td>
+                                <td class="p-2 text-center">
+                                  <input type="checkbox" v-model="getRuleEdit(rule).is_active" @change="scheduleRuleAutosave(rule)" class="h-4 w-4" />
+                                </td>
+                                <td class="p-2 text-left">
+                                  <span :title="tgRuleSaveState[rule.id]?.error || ''" :class="['text-xs px-2 py-1 rounded', getRuleSaveClass(rule.id)]">
+                                    {{ getRuleSaveText(rule.id) }}
+                                  </span>
+                                </td>
+                                <td class="p-2 text-right whitespace-nowrap">
+                                  <button @click="removeTelegramRule(rule.id)" class="text-red-600 hover:underline">Удалить</button>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                        <div v-else class="rounded border border-dashed bg-white px-3 py-2 text-xs text-gray-500">
+                          Папки еще не настроены. Нажмите «Добавить папку».
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                  </template>
+                  <tr v-if="tgParticipants.length === 0">
                     <td colspan="5" class="p-3 text-center text-gray-400">Данных пока нет</td>
                   </tr>
                 </tbody>
@@ -1198,7 +1185,6 @@
                 tgPageSize: 10,
                 tgPendingPage: 1,
                 tgUsersPage: 1,
-                tgRulesPage: 1,
                 tgHistoryPage: 1,
                 tgRuleEdits: {},
                 tgRuleSaveState: {},
@@ -1353,26 +1339,40 @@
               tgPendingTotalPages() {
                 return Math.max(1, Math.ceil((this.tgPendingRequests || []).length / this.tgPageSize));
               },
-              tgUsersTotalPages() {
-                return Math.max(1, Math.ceil((this.tgUsers || []).length / this.tgPageSize));
+              tgParticipants() {
+                const byId = new Map();
+                (this.tgUsers || []).forEach(user => {
+                  const userId = Number(user.telegram_user_id);
+                  if (!Number.isFinite(userId)) return;
+                  byId.set(userId, { ...user, telegram_user_id: userId });
+                });
+                (this.tgRules || []).forEach(rule => {
+                  const userId = Number(rule.telegram_user_id);
+                  if (!Number.isFinite(userId) || byId.has(userId)) return;
+                  byId.set(userId, {
+                    telegram_user_id: userId,
+                    telegram_username: rule.telegram_username || '',
+                    telegram_full_name: rule.telegram_full_name || '',
+                    received_total: 0,
+                    reported_total: 0,
+                    requests_total: 0,
+                  });
+                });
+                return Array.from(byId.values());
               },
-              tgRulesTotalPages() {
-                return Math.max(1, Math.ceil((this.tgRules || []).length / this.tgPageSize));
+              tgUsersTotalPages() {
+                return Math.max(1, Math.ceil((this.tgParticipants || []).length / this.tgPageSize));
               },
               tgHistoryTotalPages() {
                 return Math.max(1, Math.ceil((this.tgHistoryRequests || []).length / this.tgPageSize));
               },
               tgUsersPaged() {
                 const start = (this.tgUsersPage - 1) * this.tgPageSize;
-                return (this.tgUsers || []).slice(start, start + this.tgPageSize);
+                return (this.tgParticipants || []).slice(start, start + this.tgPageSize);
               },
               tgPendingRequestsPaged() {
                 const start = (this.tgPendingPage - 1) * this.tgPageSize;
                 return (this.tgPendingRequests || []).slice(start, start + this.tgPageSize);
-              },
-              tgRulesPaged() {
-                const start = (this.tgRulesPage - 1) * this.tgPageSize;
-                return (this.tgRules || []).slice(start, start + this.tgPageSize);
               },
               tgHistoryRequestsPaged() {
                 const start = (this.tgHistoryPage - 1) * this.tgPageSize;
@@ -1764,7 +1764,6 @@
                   this.tgUsers = usersData.items || [];
                   this.tgPendingPage = 1;
                   this.tgUsersPage = 1;
-                  this.tgRulesPage = 1;
                   this.tgHistoryPage = 1;
                   this.initRuleEdits();
 		                  this.initPendingEdits();
@@ -1834,10 +1833,6 @@
                 }
                 if (kind === 'users') {
                   this.tgUsersPage = Math.min(this.tgUsersTotalPages, Math.max(1, this.tgUsersPage + delta));
-                  return;
-                }
-                if (kind === 'rules') {
-                  this.tgRulesPage = Math.min(this.tgRulesTotalPages, Math.max(1, this.tgRulesPage + delta));
                   return;
                 }
                 if (kind === 'history') {
@@ -2561,23 +2556,19 @@
                   alert(`Ошибка перевыдачи: ${message}`);
                 }
               },
-              async openTelegramUserRule(user) {
+              userRules(user) {
                 const userId = Number(user.telegram_user_id);
-                let rule = this.tgRules.find(row => Number(row.telegram_user_id) === userId);
-                try {
-                  if (!rule) {
-                    await this.createTelegramUserRule(user, { silent: true });
-                    rule = this.tgRules.find(row => Number(row.telegram_user_id) === userId);
-                  }
-                  if (!rule) {
-                    throw new Error('Правило создано, но не найдено после обновления.');
-                  }
-                  const index = this.tgRules.findIndex(row => Number(row.telegram_user_id) === userId);
-                  this.tgRulesPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
-                  this.tgViewTab = 'settings';
-                } catch (e) {
-                  alert(`Ошибка открытия настроек пользователя: ${e.message || e}`);
-                }
+                return (this.tgRules || [])
+                  .filter(rule => Number(rule.telegram_user_id) === userId)
+                  .slice()
+                  .sort((left, right) => {
+                    if (!!right.is_active !== !!left.is_active) {
+                      return Number(!!right.is_active) - Number(!!left.is_active);
+                    }
+                    const leftFolder = String(left.folder_prefix || '');
+                    const rightFolder = String(right.folder_prefix || '');
+                    return leftFolder.localeCompare(rightFolder);
+                  });
               },
               async createTelegramUserRule(user, options = {}) {
                 const userId = Number(user.telegram_user_id);
@@ -2601,9 +2592,9 @@
                     throw new Error(err.detail || 'rule create failed');
                   }
                   await this.loadTelegramAdminData();
-                  const index = this.tgRules.findIndex(row => Number(row.telegram_user_id) === userId);
-                  this.tgRulesPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
-                  this.tgViewTab = 'settings';
+                  const index = this.tgParticipants.findIndex(row => Number(row.telegram_user_id) === userId);
+                  this.tgUsersPage = Math.floor(Math.max(0, index) / this.tgPageSize) + 1;
+                  this.tgViewTab = 'users';
                   if (!options.silent) {
                     alert('Новое правило добавлено. Выберите папку, лимит и включите активность.');
                   }
