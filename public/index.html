@@ -291,6 +291,11 @@
                           class="text-blue-600 hover:underline disabled:opacity-50 disabled:cursor-wait">
                           {{ tgUserActionState[user.telegram_user_id]?.status === 'reissuing' ? 'Перевыдаю...' : 'Перевыдать' }}
                         </button>
+                        <button @click="deleteTelegramUser(user)"
+                          :disabled="tgUserActionState[user.telegram_user_id]?.status === 'deleting'"
+                          class="text-red-600 hover:underline disabled:opacity-50 disabled:cursor-wait">
+                          {{ tgUserActionState[user.telegram_user_id]?.status === 'deleting' ? 'Удаляю...' : 'Удалить' }}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2518,6 +2523,33 @@
                     [userId]: { status: 'error', error: message },
                   };
                   alert(`Ошибка перевыдачи: ${message}`);
+                }
+              },
+              async deleteTelegramUser(user) {
+                const userId = Number(user.telegram_user_id);
+                const label = user.telegram_full_name || user.telegram_username || userId;
+                if (!confirm(`Удалить участника ${label}? Будут удалены его правила, заявки и отчеты из истории.`)) return;
+                this.tgUserActionState = {
+                  ...this.tgUserActionState,
+                  [userId]: { status: 'deleting', error: '' },
+                };
+                try {
+                  const res = await fetch(`/api/telegram/users/${userId}`, { method: 'DELETE' });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${res.status}`);
+                  }
+                  await this.loadTelegramAdminData();
+                  const nextExpanded = { ...this.tgParticipantExpanded };
+                  delete nextExpanded[userId];
+                  this.tgParticipantExpanded = nextExpanded;
+                } catch (e) {
+                  const message = e.message || String(e);
+                  this.tgUserActionState = {
+                    ...this.tgUserActionState,
+                    [userId]: { status: 'error', error: message },
+                  };
+                  alert(`Ошибка удаления участника: ${message}`);
                 }
               },
               userRules(user) {

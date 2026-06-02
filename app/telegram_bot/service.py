@@ -836,6 +836,29 @@ async def delete_distribution_rule(rule_id: int) -> bool:
         return True
 
 
+async def delete_telegram_user_records(telegram_user_id: int) -> dict:
+    async with async_session_maker() as session:
+        await ensure_telegram_schema(session)
+        rules_stmt = select(TelegramDistributionRule).where(
+            TelegramDistributionRule.telegram_user_id == telegram_user_id
+        )
+        requests_stmt = select(TelegramVideoRequest).where(
+            TelegramVideoRequest.telegram_user_id == telegram_user_id
+        )
+        rules_result = await session.execute(rules_stmt)
+        requests_result = await session.execute(requests_stmt)
+        rules = rules_result.scalars().all()
+        requests = requests_result.scalars().all()
+        if not rules and not requests:
+            return {"rules_deleted": 0, "requests_deleted": 0}
+        for rule in rules:
+            await session.delete(rule)
+        for request in requests:
+            await session.delete(request)
+        await session.commit()
+        return {"rules_deleted": len(rules), "requests_deleted": len(requests)}
+
+
 async def approve_video_request(request_id: int, admin_user_id: int) -> ApprovalResult:
     async with async_session_maker() as session:
         await ensure_telegram_schema(session)

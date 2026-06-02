@@ -36,6 +36,7 @@ from app.telegram_bot.service import (
     approve_video_request,
     delete_video_request,
     delete_distribution_rule,
+    delete_telegram_user_records,
     ensure_telegram_schema,
     get_video_folder_view,
     list_distribution_rules,
@@ -1037,6 +1038,14 @@ async def api_telegram_delete_rule(rule_id: int):
     if not ok:
         raise HTTPException(status_code=404, detail="Rule not found")
     return {"success": True}
+
+
+@app.delete("/api/telegram/users/{telegram_user_id}")
+async def api_telegram_delete_user(telegram_user_id: int):
+    result = await delete_telegram_user_records(telegram_user_id)
+    if result["rules_deleted"] <= 0 and result["requests_deleted"] <= 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"success": True, **result}
 
 
 @app.get("/api/telegram/users")
