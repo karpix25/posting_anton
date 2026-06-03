@@ -3,6 +3,11 @@ from typing import Optional, List
 from app.config import settings
 from app.config import ClientConfig
 from app.services.generation_prompt_rules import build_cta_case_instruction
+from app.services.product_article_rules import (
+    build_article_instruction,
+    ensure_article_line,
+    extract_product_article_rule,
+)
 
 class ContentGenerator:
     def __init__(self):
@@ -25,12 +30,14 @@ class ContentGenerator:
         decoded_path = video_path # Decode if needed, Python usually handles strings unicode natively
         system_prompt = client_config.prompt
         system_prompt += build_cta_case_instruction(system_prompt, decoded_path)
+        product_article_rule = extract_product_article_rule(system_prompt, decoded_path)
         
         if author_name:
              hashtag_author = author_name.replace(" ", "")
              system_prompt += f"\n\nВ конце поста ОБЯЗАТЕЛЬНО добавь хештег: #by{hashtag_author} (для указания авторства)."
 
         user_prompt = f"Путь к файлу: {decoded_path}. Платформа: {platform}."
+        user_prompt += build_article_instruction(product_article_rule)
         
         if platform == 'youtube':
             user_prompt += "\n\nВАЖНО: Верни результат СТРОГО в формате ниже, без любого лишнего текста:\n"
@@ -59,7 +66,8 @@ class ContentGenerator:
                     {"role": "user", "content": user_prompt}
                 ]
             )
-            return response.choices[0].message.content or ""
+            generated = response.choices[0].message.content or ""
+            return ensure_article_line(generated, product_article_rule)
         except Exception as e:
             print(f"[Generator] Error: {e}")
             return None
