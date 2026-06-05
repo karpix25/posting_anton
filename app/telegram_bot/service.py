@@ -723,6 +723,13 @@ async def list_request_users(limit: int = 500) -> list[dict]:
                 TelegramVideoRequest.telegram_user_id,
                 func.max(TelegramVideoRequest.telegram_username).label("telegram_username"),
                 func.max(TelegramVideoRequest.telegram_full_name).label("telegram_full_name"),
+                func.max(TelegramVideoRequest.id).label("last_request_id"),
+                func.max(
+                    case(
+                        (TelegramVideoRequest.status.in_(OPEN_REQUEST_STATUSES), TelegramVideoRequest.id),
+                        else_=None,
+                    )
+                ).label("active_request_id"),
                 func.count(TelegramVideoRequest.id).label("requests_total"),
                 func.coalesce(
                     func.sum(

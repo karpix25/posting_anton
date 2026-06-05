@@ -263,6 +263,7 @@
                     <th class="p-2 text-right">Получил видео</th>
                     <th class="p-2 text-right">Отчитался</th>
                     <th class="p-2 text-right">Всего заявок</th>
+                    <th class="p-2 text-left">Заявка</th>
                     <th class="p-2 text-right">Действие</th>
                   </tr>
                 </thead>
@@ -281,6 +282,11 @@
                     <td class="p-2 text-right font-semibold">{{ user.received_total || 0 }}</td>
                     <td class="p-2 text-right font-semibold text-green-700">{{ user.reported_total || 0 }}</td>
                     <td class="p-2 text-right">{{ user.requests_total || 0 }}</td>
+                    <td class="p-2">
+                      <div v-if="user.active_request_id" class="font-medium text-blue-700">активная #{{ user.active_request_id }}</div>
+                      <div v-else-if="user.last_request_id" class="text-gray-700">последняя #{{ user.last_request_id }}</div>
+                      <div v-else class="text-gray-400">-</div>
+                    </td>
                     <td class="p-2 text-right">
                       <div class="flex justify-end gap-3 whitespace-nowrap">
                         <button @click="createTelegramUserRule(user)" class="text-blue-600 hover:underline">
@@ -300,7 +306,7 @@
                     </td>
                   </tr>
                   <tr v-if="isParticipantExpanded(user)" class="border-t bg-slate-50">
-                    <td colspan="5" class="p-0">
+                    <td colspan="6" class="p-0">
                       <div class="px-4 py-3">
                         <div class="mb-2 flex items-center justify-between">
                           <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Папки и лимиты</div>
@@ -357,7 +363,7 @@
                   </tr>
                   </template>
                   <tr v-if="tgParticipants.length === 0">
-                    <td colspan="5" class="p-3 text-center text-gray-400">Данных пока нет</td>
+                    <td colspan="6" class="p-3 text-center text-gray-400">Данных пока нет</td>
                   </tr>
                 </tbody>
               </table>
@@ -1347,6 +1353,8 @@
                     received_total: 0,
                     reported_total: 0,
                     requests_total: 0,
+                    active_request_id: null,
+                    last_request_id: null,
                   });
                 });
                 return Array.from(byId.values());
