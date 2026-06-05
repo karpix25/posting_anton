@@ -149,8 +149,6 @@ def action_inline_keyboard(state: str = "idle") -> InlineKeyboardMarkup:
         rows = [[
             InlineKeyboardButton(text="Отправить ссылку", callback_data=ACTION_REPORT, style="primary"),
             InlineKeyboardButton(text="Мой отчет", callback_data=ACTION_MY_REPORT, style="primary"),
-        ], [
-            InlineKeyboardButton(text="Подать заявку", callback_data=ACTION_REQUEST, style="success"),
         ]]
     else:
         rows = [[
@@ -171,8 +169,6 @@ def main_menu_keyboard(state: str = "idle") -> ReplyKeyboardMarkup:
         rows = [[
             KeyboardButton(text="Отправить ссылку", style="primary"),
             KeyboardButton(text="Мой отчет", style="primary"),
-        ], [
-            KeyboardButton(text="Подать заявку", style="success"),
         ]]
         placeholder = "Пришлите ссылку на публикацию или выберите действие"
     else:

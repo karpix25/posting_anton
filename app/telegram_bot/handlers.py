@@ -475,7 +475,7 @@ async def _try_auto_approve_request(message: Message, user, request) -> bool:
     except ValueError as exc:
         await cancel_pending_request(user.id)
         if str(exc) == "daily_limit_exceeded":
-            text = "Вы уже получили ролик на сегодня. Повторную заявку в очередь не ставлю."
+            text = "На сегодня лимит по доступным папкам уже исчерпан. Повторную заявку в очередь не ставлю."
         else:
             text = "Вы уже одобрены, но сейчас ролик выдать нельзя. Повторную заявку в очередь не ставлю."
         await message.answer(text, reply_markup=await user_action_keyboard(user.id))

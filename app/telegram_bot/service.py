@@ -878,6 +878,7 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
         day_key = _current_day_key()
         rules = await _get_active_distribution_rules(session, request.telegram_user_id)
         rule_options = rules or [None]
+        rule_attempts = []
         any_positive_limit = False
         any_limit_available = False
         for rule in rule_options:
@@ -898,6 +899,10 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
             if daily_count >= daily_limit:
                 continue
             any_limit_available = True
+            usage_ratio = daily_count / daily_limit
+            rule_attempts.append((usage_ratio, daily_count, folder_prefix, daily_limit))
+
+        for _, _, folder_prefix, _ in sorted(rule_attempts, key=lambda item: (item[0], item[1])):
             assigned = await _assign_video_to_request(session, request, folder_prefix or None, day_key, admin_user_id)
             if assigned:
                 break
