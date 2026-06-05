@@ -149,7 +149,7 @@
         <div v-if="currentTab === 'tg_requests'">
           <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Telegram: Заявки и Апрув</h2>
-            <button @click="loadTelegramAdminData(true)" :disabled="tgAdminLoading"
+            <button @click="loadTelegramAdminData(true, { resetPages: true })" :disabled="tgAdminLoading"
               class="text-sm bg-gray-200 px-3 py-1 rounded hover:bg-gray-300 disabled:opacity-50">
               🔄 Обновить
             </button>
@@ -1722,13 +1722,14 @@
                   console.error('Failed to fetch stats summary:', error);
                 }
               },
-              async loadTelegramAdminData(forceFolders = false) {
+              async loadTelegramAdminData(forceFolders = false, options = {}) {
                 if (this.hasPendingTgRuleSaves(!forceFolders)) {
                   return;
                 }
                 if (this.tgAdminLoadPromise) {
                   return this.tgAdminLoadPromise;
                 }
+                const resetPages = !!options.resetPages;
                 this.tgAdminLoading = true;
                 this.setReadiness('telegram', 'loading');
                 this.tgAdminError = '';
@@ -1761,15 +1762,21 @@
                   });
                   this.tgRules = rulesData.items || [];
                   this.tgUsers = usersData.items || [];
-                  this.tgPendingPage = 1;
-                  this.tgUsersPage = 1;
-                  this.tgHistoryPage = 1;
                   this.initRuleEdits();
 		                  this.initPendingEdits();
 		                  this.tgPendingUiState = {};
                     this.tgRequestActionState = {};
                     this.tgUserActionState = {};
 		                  this.syncCurrentPendingForm();
+                  if (resetPages) {
+                    this.tgPendingPage = 1;
+                    this.tgUsersPage = 1;
+                    this.tgHistoryPage = 1;
+                  } else {
+                    this.tgPendingPage = Math.min(this.tgPendingTotalPages, Math.max(1, this.tgPendingPage));
+                    this.tgUsersPage = Math.min(this.tgUsersTotalPages, Math.max(1, this.tgUsersPage));
+                    this.tgHistoryPage = Math.min(this.tgHistoryTotalPages, Math.max(1, this.tgHistoryPage));
+                  }
 	                  await this.loadTelegramFoldersInBackground(forceFolders);
                     this.setReadiness('telegram', 'ready');
                 })();
