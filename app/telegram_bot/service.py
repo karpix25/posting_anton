@@ -28,6 +28,12 @@ from app.services.config_db import get_db_config, get_yandex_folders
 from app.services.content_generator import content_generator
 from app.services.scheduler import ContentScheduler
 from app.services.yandex import yandex_service
+from app.telegram_bot.distribution_rules import (
+    DistributionRuleAttempt,
+    format_folder_prefix,
+    order_distribution_attempts,
+    parse_folder_prefix_text,
+)
 from app.telegram_bot.keyboards import action_inline_keyboard
 from app.utils import extract_author
 
@@ -559,14 +565,11 @@ def _current_day_key(dt: Optional[datetime] = None) -> str:
 
 
 def _parse_folder_prefix_text(value: Optional[str]) -> tuple[str, ...]:
-    text_value = str(value or "").strip()
-    if not text_value:
-        return ()
-    return tuple(part.strip() for part in text_value.replace("\\", "/").split("/") if part.strip())
+    return parse_folder_prefix_text(value)
 
 
 def _format_folder_prefix(prefix: tuple[str, ...]) -> str:
-    return " / ".join(prefix)
+    return format_folder_prefix(prefix)
 
 
 async def ensure_telegram_schema(session: AsyncSession):
@@ -888,7 +891,7 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
         rule_attempts = []
         any_positive_limit = False
         any_limit_available = False
-        for rule in rule_options:
+        for order_index, rule in enumerate(rule_options):
             folder_prefix = _parse_folder_prefix_text(rule.folder_prefix) if rule else ()
             daily_limit = int(rule.weekly_limit) if rule else 1
             if daily_limit <= 0:
@@ -906,11 +909,24 @@ async def approve_video_request(request_id: int, admin_user_id: int) -> Approval
             if daily_count >= daily_limit:
                 continue
             any_limit_available = True
-            usage_ratio = daily_count / daily_limit
-            rule_attempts.append((usage_ratio, daily_count, folder_prefix, daily_limit))
+            rule_attempts.append(
+                DistributionRuleAttempt(
+                    folder_prefix=folder_prefix,
+                    daily_limit=daily_limit,
+                    daily_count=daily_count,
+                    order_index=order_index,
+                    rule_id=rule.id if rule else None,
+                )
+            )
 
-        for _, _, folder_prefix, _ in sorted(rule_attempts, key=lambda item: (item[0], item[1])):
-            assigned = await _assign_video_to_request(session, request, folder_prefix or None, day_key, admin_user_id)
+        for attempt in order_distribution_attempts(rule_attempts):
+            assigned = await _assign_video_to_request(
+                session,
+                request,
+                attempt.folder_prefix or None,
+                day_key,
+                admin_user_id,
+            )
             if assigned:
                 break
         else:
@@ -1080,23 +1096,38 @@ async def _assign_video_to_request(
         select(TelegramVideoRequest.video_path).where(TelegramVideoRequest.status.in_(RESERVED_STATUSES))
     )
     used_paths = {path for path in used_result.scalars().all() if path}
-    videos = await yandex_service.list_files(
-        limit=100000,
-        force_refresh=False,
-        folders=config.yandexFolders,
-        cache_scope="telegram",
-    )
     scheduler = ContentScheduler(config)
-    candidates = [
-        (video, matched_client)
-        for video in videos
-        if video.get("path")
-        and video["path"] not in used_paths
-        and (not folder_prefix or _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix))
-        for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
-        if matched_client
-    ]
+    refresh_attempts = (False, True) if folder_prefix else (False,)
+    candidates = []
+    for force_refresh in refresh_attempts:
+        videos = await yandex_service.list_files(
+            limit=100000,
+            force_refresh=force_refresh,
+            folders=config.yandexFolders,
+            cache_scope="telegram",
+        )
+        candidates = [
+            (video, matched_client)
+            for video in videos
+            if video.get("path")
+            and video["path"] not in used_paths
+            and (not folder_prefix or _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix))
+            for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
+            if matched_client
+        ]
+        if candidates:
+            break
+        if folder_prefix and not force_refresh:
+            logger.info(
+                "[TelegramApproval] No cached candidates for folder='%s'; refreshing Yandex files.",
+                _format_folder_prefix(folder_prefix),
+            )
     if not candidates:
+        logger.warning(
+            "[TelegramApproval] No available candidates for request=%s folder='%s'.",
+            request.id,
+            _format_folder_prefix(folder_prefix) if folder_prefix else "any",
+        )
         return False
 
     random.shuffle(candidates)
