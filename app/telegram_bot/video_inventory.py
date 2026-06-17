@@ -11,6 +11,7 @@ from app.config import ClientConfig
 from app.models import TelegramVideoRequest
 from app.services.scheduler import ContentScheduler
 from app.services.yandex import yandex_service
+from app.telegram_bot.video_dedupe import is_video_used
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +111,13 @@ async def load_folder_video_candidates(
     force_refresh: bool = False,
 ) -> tuple[list[tuple[dict[str, Any], ClientConfig]], FolderCandidateStats]:
     used_result = await session.execute(
-        select(TelegramVideoRequest.video_path).where(TelegramVideoRequest.status.in_(RESERVED_VIDEO_STATUSES))
+        select(TelegramVideoRequest.video_path, TelegramVideoRequest.video_md5).where(
+            TelegramVideoRequest.status.in_(RESERVED_VIDEO_STATUSES)
+        )
     )
-    used_paths = {path for path in used_result.scalars().all() if path}
+    used_rows = used_result.all()
+    used_paths = {path for path, _ in used_rows if path}
+    used_md5s = {md5 for _, md5 in used_rows if md5}
     videos = await yandex_service.list_files(
         limit=100000,
         force_refresh=force_refresh,
@@ -131,7 +136,7 @@ async def load_folder_video_candidates(
             continue
 
         total_videos += 1
-        if path in used_paths:
+        if is_video_used(video, used_paths, used_md5s):
             reserved_videos += 1
             continue
 

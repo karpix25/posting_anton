@@ -10,6 +10,12 @@ from app.services.yandex import yandex_service
 from app.services.scheduler import ContentScheduler
 from app.services.platforms import platform_manager
 from app.services.content_generator import content_generator
+from app.services.repost_guard import (
+    RECENT_REPOST_GUARD_DAYS,
+    filter_recent_reposts,
+    load_recent_repost_guard,
+    video_identity,
+)
 from app.database import async_session_maker
 from app.models import PostingHistory, BrandStats, TelegramVideoRequest
 from app.utils import extract_brand, extract_author, extract_theme
@@ -520,6 +526,19 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
                 f"reserved_videos={len(reserved_video_paths)}, filtered_from_yandex={removed}"
             )
 
+        repost_guard = await load_recent_repost_guard(
+            session,
+            now=datetime.now(MSK).replace(tzinfo=None),
+            days=RECENT_REPOST_GUARD_DAYS,
+        )
+        if repost_guard.size:
+            all_videos, removed = filter_recent_reposts(all_videos, repost_guard)
+            logger.info(
+                f"[Worker] Repost guard: days={RECENT_REPOST_GUARD_DAYS}, "
+                f"paths={len(repost_guard.paths)}, md5s={len(repost_guard.md5s)}, "
+                f"file_names={len(repost_guard.file_names)}, filtered_from_yandex={removed}"
+            )
+
         scheduler = ContentScheduler(config, session)
         # Use active_profiles (already validated against API) instead of config.profiles
         # Generate Schedule
@@ -567,6 +586,7 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
             # Extract brand for logging
             brand_name = extract_brand(video["path"])
             author_name = extract_author(video["path"])
+            identity = video_identity(video)
             
             # Create DB Record as QUEUED (Upload Post will schedule it)
             history = PostingHistory(
@@ -577,7 +597,12 @@ async def generate_daily_schedule(test_mode: bool = False, dry_run: bool = False
                 author=author_name,
                 status="queued",
                 posted_at=publish_dt,
-                meta={"planned": True, "brand": brand_name}
+                meta={
+                    "planned": True,
+                    "brand": brand_name,
+                    "video_md5": identity.md5 or None,
+                    "video_file_name": identity.file_name or None,
+                }
             )
             session.add(history)
             await session.commit()  # Commit immediately so it's visible to background workers

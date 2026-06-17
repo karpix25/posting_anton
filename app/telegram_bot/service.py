@@ -35,6 +35,7 @@ from app.telegram_bot.distribution_rules import (
     parse_folder_prefix_text,
 )
 from app.telegram_bot.keyboards import action_inline_keyboard
+from app.telegram_bot.video_dedupe import is_video_used, video_md5
 from app.utils import extract_author
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,19 @@ TELEGRAM_SCHEMA_MIGRATION_SQL = [
       ADD COLUMN IF NOT EXISTS assigned_folder_prefix TEXT NULL
     """,
     """
+    ALTER TABLE telegram_video_requests
+      ADD COLUMN IF NOT EXISTS video_md5 TEXT NULL
+    """,
+    """
     CREATE INDEX IF NOT EXISTS idx_telegram_video_requests_week_key
     ON telegram_video_requests(week_key)
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_telegram_video_requests_active_video_md5
+    ON telegram_video_requests(video_md5)
+    WHERE status IN ('approved', 'sent', 'reported', 'archived')
+      AND video_md5 IS NOT NULL
+      AND video_md5 <> ''
     """,
     """
     CREATE TABLE IF NOT EXISTS telegram_distribution_rules (
@@ -1093,9 +1105,13 @@ async def _assign_video_to_request(
 ) -> bool:
     config = await get_db_config(session)
     used_result = await session.execute(
-        select(TelegramVideoRequest.video_path).where(TelegramVideoRequest.status.in_(RESERVED_STATUSES))
+        select(TelegramVideoRequest.video_path, TelegramVideoRequest.video_md5).where(
+            TelegramVideoRequest.status.in_(RESERVED_STATUSES)
+        )
     )
-    used_paths = {path for path in used_result.scalars().all() if path}
+    used_rows = used_result.all()
+    used_paths = {path for path, _ in used_rows if path}
+    used_md5s = {md5 for _, md5 in used_rows if md5}
     scheduler = ContentScheduler(config)
     refresh_attempts = (False, True) if folder_prefix else (False,)
     candidates = []
@@ -1110,7 +1126,7 @@ async def _assign_video_to_request(
             (video, matched_client)
             for video in videos
             if video.get("path")
-            and video["path"] not in used_paths
+            and not is_video_used(video, used_paths, used_md5s)
             and (not folder_prefix or _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix))
             for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
             if matched_client
@@ -1134,6 +1150,7 @@ async def _assign_video_to_request(
     for video, client in candidates:
         request.brand = client.name
         request.video_path = str(video["path"])
+        request.video_md5 = video_md5(video) or None
         request.video_name = str(video.get("name") or request.video_path.rsplit("/", 1)[-1])
         request.assigned_folder_prefix = _format_folder_prefix(folder_prefix) if folder_prefix else ""
         request.week_key = day_key
@@ -1311,11 +1328,13 @@ async def _prepare_random_video(
             raise RuntimeError("pending_report")
 
         used_result = await session.execute(
-            select(TelegramVideoRequest.video_path).where(
+            select(TelegramVideoRequest.video_path, TelegramVideoRequest.video_md5).where(
                 TelegramVideoRequest.status.in_(RESERVED_STATUSES)
             )
         )
-        used_paths = {path for path in used_result.scalars().all() if path}
+        used_rows = used_result.all()
+        used_paths = {path for path, _ in used_rows if path}
+        used_md5s = {md5 for _, md5 in used_rows if md5}
 
         videos = await yandex_service.list_files(
             limit=100000,
@@ -1334,7 +1353,7 @@ async def _prepare_random_video(
                 (video, matched_client)
                 for video in videos
                 if video.get("path")
-                and video["path"] not in used_paths
+                and not is_video_used(video, used_paths, used_md5s)
                 and _segments_match_prefix(_extract_navigation_segments(str(video["path"])), folder_prefix)
                 for matched_client in [_find_client_for_video(config.clients, scheduler, video)]
                 if matched_client
@@ -1348,7 +1367,7 @@ async def _prepare_random_video(
             candidates = [
                 (video, client) for video in videos
                 if video.get("path")
-                and video["path"] not in used_paths
+                and not is_video_used(video, used_paths, used_md5s)
                 and client
                 and _client_matches_extracted_brand(client, scheduler.extract_brand(str(video["path"])))
             ]
@@ -1361,7 +1380,7 @@ async def _prepare_random_video(
             candidates = [
                 (video, client) for video in videos
                 if video.get("path")
-                and video["path"] not in used_paths
+                and not is_video_used(video, used_paths, used_md5s)
                 and _client_matches_video_path(client, str(video["path"]))
             ]
             logger.info(
@@ -1438,6 +1457,7 @@ async def _try_reserve_video(
         telegram_full_name=telegram_full_name,
         brand=client.name,
         video_path=video_path,
+        video_md5=video_md5(video) or None,
         video_name=str(video.get("name") or video_path.rsplit("/", 1)[-1]),
         status=STATUS_SENT,
     )

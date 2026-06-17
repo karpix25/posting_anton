@@ -60,6 +60,7 @@ class TelegramVideoRequest(SQLModel, table=True):
     telegram_full_name: Optional[str] = None
     brand: str = Field(index=True)
     video_path: str = Field(index=True)
+    video_md5: Optional[str] = Field(default=None, index=True)
     video_name: str
     youtube_title: Optional[str] = None
     youtube_description: Optional[str] = None
